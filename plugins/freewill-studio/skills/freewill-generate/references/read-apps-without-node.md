@@ -83,7 +83,7 @@ $before = Get-NB "/api/settings"
    quality = $before.quality; count = $before.count }` — 레퍼런스도 원래 경로로 다시 넣는다.
 4. 진행은 `/api/projects` 의 그 탭 요약(`done`/`total`/`outstanding`)으로만 본다. `/api/status`·`/api/events` 는 부르지 않는다.
 
-## Node 없이 시댄스로 보내기 (앱 26.10.302~)
+## Node 없이 시댄스로 보내기 (앱 26.10.304~)
 
 `scripts/send-to-seedance.mjs` 와 같은 순서다. 시댄스 앱이 **켜져 있어야** 한다 — 앱 화면이 작업함에서 요청을 받아 작성 칸을
 잠깐 빌려 보내고 원래대로 돌려놓는다. 한글 때문에 읽기·보내기 모두 UTF-8 로 직접 다룬다(위 나노바나나와 같은 이유).
@@ -96,23 +96,34 @@ function Get-SD($path) {
 }
 function Send-SD($path, $obj) {
   $bytes = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 8 -Compress))
-  $r = Invoke-WebRequest -Method Post -Uri "$sd$path" -ContentType "application/json; charset=utf-8" -Body $bytes -UseBasicParsing
-  [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) | ConvertFrom-Json
+  try {
+    $r = Invoke-WebRequest -Method Post -Uri "$sd$path" -ContentType "application/json; charset=utf-8" -Body $bytes -UseBasicParsing
+    [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) | ConvertFrom-Json
+  } catch {
+    # 400·409 같은 거절도 이유가 본문에 있다. Windows PowerShell 5.1 은 그 본문을 ErrorDetails 에 담아 둔다(한글 정상).
+    if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message | ConvertFrom-Json } else { throw }
+  }
 }
 $s = Get-SD "/api/agent/status"
+$m = Get-SD "/api/agent/manual"      # 앱이 낸 사용 설명서 — $m.text 를 읽고, $m.version 을 기억한다
 ```
 
 1. 상태 확인 — 연결이 안 되면 앱이 꺼진 것. 응답이 JSON 이 아니거나 `ok` 가 없으면 **에이전트 연결 전 버전**(앱을 껐다 켜서
    업데이트하게 한다). `screenAlive` 가 false 면 앱 창이 닫혔거나 멈춘 것, `project` 가 비었으면 프로젝트를 열게,
    `billing` 이 비었으면 설정 패널 맨 위에서 과금 프로젝트를 고르게 하고 멈춘다. `composer` 가 false 면 갤러리 화면이다.
-2. 확인 카드에 `$s.project` · `$s.billing` 을 보여주고 답을 받은 뒤, 작업마다 넣고 앱이 받을 때까지 기다린다:
+   `allowedModels` 는 그 과금 프로젝트로 지금 쓸 수 있는 모델이다.
+2. **`$m.text` 가 설정의 정답이다**(모델·모드·값 범위·레퍼런스 상한·사용법). 보내기 직전에는 기억한 버전이 그대로인지 본다:
+   `(Get-SD "/api/agent/status?manual=$([uri]::EscapeDataString($m.version))").manualStale` 이 `True` 면 앱이 업데이트된 것 — `$m` 을 다시 읽고 설정과
+   확인 카드를 다시 맞춘다.
+3. 확인 카드에 `$s.project` · `$s.billing` 을 보여주고 답을 받은 뒤, 작업마다 넣고 앱이 받을 때까지 기다린다:
    ```powershell
-   $job = Send-SD "/api/agent/jobs" @{ name = "cut_01"; prompt = "프롬프트 전문"; project = $s.project; billing = $s.billing
+   $job = Send-SD "/api/agent/jobs" @{ manual = $m.version; name = "cut_01"; prompt = "프롬프트 전문"; project = $s.project; billing = $s.billing
      settings = @{ model = "dreamina-seedance-2-5-260628"; mode = "multimodal_reference"; ratio = "16:9"; duration = 10
                    resolution = "720p"; draft = $true; output_count = 1; generate_audio = $true }
      refs = @("C:\경로\a.png", @{ path = "C:\경로\b.png"; role = "reference_image" }) }
+   if (-not $job.id) { $job.error }   # stale 이면 "앱이 업데이트됐습니다" — 2번처럼 설명서부터 다시
    do { Start-Sleep -Seconds 2; $j = Get-SD "/api/agent/jobs/$($job.id)" } while ($j.status -in "pending", "taken")
    ```
    `failed` 면 `$j.error` 를 그대로 사용자에게 보여주고 나머지 작업은 보내지 않는다. `sent` 면 `$j.messages` 가 이번에 생긴 카드다.
-3. 지켜보기는 같은 주소를 5초쯤 간격으로 다시 읽어 `status` 가 `done` 이 될 때까지. 카드마다 `status`·`videoUrl`·`error` 가 있다.
-4. 진행 확인에 `/api/byteplus/tasks/<id>` 는 부르지 않는다 — 그 조회는 크레딧 보고·영상 보관을 하는 앱 화면 몫이다.
+4. 지켜보기는 같은 주소를 5초쯤 간격으로 다시 읽어 `status` 가 `done` 이 될 때까지. 카드마다 `status`·`videoUrl`·`error` 가 있다.
+5. 진행 확인에 `/api/byteplus/tasks/<id>` 는 부르지 않는다 — 그 조회는 크레딧 보고·영상 보관을 하는 앱 화면 몫이다.

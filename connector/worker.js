@@ -78,7 +78,7 @@ const TOOLS = [
     title: "freewill 앱 스크립트",
     description:
       "이 PC 의 나노바나나·시댄스를 다루는 스크립트 원문을 받는다 — read-local-apps(앱 버전·모델 규칙·지금 설정 읽기), " +
-      "send-to-nanobanana(띄워 둔 나노바나나로 생성 보내기), send-to-seedance(띄워 둔 시댄스로 영상 생성 보내기, 앱 26.10.302~). " +
+      "send-to-nanobanana(띄워 둔 나노바나나로 생성 보내기), send-to-seedance(띄워 둔 시댄스로 영상 생성 보내기, 앱 26.10.304~). " +
       "PC 에서 명령을 돌릴 수 있을 때만 쓸모 있다: 받은 원문을 임시 폴더에 " +
       ".mjs 로 저장해 node 로 실행. node 가 없으면 freewill_guide(\"read-apps-without-node\") 의 PowerShell 절차.",
     inputSchema: {

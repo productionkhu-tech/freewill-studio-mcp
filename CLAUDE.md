@@ -59,14 +59,20 @@
 - **앱 코드를 import 해서 헤드리스로 생성하지 말 것.** 앱 화면에 안 떠서 사용자가 못 본다 (10/3 실제로 그렇게 해서 문제됨).
 - 시험: `--dry-run` 은 아무것도 안 보내고 연결·탭·팀/프로젝트만 확인한다. 가짜 서버로는 `FREEWILL_NB_URL`.
 
-## 시댄스로 보내기 (`plugins/freewill-studio/scripts/send-to-seedance.mjs`, 앱 26.10.302~)
+## 시댄스로 보내기 (`plugins/freewill-studio/scripts/send-to-seedance.mjs`, 앱 26.10.304~)
 
-- 시댄스 서버의 **에이전트 작업함**을 쓴다: `GET /api/agent/status`(켜짐·열린 프로젝트·과금 선택·갤러리 화면 여부) →
-  `POST /api/agent/jobs`(프롬프트·설정·레퍼런스 경로·확인 카드에서 본 `project`/`billing`) → `GET /api/agent/jobs/<id>`
+- 시댄스 서버의 **에이전트 작업함**을 쓴다: `GET /api/agent/manual`(앱이 낸 사용 설명서 + 버전) → `GET /api/agent/status`
+  (켜짐·열린 프로젝트·과금 선택·쓸 수 있는 모델·갤러리 화면 여부, `?manual=<버전>` 이면 낡았는지) → `POST /api/agent/jobs`
+  (설명서 버전 `manual`·프롬프트·설정·레퍼런스 경로·확인 카드에서 본 `project`/`billing`) → `GET /api/agent/jobs/<id>`
   (pending → sent/failed → done, 카드 상태). 앱 화면이 2초마다 가져가 작성 칸을 빌려 `handleSend` 그대로 보내고 되돌린다.
+- **모델·값·사용법은 앱의 설명서가 정답**이다(앱 코드의 MODELS·패널 목록에서 자동 생성, 모델마다 guide·notes). 그래서
+  시댄스에 모델이 생기거나 한도가 바뀌어도 이 저장소는 손댈 게 없다. 설정 키도 설명서에서 읽어 그대로 통과시킨다.
+- 설명서 버전(`26.10.304-1a2b3c4d` 꼴)이 지금 앱과 다르면 앱이 400/409 로 돌려보낸다 — 스크립트는 새 설명서를 출력하고
+  멈춘다. 에이전트는 그걸로 확인 카드를 다시 보여 준 뒤 보낸다(한 채팅방을 오래 써도 낡은 규칙으로 안 나간다).
 - 작업은 하나씩 넣고 앱이 보낼 때까지 기다린다. 하나라도 실패하면 멈춘다(같은 실수를 반복하지 않게).
 - **`/api/byteplus/tasks/<id>` 는 부르지 말 것** — 그 조회는 트래커 보고·NCP 보관을 하고 기록을 지운다(앱 화면 몫).
-- 작업함 API 는 시댄스 저장소 `server.ts` 와 `HANDOFF.md` §6·§7(24~27)에 있다. 거기가 바뀌면 이 스크립트도 같이.
+- 작업함 API 는 시댄스 저장소 `server.ts`·`src/lib/agent-inbox.ts` 와 `HANDOFF.md` §6·§7(24~29)에 있다. 경로·필드·상태값이
+  바뀌면 이 스크립트도 같이. Windows PowerShell 5.1 은 거절 응답 본문을 `ErrorDetails.Message` 에 담는다(노드 없는 절차).
 - 시험: `--dry-run`(아무것도 안 보냄). 실제 보내기 시험은 격리 서버(포트·캐시·백업 폴더 분리)에서 `ratio:"99:1"` 로 —
   BytePlus 가 작업을 만들기 전에 거절해 과금 0. 주소는 `FREEWILL_SD_URL`.
 
