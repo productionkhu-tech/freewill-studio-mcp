@@ -10,8 +10,10 @@
 
 1. **`plugins/freewill-studio/skills/freewill-generate/official/` 을 손으로 고치지 말 것.** 동기화가 덮어쓴다.
    공식 스킬과 다르게 써야 할 부분은 `SKILL.md` 4단계 대응표의 "건너뛰는 부분"에 적는다.
-2. **plugin.json · marketplace.json 에 `version` 을 넣지 말 것.** 비워 두면 커밋마다 새 버전으로 잡혀 자동 업데이트가
-   따라간다. 넣으면 매번 올려야 하고, 깜빡하면 아무도 업데이트를 못 받는다.
+2. **Claude 쪽(`.claude-plugin/`) plugin.json · marketplace.json 에 `version` 을 넣지 말 것.** 비워 두면 커밋마다 새 버전으로
+   잡혀 자동 업데이트가 따라간다. 넣으면 매번 올려야 하고, 깜빡하면 아무도 업데이트를 못 받는다.
+   **OpenAI 쪽(`.codex-plugin/plugin.json`)은 반대로 version 이 있어야 한다** — Codex 는 버전 번호로 폴더를 나눠서, 번호가 같으면
+   새로 받지 않는다. 플러그인 파일을 고쳐 올리면 `bump-codex-version.yml` 이 자동으로 올리니 손으로 건드리지 않는다.
 3. **sync.mjs 에서 `fs.cpSync` 를 쓰지 말 것.** Windows 의 Node 25 에서 한글 경로로 복사하면 메시지 없이 프로세스가
    죽는다(종료 코드 127). `copyDir` 를 쓴다.
 4. **공식 스킬의 실행 지시를 살리지 말 것.** API 직접 호출, 키 설정, CLI 설치, 자체 업데이트 — 생성은 앱이,

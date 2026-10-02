@@ -1,0 +1,43 @@
+name: Codex 플러그인 버전 올리기
+
+# Codex·ChatGPT 는 플러그인을 version 번호로 구분한다. 내용이 바뀌어도 번호가 같으면 새로 받지 않는다.
+# 사람이 플러그인 파일을 고쳐 main 에 올리면 번호를 자동으로 하나 올린다.
+# 이 작업이 GITHUB_TOKEN 으로 올린 커밋은 다시 이 작업을 부르지 않는다 (GitHub 규칙) — 되풀이 없음.
+# 매일 동기화(sync-official.yml)가 공식 스킬을 반영할 때는 sync.mjs 가 직접 올린다.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "plugins/freewill-studio/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-codex-version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 이번 푸시에서 이미 올렸는지 보고, 아니면 올리기
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          F=plugins/freewill-studio/.codex-plugin/plugin.json
+          if git cat-file -e "$BEFORE" 2>/dev/null && git diff "$BEFORE" HEAD -- "$F" | grep -q '"version"'; then
+            echo "이번 푸시에서 이미 버전을 바꿈 — 그대로 둔다"
+            exit 0
+          fi
+          V=$(node -e "const fs=require('fs');const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=String(j.version||'0.1.0').split('.').map(n=>parseInt(n,10)||0);v[2]++;j.version=v.join('.');fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');process.stdout.write(j.version)" "$F")
+          git config user.name "freewill-sync"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$F"
+          git commit -m "Codex 플러그인 버전 $V — 플러그인 변경 반영"
+          git push
