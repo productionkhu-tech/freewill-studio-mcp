@@ -1,7 +1,10 @@
 # freewill-studio 개발 규칙
 
-사용자에게는 한국어로 답한다. 구조와 설치는 README.md. 저장소: `productionkhu-tech/freewill-studio-mcp` (비공개),
-마켓플레이스 이름 `freewill`, 플러그인 이름 `freewill-studio`.
+사용자에게는 한국어로 답한다. 구조와 설치는 README.md. 저장소: `productionkhu-tech/freewill-studio-mcp` (**공개** —
+팀원이 GitHub 계정 없이 설치하도록), 마켓플레이스 이름 `freewill`, 플러그인 이름 `freewill-studio`.
+
+공개 저장소이므로 **비밀값·키·토큰·내부 주소(게이트웨이 등)·팀/프로젝트 실명·사내 숫자를 절대 넣지 않는다.**
+외부 스킬을 새로 넣으면 `THIRD_PARTY_NOTICES.md` 에 출처·라이선스를 같이 적는다.
 
 ## 절대 하지 말 것
 

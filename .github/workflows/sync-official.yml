@@ -28,15 +28,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: 커밋 작성자 설정
+        run: |
+          git config user.name "freewill-sync"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       # 반영된 게 있으면 main 에 바로 올린다. 플러그인 version 을 비워 둬서 커밋마다
       # 새 버전으로 잡히고, 자동 업데이트를 켠 사람은 다음 실행 때 받는다.
       - name: 반영분 커밋
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            git config user.name "freewill-sync"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
             git commit -m "공식 스킬 동기화 $(date -u +%F)"
+            git push
+          fi
+
+      # 공개 저장소는 60일 동안 활동이 없으면 GitHub 이 예약 실행을 스스로 꺼 버린다.
+      # 원본이 오래 안 바뀌어 커밋이 없으면 45일마다 확인 기록 한 줄을 남겨 살려 둔다.
+      - name: 예약 실행 살려 두기
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 45 * 86400 )) ]; then
+            date -u +%F > sync/heartbeat
+            git add sync/heartbeat
+            git commit -m "동기화 확인 $(date -u +%F) — 예약 실행 유지용"
             git push
           fi
 
