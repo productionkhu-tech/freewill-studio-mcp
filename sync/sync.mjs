@@ -81,9 +81,12 @@ function contentHash(dir) {
   const files = walk(dir).map((f) => path.relative(dir, f).split(path.sep).join("/")).sort();
   for (const rel of files) {
     const buf = fs.readFileSync(path.join(dir, rel));
-    const body = /\.(md|txt|ya?ml|json|py|sh|js|mjs|ts|toml|html|css)$/i.test(rel)
-      ? Buffer.from(buf.toString("utf8").replace(/\r\n/g, "\n"))
-      : buf;
+    // 텍스트인지는 확장자가 아니라 내용으로 본다 (git 과 같은 기준: 앞부분에 0 바이트가 없으면 텍스트).
+    // 확장자 목록으로 했더니 .svg 가 빠져서 Windows 체크아웃의 CRLF 가 그대로 지문에 들어갔다.
+    // latin1 은 바이트를 1:1 로 옮기므로 인코딩과 무관하게 CRLF 만 LF 로 바뀐다.
+    const body = buf.subarray(0, 8000).includes(0)
+      ? buf
+      : Buffer.from(buf.toString("latin1").replace(/\r\n/g, "\n"), "latin1");
     h.update(rel).update("\0").update(body).update("\0");
   }
   return h.digest("hex");
