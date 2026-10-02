@@ -1,0 +1,63 @@
+{
+  "$comment": "공식 프롬프팅 스킬 목록. tracked = 받아서 플러그인에 넣는 것, watch = 새 스킬이 생기는지 지켜보는 원본. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept 로 반영. models 는 이 가이드를 쓰는 앱 모델 ID (SKILL.md 대응표와 같이 고칠 것).",
+  "skillsCli": "skills@1.7.0",
+  "tracked": [
+    {
+      "skill": "sd25-pe",
+      "vendor": "BytePlus",
+      "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
+      "mode": "auto",
+      "models": ["dreamina-seedance-2-5-260628"]
+    },
+    {
+      "skill": "sd2-pe",
+      "vendor": "BytePlus",
+      "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
+      "mode": "auto",
+      "models": ["dreamina-seedance-2-0-260128", "dreamina-seedance-2-0-fast-260128", "dreamina-seedance-2-0-mini-260615"]
+    },
+    {
+      "skill": "gemini-omni-flash-api",
+      "vendor": "Google",
+      "source": "google-gemini/gemini-skills",
+      "mode": "auto",
+      "models": ["gemini-omni-flash-preview", "gemini-omni-1.1-flash"]
+    },
+    {
+      "skill": "imagegen",
+      "vendor": "OpenAI",
+      "source": "openai/skills",
+      "mode": "auto",
+      "models": ["gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"]
+    },
+    {
+      "skill": "higgsfield-generate",
+      "vendor": "Higgsfield",
+      "source": "higgsfield-ai/skills",
+      "mode": "review",
+      "models": []
+    }
+  ],
+  "watch": [
+    {
+      "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
+      "type": "well-known",
+      "filter": "."
+    },
+    {
+      "source": "google-gemini/gemini-skills",
+      "type": "github",
+      "filter": "image|video|omni|imagen|veo|nano|banana|prompt"
+    },
+    {
+      "source": "openai/skills",
+      "type": "github",
+      "filter": "image|video|sora|gpt-image|prompt"
+    },
+    {
+      "source": "higgsfield-ai/skills",
+      "type": "github",
+      "filter": "generate|image|video|prompt"
+    }
+  ]
+}

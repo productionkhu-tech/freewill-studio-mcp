@@ -1,0 +1,16 @@
+{
+  "name": "freewill",
+  "owner": {
+    "name": "프리윌루전"
+  },
+  "metadata": {
+    "description": "프리윌루전 사내 플러그인 — 나노바나나·시댄스 생성을 Claude 에서"
+  },
+  "plugins": [
+    {
+      "name": "freewill-studio",
+      "source": "./plugins/freewill-studio",
+      "description": "나노바나나(이미지)·시댄스(영상) 프롬프트를 모델별 공식 프롬프팅 스킬로 쓰고, 앱 규칙대로 묻고, 확인 후 앱으로 넘긴다. 공식 스킬은 매일 자동으로 따라간다."
+    }
+  ]
+}
