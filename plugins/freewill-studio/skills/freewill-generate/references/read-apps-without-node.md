@@ -45,3 +45,40 @@ Mac: `defaults read "/Applications/Freewill Seedance 2.0.app/Contents/Info" CFBu
 **내용**으로 다시 찾는다. 한글은 `\uXXXX` 꼴로 적혀 있으니 풀어서 이해한다.
 
 못 찾으면 `references/app-rules.md` 스냅샷으로 넘어가고, "앱 구조가 바뀌어 직접 못 읽었다"고 사용자에게 말한다.
+
+## Node 없이 보내기 — 나노바나나
+
+`scripts/send-to-nanobanana.mjs` 와 같은 순서를 PowerShell 로 한다. **한글이 깨지지 않게 보낼 때도 읽을 때도 UTF-8 로 직접 다룬다** —
+Windows PowerShell 5.1 의 `Invoke-RestMethod` 는 응답에 charset 이 없으면 한글을 잘못 읽어서, 그 값을 되돌려 넣으면 탭의 원래 프롬프트가
+깨진 글자로 바뀐다 (가짜 앱으로 확인함). 그래서 읽기는 아래 `Get-NB` 만 쓴다.
+PowerShell 에서 `$PID` 는 예약된 변수라 탭 ID 는 `$tabPid` 처럼 다른 이름을 쓴다.
+
+```powershell
+$nb = "http://127.0.0.1:5656"
+$html = (Invoke-WebRequest "$nb/" -UseBasicParsing).Content
+$h = @{ "X-NB-Token" = [regex]::Match($html, 'name="nb-csrf" content="([^"]+)"').Groups[1].Value }
+function Send-NB($path, $obj) {
+  $bytes = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 6 -Compress))
+  Invoke-RestMethod -Method Post -Uri "$nb$path" -Headers $h -ContentType "application/json; charset=utf-8" -Body $bytes
+}
+function Get-NB($path) {
+  $r = Invoke-WebRequest "$nb$path" -UseBasicParsing
+  [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) | ConvertFrom-Json
+}
+$tabPid = (Get-NB "/api/projects").active
+$before = Get-NB "/api/settings"
+```
+
+1. `Get-NB "/api/billing/state"` — `confirmed` 가 아니면 멈추고 앱에서 팀·프로젝트를 고르게 한다.
+2. 작업마다 (같은 탭이 계속 떠 있는지 `/api/projects` 의 `active` 로 확인하면서):
+   ```powershell
+   Send-NB "/api/refs/clear" @{ preserve_pinned = $false }
+   Send-NB "/api/refs/add-path" @{ filepath = "C:\경로\ref1.png" }     # 레퍼런스마다
+   Send-NB "/api/settings" @{ pid = $tabPid; fixed_prompt = ""; prompt_sections = @("프롬프트")
+                              model = "gpt-image-2.5-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
+   Send-NB "/api/generate" @{}       # ok 가 아니고 "Queue full" 이면 잠깐 기다렸다 다시
+   ```
+3. 다 넣은 뒤 원래 입력값으로 되돌린다: `Send-NB "/api/settings" @{ pid = $tabPid; fixed_prompt = $before.fixed_prompt;
+   prompt_sections = @($before.prompt_sections); model = $before.model; resolution = $before.resolution; aspect = $before.aspect;
+   quality = $before.quality; count = $before.count }` — 레퍼런스도 원래 경로로 다시 넣는다.
+4. 진행은 `/api/projects` 의 그 탭 요약(`done`/`total`/`outstanding`)으로만 본다. `/api/status`·`/api/events` 는 부르지 않는다.

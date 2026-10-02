@@ -33,6 +33,17 @@
   - 나노바나나 원본: `나노바나나 api/static/app.js` 의 `MODEL_SPECS`
   - 시댄스 원본: 렌더러의 모델 목록(`Rt`)과 2.5 사양(`kA`) — 설치본 `resources/dist/assets/index-*.js`
 
+## 나노바나나로 보내기 (`plugins/freewill-studio/scripts/send-to-nanobanana.mjs`)
+
+- 앱을 고치지 않고 앱 자체 주소로 Generate 를 누른다: 화면의 `<meta name="nb-csrf">` 토큰 → 탭 확인(`/api/projects`) →
+  팀·프로젝트 확인(`/api/billing/state`) → 작업마다 `/api/refs/clear`·`/api/refs/add-path` → `/api/settings`(pid 지정) →
+  `/api/generate` → 끝나면 탭 입력값을 원래대로.
+- `/api/generate` 는 **화면에 떠 있는 탭**으로 들어간다(pid 를 안 받는다). 그래서 보내는 중에 탭이 바뀌면 멈춘다.
+- 앱은 작업마다 설정을 스냅샷으로 저장해서, 프롬프트를 바꿔 가며 연달아 넣어도 섞이지 않는다.
+- 스켈레톤 개수는 앱이 "그 탭의 남은 작업 수"로 그린다 — 화면 쪽 수정 없이 뜬다.
+- **앱 코드를 import 해서 헤드리스로 생성하지 말 것.** 앱 화면에 안 떠서 사용자가 못 본다 (10/3 실제로 그렇게 해서 문제됨).
+- 시험: `--dry-run` 은 아무것도 안 보내고 연결·탭·팀/프로젝트만 확인한다. 가짜 서버로는 `FREEWILL_NB_URL`.
+
 ## 로컬 앱 읽기 (`plugins/freewill-studio/scripts/read-local-apps.mjs`)
 
 - 나노바나나: 실행 중일 때만 (127.0.0.1:5656). 화면 코드의 `MODEL_SPECS` 원문 + 지금 설정 + 팀/프로젝트 선택 상태.

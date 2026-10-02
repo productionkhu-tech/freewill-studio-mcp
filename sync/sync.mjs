@@ -362,7 +362,7 @@ function diffStats(before, after) {
   return { files, add, del };
 }
 function short(h) { return h ? `#${String(h).slice(0, 8)}` : "?"; }
-function readJson(p) { return JSON.parse(fs.readFileSync(p, "utf8").replace(/^﻿/, "")); }
+function readJson(p) { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); }
 function writeJson(p, v) { fs.writeFileSync(p, `${JSON.stringify(v, null, 2)}\n`); }
 
 main().catch((e) => {
