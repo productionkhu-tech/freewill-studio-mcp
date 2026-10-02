@@ -75,6 +75,18 @@ async function seedance() {
   out.push(`- ${team ? "실행 중" : "꺼져 있음 (설치 파일에서 읽음)"} · 이 PC 버전 **${version || "?"}**${releaseNote(version, latest)}`);
   if (team?.known) out.push(`- 팀: ${team.team}`);
   out.push("- 프로젝트는 앱 화면에서 고른다. 프로젝트마다 쓸 수 있는 모델이 다르고, 권한 없는 모델은 앱이 막는다.");
+  // 자동 보내기(에이전트 작업함, 26.10.302~). 켜져 있으면 지금 화면 상태까지, 꺼져 있으면 버전으로만 판단한다.
+  const agent = team ? await getJson(`${SD}/api/agent/status`, 1500) : null;
+  if (agent?.ok) {
+    const where = !agent.screenAlive ? "앱 화면이 응답하지 않음(창이 닫혔나?)"
+      : !agent.project ? "열린 프로젝트 없음"
+      : `프로젝트 "${agent.project}" · 과금 ${agent.billing ? `"${agent.billing}"` : "**선택 안 됨 — 앱에서 먼저 고르게 할 것**"}${agent.composer === false ? " · 갤러리 화면" : ""}`;
+    out.push(`- 자동 보내기: **가능** (send-to-seedance) — ${where}`);
+  } else if (version && compareVersions(version, "26.10.302") >= 0) {
+    out.push(`- 자동 보내기: 이 버전은 가능 (send-to-seedance) — ${team ? "작업함 응답 없음, 앱을 다시 켜 볼 것" : "보내려면 앱을 켜야 한다"}`);
+  } else {
+    out.push("- 자동 보내기: **안 됨** — 26.10.302 이상 필요(앱을 껐다 켜면 업데이트). 그 전엔 설정·프롬프트를 정리해 옮겨 적게 한다.");
+  }
 
   // 화면 코드: 켜져 있으면 앱이 서빙하는 것, 아니면 설치 폴더의 것. 같은 파일이다.
   let bundle = null;

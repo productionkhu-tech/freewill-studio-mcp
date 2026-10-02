@@ -59,6 +59,17 @@
 - **앱 코드를 import 해서 헤드리스로 생성하지 말 것.** 앱 화면에 안 떠서 사용자가 못 본다 (10/3 실제로 그렇게 해서 문제됨).
 - 시험: `--dry-run` 은 아무것도 안 보내고 연결·탭·팀/프로젝트만 확인한다. 가짜 서버로는 `FREEWILL_NB_URL`.
 
+## 시댄스로 보내기 (`plugins/freewill-studio/scripts/send-to-seedance.mjs`, 앱 26.10.302~)
+
+- 시댄스 서버의 **에이전트 작업함**을 쓴다: `GET /api/agent/status`(켜짐·열린 프로젝트·과금 선택·갤러리 화면 여부) →
+  `POST /api/agent/jobs`(프롬프트·설정·레퍼런스 경로·확인 카드에서 본 `project`/`billing`) → `GET /api/agent/jobs/<id>`
+  (pending → sent/failed → done, 카드 상태). 앱 화면이 2초마다 가져가 작성 칸을 빌려 `handleSend` 그대로 보내고 되돌린다.
+- 작업은 하나씩 넣고 앱이 보낼 때까지 기다린다. 하나라도 실패하면 멈춘다(같은 실수를 반복하지 않게).
+- **`/api/byteplus/tasks/<id>` 는 부르지 말 것** — 그 조회는 트래커 보고·NCP 보관을 하고 기록을 지운다(앱 화면 몫).
+- 작업함 API 는 시댄스 저장소 `server.ts` 와 `HANDOFF.md` §6·§7(24~27)에 있다. 거기가 바뀌면 이 스크립트도 같이.
+- 시험: `--dry-run`(아무것도 안 보냄). 실제 보내기 시험은 격리 서버(포트·캐시·백업 폴더 분리)에서 `ratio:"99:1"` 로 —
+  BytePlus 가 작업을 만들기 전에 거절해 과금 0. 주소는 `FREEWILL_SD_URL`.
+
 ## 로컬 앱 읽기 (`plugins/freewill-studio/scripts/read-local-apps.mjs`)
 
 - 나노바나나: 실행 중일 때만 (127.0.0.1:5656). 화면 코드의 `MODEL_SPECS` 원문 + 지금 설정 + 팀/프로젝트 선택 상태.
