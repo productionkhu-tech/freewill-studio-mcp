@@ -22,22 +22,36 @@
 
 공개 저장소라 GitHub 계정은 필요 없다.
 
-## 설치
+## 설치 (Windows)
 
-PowerShell 에 한 줄 (데스크톱 앱에 들어 있는 Claude Code 로 설치한다):
+PowerShell 을 열고 아래를 **통째로** 붙여넣는다. 관리자 권한은 필요 없다.
 
 ```powershell
-$c = (Get-ChildItem "$env:APPDATA\Claude\claude-code" -Recurse -Filter claude.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName; & $c plugin marketplace add https://github.com/productionkhu-tech/freewill-studio-mcp.git; & $c plugin install freewill-studio@freewill
+$c = (Get-ChildItem "$env:APPDATA\Claude\claude-code" -Recurse -Filter claude.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+& $c plugin marketplace add https://github.com/productionkhu-tech/freewill-studio-mcp.git
+& $c plugin install freewill-studio@freewill
+$cfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $env:USERPROFILE ".claude" }
+$s = Join-Path $cfg "settings.json"
+$j = [IO.File]::ReadAllText($s) | ConvertFrom-Json
+$j.extraKnownMarketplaces.freewill | Add-Member -NotePropertyName autoUpdate -NotePropertyValue $true -Force
+[IO.File]::WriteAllText($s, ($j | ConvertTo-Json -Depth 32), (New-Object Text.UTF8Encoding $false))
 ```
 
-Claude Code 를 터미널에서 쓰는 사람은 대화창에서
-`/plugin marketplace add https://github.com/productionkhu-tech/freewill-studio-mcp.git` → `/plugin install freewill-studio@freewill`.
-설치 뒤 새 대화부터 적용된다.
+- 1~3줄: 데스크톱 앱에 들어 있는 Claude Code 로 플러그인을 설치한다.
+- 4~8줄: **자동 업데이트를 켠다.** 설정 파일의 기존 내용은 그대로 두고 `autoUpdate` 한 칸만 넣는다.
+- 데스크톱 앱 Code 탭에서 **새 대화**를 열면 적용된다. 자동 업데이트는 새 세션을 열고 0~10분 뒤에 새 버전을 받는다.
 
 > **주소는 꼭 `https://…git` 전체로.** `productionkhu-tech/freewill-studio-mcp` 처럼 줄여 쓰면 Claude Code 가 SSH 로 받으려다
 > "Host key verification failed" 로 실패한다 (SSH 키를 설정한 PC 가 아니면).
 
-공식 스킬 업데이트를 자동으로 받으려면 `/plugin` 화면에서 `freewill` 마켓플레이스의 자동 업데이트를 켠다.
+Mac 이나 터미널 Claude Code: 대화창에서 `/plugin marketplace add https://github.com/productionkhu-tech/freewill-studio-mcp.git` →
+`/plugin install freewill-studio@freewill`, 자동 업데이트는 `/plugin` → Marketplaces 탭 → `freewill` → Enable auto-update.
+
+자동 업데이트를 켜지 않았다면 직접 받는다 (위 블록의 첫 줄을 먼저 실행해 `$c` 를 만든 뒤):
+
+```powershell
+& $c plugin marketplace update freewill; & $c plugin update freewill-studio@freewill
+```
 
 ## 쓰는 법
 
