@@ -14,6 +14,7 @@
 //   node sync/sync.mjs --dry-run       받아서 비교만 하고 아무것도 안 바꿈
 
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,7 +68,25 @@ function fetchSkill(t) {
   if (!r.ok || !entry || !fs.existsSync(path.join(dir, "SKILL.md"))) {
     throw new Error(`받기 실패 — ${r.out.split(/\r?\n/).filter(Boolean).slice(-3).join(" / ") || "출력 없음"}`);
   }
-  return { dir, hash: entry.computedHash, digest: entry.wellKnownDigest || null, version: versionOf(dir) };
+  // CLI 가 주는 computedHash 는 쓰지 않는다 — Windows 와 Linux 에서 값이 달라서(하위 폴더가 있는
+  // 스킬만), 내용이 그대로인데도 GitHub Actions 에서 "바뀜"으로 잡혔다. 내용으로 직접 센다.
+  return { dir, hash: contentHash(dir), digest: entry.wellKnownDigest || null, version: versionOf(dir) };
+}
+
+// 폴더 내용의 지문. 경로는 / 로 맞추고 텍스트 파일의 줄바꿈(Windows 체크아웃의 CRLF)은 LF 로 맞춘다.
+// 파일 권한(실행 비트)은 보지 않는다. 어느 OS 에서 계산해도 같은 내용이면 같은 값이 나와야 한다.
+function contentHash(dir) {
+  if (!fs.existsSync(dir)) return null;
+  const h = crypto.createHash("sha256");
+  const files = walk(dir).map((f) => path.relative(dir, f).split(path.sep).join("/")).sort();
+  for (const rel of files) {
+    const buf = fs.readFileSync(path.join(dir, rel));
+    const body = /\.(md|txt|ya?ml|json|py|sh|js|mjs|ts|toml|html|css)$/i.test(rel)
+      ? Buffer.from(buf.toString("utf8").replace(/\r\n/g, "\n"))
+      : buf;
+    h.update(rel).update("\0").update(body).update("\0");
+  }
+  return h.digest("hex");
 }
 
 // ------------------------------------------------------------------ 새 스킬 감지
@@ -84,8 +103,10 @@ async function listSource(w) {
     }
     throw new Error("well-known 목록 주소를 찾지 못함");
   }
+  // 토큰 없이는 IP 당 시간 60회라 로컬에서 몇 번 돌리면 막힌다. Actions 는 GITHUB_TOKEN, 로컬은 GH_TOKEN.
   const headers = { "User-Agent": "freewill-sync", Accept: "application/vnd.github+json" };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`https://api.github.com/repos/${w.source}/git/trees/HEAD?recursive=1`, { headers });
   if (!res.ok) throw new Error(`GitHub 목록 ${res.status}`);
   const j = await res.json();
@@ -184,7 +205,10 @@ async function main() {
     clearFailure(t.skill);
     const prev = lock.skills[t.skill];
     const accepted = ACCEPT.has(t.skill);
-    if (prev && prev.hash === got.hash && !accepted) {
+    // 기준은 기록(lock)이 아니라 플러그인에 실제로 들어 있는 내용이다. 같으면 할 일이 없다.
+    if (!accepted && got.hash === contentHash(path.join(OFFICIAL_DIR, t.skill))) {
+      if (prev && prev.hash !== got.hash) prev.hash = got.hash; // 지문 계산 방식이 바뀐 경우 조용히 맞춘다
+      delete lock.held[t.skill];
       log(`  같음   ${t.skill} ${got.version || short(got.hash)}`);
       continue;
     }

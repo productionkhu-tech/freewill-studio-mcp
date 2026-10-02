@@ -8,7 +8,7 @@
         "dreamina-seedance-2-5-260628"
       ],
       "version": "0.1.1",
-      "hash": "7f250bbcd785d63d32cd1495ab48e046a6c7462ef4426d8b6fef97de0c0f72af",
+      "hash": "08ea2c256c08410ef486b3839eaefd4465f9bd764469fcdc22f9690d5d719f22",
       "digest": "sha256:c9c765aa5ba9fa84e8a27ee606f7b8c6229bfb775138133f366ea1ad37b97cba",
       "appliedAt": "2026-10-02"
     },
@@ -22,7 +22,7 @@
         "dreamina-seedance-2-0-mini-260615"
       ],
       "version": null,
-      "hash": "af4b711cbc2c2bfe9c78db2a5c27bdaf6f97fd90678568553e53435a34db4f80",
+      "hash": "301a03be36845e55462a54de60248ac488fa5264a7ce3a24e67df02e421b5f0e",
       "digest": "sha256:b5fb04555405b956f2263f0dd61ef4fa75ee55d2a230e773456d6911d9a96ad3",
       "appliedAt": "2026-10-02"
     },
@@ -35,7 +35,7 @@
         "gemini-omni-1.1-flash"
       ],
       "version": null,
-      "hash": "32b987a10d1649aeb4d30353bb35a7ce87ac1e5e48dc06d08c61af681eab5bde",
+      "hash": "96bcfe0814192a9921dea9788b4687bf22ff0f3a431afb74b339d048e1a3102d",
       "digest": null,
       "appliedAt": "2026-10-02"
     },
@@ -49,7 +49,7 @@
         "gpt-image-2.5-sunburst"
       ],
       "version": null,
-      "hash": "9f14832d6538d83047ef41223ba9b0fb4a8c393d144ad4015ce4c10cc3d5414c",
+      "hash": "e465465ac6b52a3c8ae8a09a6e1966787a0b0d26678ab8b6b0bf50dc3f40237b",
       "digest": null,
       "appliedAt": "2026-10-02"
     },
@@ -59,14 +59,12 @@
       "mode": "review",
       "models": [],
       "version": "0.13.0",
-      "hash": "b9002083304048c0c0b378e04ca1e79509804acf0c8d8acf305e5ec070f4015f",
+      "hash": "48c7b7f92133f8166107d7e27b3df4dd32b932a742ae1d2b249cb4fe22930228",
       "digest": null,
       "appliedAt": "2026-10-02"
     }
   },
-  "held": {
-    "higgsfield-generate": "45867a1bfe18423cf8a204f4bdfc049cfc42591b276970efc1686b7c8a14b948"
-  },
+  "held": {},
   "known": {
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [
       "sd2-pe",
