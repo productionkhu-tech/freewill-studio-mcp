@@ -27,11 +27,15 @@
 PowerShell 에 한 줄 (데스크톱 앱에 들어 있는 Claude Code 로 설치한다):
 
 ```powershell
-$c = (Get-ChildItem "$env:APPDATA\Claude\claude-code" -Recurse -Filter claude.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName; & $c plugin marketplace add productionkhu-tech/freewill-studio-mcp; & $c plugin install freewill-studio@freewill
+$c = (Get-ChildItem "$env:APPDATA\Claude\claude-code" -Recurse -Filter claude.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName; & $c plugin marketplace add https://github.com/productionkhu-tech/freewill-studio-mcp.git; & $c plugin install freewill-studio@freewill
 ```
 
-Claude Code 를 터미널에서 쓰는 사람은 대화창에서 `/plugin marketplace add productionkhu-tech/freewill-studio-mcp` →
-`/plugin install freewill-studio@freewill`. 설치 뒤 새 대화부터 적용된다.
+Claude Code 를 터미널에서 쓰는 사람은 대화창에서
+`/plugin marketplace add https://github.com/productionkhu-tech/freewill-studio-mcp.git` → `/plugin install freewill-studio@freewill`.
+설치 뒤 새 대화부터 적용된다.
+
+> **주소는 꼭 `https://…git` 전체로.** `productionkhu-tech/freewill-studio-mcp` 처럼 줄여 쓰면 Claude Code 가 SSH 로 받으려다
+> "Host key verification failed" 로 실패한다 (SSH 키를 설정한 PC 가 아니면).
 
 공식 스킬 업데이트를 자동으로 받으려면 `/plugin` 화면에서 `freewill` 마켓플레이스의 자동 업데이트를 켠다.
 
