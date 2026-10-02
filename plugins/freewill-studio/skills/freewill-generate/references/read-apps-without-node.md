@@ -1,6 +1,7 @@
 # Node 없이 이 PC 앱 읽기
 
-`node` 명령이 없으면 (팀원 PC 대부분이 그렇다) `scripts/read-local-apps.mjs` 대신 Claude Code 기본 도구로 직접 읽는다.
+`node` 명령이 없으면 (팀원 PC 대부분이 그렇다) `scripts/read-local-apps.mjs` 대신 에이전트 기본 도구(명령 실행, 파일 검색
+Grep·rg)로 직접 읽는다. Claude Code·Codex 둘 다 같은 방법이다.
 **읽기만 한다.** 결과는 스크립트와 같은 기준으로 쓴다 — 이 PC 의 앱이 정답, 스냅샷은 마지막 수단.
 
 ## 나노바나나 — 켜져 있을 때만
@@ -30,8 +31,8 @@ curl.exe -s http://127.0.0.1:5656/static/app.js -o "<임시 폴더>/nb-app.js"
 
 Mac: `defaults read "/Applications/Freewill Seedance 2.0.app/Contents/Info" CFBundleShortVersionString`
 
-**규칙** — 화면 코드 `…\Freewill Seedance 2.0\resources\dist\assets\index-*.js`. 한 줄짜리 압축 코드라 Read 로는 안 읽힌다.
-Grep 을 `-o` (일치한 부분만)로 써서 **한 번에 400자 안쪽**으로 잘라 읽는다. 더 길게 잡으면 도구가 줄을 생략한다.
+**규칙** — 화면 코드 `…\Freewill Seedance 2.0\resources\dist\assets\index-*.js`. 한 줄짜리 압축 코드라 통째로는 안 읽힌다.
+검색 도구(Grep, `rg -o`)를 `-o` (일치한 부분만)로 써서 **한 번에 400자 안쪽**으로 잘라 읽는다. 더 길게 잡으면 도구가 줄을 생략한다.
 이어서 보려면 앞 결과의 마지막 몇 글자를 다음 패턴의 시작으로 쓴다.
 
 1. 모델 목록 — `id:"dreamina-seedance-2-0-260128".{0,400}` 로 시작해서 `}]` 가 나올 때까지 이어 읽는다.

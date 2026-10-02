@@ -8,7 +8,9 @@ description: 나노바나나(이미지)·시댄스(영상)로 만들 것을 맡�
 사람은 앱에서 **팀·프로젝트만** 골라 둔다. 나머지 — 무엇을 만들지 묻고, 공식 가이드대로 프롬프트를 쓰고,
 파라미터를 맞추고, 확인을 받아 앱으로 넘기고, 결과를 보고 고치는 것 — 은 에이전트가 한다.
 
-이 문서의 상대 경로는 이 스킬 폴더(`${CLAUDE_PLUGIN_ROOT}/skills/freewill-generate/`) 기준이다.
+이 문서의 상대 경로는 이 SKILL.md 가 있는 폴더 기준이다. **플러그인 폴더**는 그 두 단계 위다
+(Claude Code 에서는 `${CLAUDE_PLUGIN_ROOT}`, Codex·ChatGPT 에서는 이 SKILL.md 경로에서 `../../`).
+Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
 
 ## 0. 우선순위
 
@@ -33,10 +35,10 @@ description: 나노바나나(이미지)·시댄스(영상)로 만들 것을 맡�
 그래서 모델·값 범위·현재 설정은 항상 **이 PC 의 앱**에서 읽는다.
 
 1. **앱 MCP 도구가 연결돼 있으면** (개발 중) 그 도구가 우선이다.
-2. **명령을 돌릴 수 있으면** (Claude Code 등) 작업을 시작할 때 한 번 읽는다:
+2. **이 PC 에서 명령을 돌릴 수 있으면** (Claude Code·Codex 등) 작업을 시작할 때 한 번 읽는다:
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/read-local-apps.mjs" seedance     # 영상
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/read-local-apps.mjs" nanobanana   # 이미지
+   node "<플러그인 폴더>/scripts/read-local-apps.mjs" seedance     # 영상
+   node "<플러그인 폴더>/scripts/read-local-apps.mjs" nanobanana   # 이미지
    ```
    나온 버전·모델 사양·지금 설정·팀/프로젝트 선택 상태를 기준으로 묻고 쓴다. 대화 중에 앱을 업데이트했거나
    설정을 바꿨다고 하면 다시 읽는다.
@@ -46,7 +48,7 @@ description: 나노바나나(이미지)·시댄스(영상)로 만들 것을 맡�
    - 시댄스 규칙은 압축된 화면 코드 원문이다. `dur:[4,30]` 은 길이 4~30초, `imgMax` 는 이미지 레퍼런스 상한,
      `res` 가 없는 모델은 아래 `_i` 같은 함수의 기본값을 따른다 — 함수까지 읽고 판단한다.
    - **`node` 가 없다고 나오면** (팀원 PC 대부분) `references/read-apps-without-node.md` 대로 기본 도구로 직접 읽는다.
-3. **둘 다 안 되면** (Cowork·웹 등) `references/app-rules.md` 스냅샷을 쓰고, 낡았을 수 있다고 말한다. 사용자가 말한
+3. **둘 다 안 되면** (Cowork·claude.ai·ChatGPT 웹처럼 이 PC 밖에서 도는 곳) `references/app-rules.md` 스냅샷을 쓰고, 낡았을 수 있다고 말한다. 사용자가 말한
    모델이나 값이 거기 없으면 지어내지 말고 앱 화면에서 확인해 달라고 한다.
 
 - 앱에 직접 요청을 보낼 일이 생겨도 나노바나나의 `/api/status`·`/api/events` 는 부르지 않는다 — 읽는 순간 앱의

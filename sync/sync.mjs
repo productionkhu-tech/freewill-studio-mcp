@@ -289,7 +289,16 @@ function writeVersions() {
 }
 
 function bumpVersion() {
-  // 지금은 version 을 비워 둬서 커밋마다 새 버전으로 잡힌다(커밋 SHA 기준) — 그럼 할 일이 없다.
+  // Codex·ChatGPT 용 매니페스트는 version 이 있어야 해서 공식 스킬이 바뀔 때마다 올린다.
+  const codexJson = path.join(PLUGIN_DIR, ".codex-plugin", "plugin.json");
+  if (fs.existsSync(codexJson)) {
+    const cx = readJson(codexJson);
+    const [x, y, z] = String(cx.version || "0.1.0").split(".").map((n) => parseInt(n, 10) || 0);
+    cx.version = `${x}.${y}.${z + 1}`;
+    writeJson(codexJson, cx);
+    log(`  Codex 플러그인 버전 → ${cx.version}`);
+  }
+  // Claude 쪽은 version 을 비워 둬서 커밋마다 새 버전으로 잡힌다(커밋 SHA 기준) — 그럼 할 일이 없다.
   // 누가 version 을 박아 넣으면 그때부터는 올려 줘야 설치된 쪽이 새 버전을 받는다.
   const p = readJson(PLUGIN_JSON);
   if (!p.version) return;

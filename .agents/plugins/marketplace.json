@@ -1,0 +1,20 @@
+{
+  "name": "freewill",
+  "interface": {
+    "displayName": "Freewill (프리윌루전)"
+  },
+  "plugins": [
+    {
+      "name": "freewill-studio",
+      "source": {
+        "source": "local",
+        "path": "./plugins/freewill-studio"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

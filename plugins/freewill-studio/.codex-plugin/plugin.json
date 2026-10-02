@@ -1,0 +1,27 @@
+{
+  "name": "freewill-studio",
+  "version": "0.1.0",
+  "description": "나노바나나(이미지)·시댄스(영상) 프롬프트를 모델별 공식 프롬프팅 스킬(BytePlus·Google·OpenAI)로 쓰고, 이 PC 앱의 규칙대로 묻고, 확인 후 앱으로 넘긴다. 공식 스킬은 매일 자동으로 따라간다.",
+  "author": {
+    "name": "프리윌루전",
+    "url": "https://github.com/productionkhu-tech"
+  },
+  "homepage": "https://github.com/productionkhu-tech/freewill-studio-mcp",
+  "repository": "https://github.com/productionkhu-tech/freewill-studio-mcp",
+  "keywords": ["seedance", "nanobanana", "prompt", "image", "video", "시댄스", "나노바나나"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Freewill Studio",
+    "shortDescription": "나노바나나·시댄스 프롬프트를 모델별 공식 가이드로",
+    "longDescription": "이미지(나노바나나)·영상(시댄스) 작업을 맡기면 이 PC 에 깔린 앱의 규칙을 읽고, 필요한 것만 선택지로 묻고, BytePlus·Google·OpenAI 공식 프롬프팅 스킬대로 프롬프트를 쓴 뒤 확인을 받아 넘긴다. 공식 스킬은 매일 원본과 비교해 자동으로 따라간다.",
+    "developerName": "프리윌루전",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read"],
+    "websiteURL": "https://github.com/productionkhu-tech/freewill-studio-mcp",
+    "defaultPrompt": [
+      "시댄스 2.5로 비 오는 골목 10초 영상 프롬프트 써줘",
+      "GPT 선버스트로 제품 사진 배경만 바꾸는 프롬프트 써줘"
+    ],
+    "brandColor": "#111111"
+  }
+}
