@@ -6,6 +6,6 @@
 |---|---|---|---|---|
 | gemini-omni-flash-api | Google | #96bcfe08 | 2026-10-02 | gemini-omni-flash-preview, gemini-omni-1.1-flash |
 | higgsfield-generate | Higgsfield | 0.13.0 | 2026-10-02 | — |
-| imagegen | OpenAI | #e465465a | 2026-10-02 | gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst |
+| imagegen | OpenAI | #0db6b41f | 2026-10-02 | gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst |
 | sd2-pe | BytePlus | #301a03be | 2026-10-02 | dreamina-seedance-2-0-260128, dreamina-seedance-2-0-fast-260128, dreamina-seedance-2-0-mini-260615 |
 | sd25-pe | BytePlus | 0.1.1 | 2026-10-02 | dreamina-seedance-2-5-260628 |
