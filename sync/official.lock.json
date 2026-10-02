@@ -35,7 +35,7 @@
         "gemini-omni-1.1-flash"
       ],
       "version": null,
-      "hash": "7b6267b4479d755fa31cd8c6b11acbe030fbc8c7ff8bd6339e598d747f5ab03e",
+      "hash": "32b987a10d1649aeb4d30353bb35a7ce87ac1e5e48dc06d08c61af681eab5bde",
       "digest": null,
       "appliedAt": "2026-10-02"
     },
@@ -49,7 +49,7 @@
         "gpt-image-2.5-sunburst"
       ],
       "version": null,
-      "hash": "e5ad287e1419f8ed2adf74769fecbfc03b89e611121d59c228a2950c0567c7b6",
+      "hash": "9f14832d6538d83047ef41223ba9b0fb4a8c393d144ad4015ce4c10cc3d5414c",
       "digest": null,
       "appliedAt": "2026-10-02"
     },
@@ -64,7 +64,9 @@
       "appliedAt": "2026-10-02"
     }
   },
-  "held": {},
+  "held": {
+    "higgsfield-generate": "45867a1bfe18423cf8a204f4bdfc049cfc42591b276970efc1686b7c8a14b948"
+  },
   "known": {
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [
       "sd2-pe",
