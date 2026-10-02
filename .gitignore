@@ -2,3 +2,4 @@ sync/.staging/
 sync/attention.md
 node_modules/
 .DS_Store
+.wrangler/

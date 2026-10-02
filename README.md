@@ -13,6 +13,29 @@
 > 끝나면 결과를 열어 보고 알려준다 (`scripts/send-to-nanobanana.mjs`, 앱 수정 없이 앱 자체 주소로 Generate).
 > **시댄스**: 아직은 프롬프트·설정을 정리해 주면 앱에 옮겨 적는다 (보안 정리 후 연동 예정).
 
+## 가장 쉬운 방법: 커넥터 연결 (설치·업데이트 없음)
+
+Higgsfield 처럼 주소 하나만 연결한다. 커넥터가 이 저장소의 **최신 지침·공식 스킬·앱 스크립트를 그때그때** 내려주므로
+업데이트할 게 없다. 연결 주소:
+
+```
+https://freewill-mcp.production-khu.workers.dev/mcp
+```
+
+| 어디서 | 연결하는 곳 |
+|---|---|
+| **Claude** (웹·데스크톱·Code 탭 한 번에) | 설정 → 커넥터 → **커스텀 커넥터 추가** → 이름 `freewill`, 위 주소. 회사 플랜에서 관리자만 추가할 수 있게 돼 있으면 관리자가 한 번 추가하고 팀원은 "연결"만 누른다 |
+| Claude Code (터미널) | `claude mcp add --scope user --transport http freewill https://freewill-mcp.production-khu.workers.dev/mcp` |
+| **Codex** (앱·CLI) | `codex mcp add freewill --url https://freewill-mcp.production-khu.workers.dev/mcp` — Codex 앱 대화창에 "이거 실행해줘"라고 보내도 된다 |
+| ChatGPT | 설정 → 앱·커넥터에서 커스텀 커넥터(MCP)로 위 주소 추가 (플랜·워크스페이스 설정에 따라 관리자가 해야 할 수 있음) |
+
+커넥터는 생성을 하지 않는다 — 키도 저장소도 없는 읽기 전용이다. 띄워 둔 앱에 작업을 넣는 건 PC 에서 도는 에이전트(Code 탭·Codex)가
+커넥터에서 받은 스크립트로 한다. 그래서 claude.ai 웹·Cowork·ChatGPT 웹에서는 프롬프트·설정 정리까지만 된다.
+
+> 커넥터와 아래 플러그인은 **둘 중 하나만** 쓴다. 둘 다 있으면 같은 지침을 두 번 읽는다. 커넥터를 권장.
+
+## 플러그인으로 설치 (커넥터 대신)
+
 공개 저장소라 GitHub 계정은 필요 없다. 마켓플레이스 주소는 어디서든 이것 하나:
 
 ```
@@ -20,8 +43,9 @@ https://github.com/productionkhu-tech/freewill-studio-mcp.git
 ```
 
 > 주소는 꼭 `https://…git` 전체로. `productionkhu-tech/freewill-studio-mcp` 처럼 줄여 쓰면 SSH 로 받으려다 실패하는 경우가 있다.
+> 플러그인은 마켓플레이스마다 **자동 업데이트를 한 번 켜야** 계속 최신을 받는다 (주소로 추가한 목록은 기본이 꺼짐).
 
-## Claude 에서 불러오기
+### Claude 에서 불러오기
 
 1. Claude 앱 → **Customize(사용자 지정) → Plugins → Add → Add marketplace**
 2. 위 주소를 붙여넣는다
@@ -49,7 +73,7 @@ $j.extraKnownMarketplaces.freewill | Add-Member -NotePropertyName autoUpdate -No
 자동 업데이트는 `/plugin` → Marketplaces → `freewill` → Enable auto-update.
 </details>
 
-## GPT 에서 불러오기 (Codex 앱 · ChatGPT 데스크톱)
+### GPT 에서 불러오기 (Codex 앱 · ChatGPT 데스크톱)
 
 1. Codex 앱 대화창에 이렇게 보낸다 — Codex 가 직접 실행한다:
    ```
@@ -83,6 +107,7 @@ Node.js 는 없어도 된다 — 없으면 기본 도구로 앱을 읽는다.
 ## 구조
 
 ```
+connector/                             원격 MCP 커넥터 (Cloudflare 워커 freewill-mcp) — 저장소 최신본을 그대로 내려줌
 .claude-plugin/marketplace.json        Claude 용 마켓플레이스 "freewill"
 .agents/plugins/marketplace.json       GPT(Codex·ChatGPT) 용 마켓플레이스 "freewill"
 plugins/freewill-studio/

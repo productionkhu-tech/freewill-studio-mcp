@@ -1,0 +1,6 @@
+# freewill 원격 MCP 커넥터 — 연결 주소: https://freewill-mcp.production-khu.workers.dev/mcp
+# 배포: 이 폴더에서 `npx wrangler deploy`. 바인딩·비밀값 없음 (GitHub 공개 저장소의 최신본을 읽기만 한다).
+name = "freewill-mcp"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true

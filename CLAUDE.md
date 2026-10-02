@@ -33,6 +33,15 @@
   - 나노바나나 원본: `나노바나나 api/static/app.js` 의 `MODEL_SPECS`
   - 시댄스 원본: 렌더러의 모델 목록(`Rt`)과 2.5 사양(`kA`) — 설치본 `resources/dist/assets/index-*.js`
 
+## 원격 커넥터 (`connector/`)
+
+- Cloudflare 워커 `freewill-mcp` (`https://freewill-mcp.production-khu.workers.dev/mcp`). 상태 없는 MCP(Streamable HTTP, JSON 응답).
+- 도구 두 개: `freewill_guide(topic, part)` 지침·공식 스킬, `freewill_script(name)` 앱 스크립트 원문. **GitHub main 의 raw 파일을
+  5분 캐시로 그대로** 내려준다 — 그래서 저장소만 고치면 커넥터는 손댈 일이 없다.
+- 손대야 하는 경우: 파일을 새로 추가하거나 경로가 바뀌면 `worker.js` 의 `GUIDES`·`SCRIPTS` 표를 고치고 `connector/` 에서 `npx wrangler deploy`.
+- 긴 문서(시댄스 2.5 공식 스킬 9만 자)는 3.6만 자씩 `part` 로 나눈다 — 클라이언트 도구 응답 한도 때문.
+- 키·비밀값·바인딩 없음. 공개 저장소 내용만 내려주는 읽기 전용이다. 여기에 생성 기능이나 비밀값을 넣지 말 것.
+
 ## 나노바나나로 보내기 (`plugins/freewill-studio/scripts/send-to-nanobanana.mjs`)
 
 - 앱을 고치지 않고 앱 자체 주소로 Generate 를 누른다: 화면의 `<meta name="nb-csrf">` 토큰 → 탭 확인(`/api/projects`) →
