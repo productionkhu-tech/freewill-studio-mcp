@@ -127,3 +127,17 @@ $m = Get-SD "/api/agent/manual"      # 앱이 낸 사용 설명서 — $m.text �
    `failed` 면 `$j.error` 를 그대로 사용자에게 보여주고 나머지 작업은 보내지 않는다. `sent` 면 `$j.messages` 가 이번에 생긴 카드다.
 4. 지켜보기는 같은 주소를 5초쯤 간격으로 다시 읽어 `status` 가 `done` 이 될 때까지. 카드마다 `status`·`videoUrl`·`error` 가 있다.
 5. 진행 확인에 `/api/byteplus/tasks/<id>` 는 부르지 않는다 — 그 조회는 크레딧 보고·영상 보관을 하는 앱 화면 몫이다.
+
+### 앱 기능 명령 (앱 26.10.305~)
+
+명령 목록과 인자는 `$m.text` 의 "명령" 절. 한 번 보내면 결과가 올 때까지(최대 60초) 기다렸다가 답한다:
+
+```powershell
+$r = Send-SD "/api/agent/commands" @{ manual = $m.version; command = "elements.add"; wait = 60
+  args = @{ collection = "K"; items = @(@{ name = "박사"; category = "character"; description = "주인공"
+                                          images = @("C:\경로\박사_정면.png", "C:\경로\박사_측면.png") }) } }
+while ($r.status -in "pending", "taken") { Start-Sleep -Seconds 2; $r = Get-SD "/api/agent/commands/$($r.id)" }
+if ($r.status -eq "failed") { $r.error } else { $r.result | ConvertTo-Json -Depth 8 }
+```
+
+`stale` 이면 앱이 업데이트된 것 — `$m` 을 다시 읽는다. 과금되는 명령(`card.final` · `card.regenerate`)은 확인 카드를 받은 뒤에만.

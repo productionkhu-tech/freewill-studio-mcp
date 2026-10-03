@@ -17,6 +17,10 @@
 //   node send-to-seedance.mjs jobs.json             보내기 — 앱이 받아서 보낼 때까지 하나씩
 //   node send-to-seedance.mjs jobs.json --watch     보내고 영상이 다 끝날 때까지 지켜봄
 //   node send-to-seedance.mjs --status <id> [<id>]  보낸 요청의 지금 상태
+//   node send-to-seedance.mjs --do <명령> [JSON 인자 | @인자파일.json]
+//                                                   앱 기능 명령(26.10.305~) — 프로젝트 · 어셋 라이브러리 · 카드 ·
+//                                                   과금 목록. 명령 목록은 설명서에. 결과는 JSON 으로 출력한다.
+//                                                   설명서 버전은 --manual 로 읽을 때 기억해 둔 것을 쓴다.
 //
 // jobs.json:
 //   {
@@ -36,6 +40,7 @@
 // 레퍼런스 순서가 프롬프트의 [Image N]·[Video N]·[Audio N] 번호다(종류별로 센다). 첫·끝 프레임은 role 로 정한다.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const SD = process.env.FREEWILL_SD_URL || "http://127.0.0.1:3000";
@@ -45,7 +50,16 @@ const DRY = flag("--dry-run");
 const WATCH = flag("--watch");
 const STATUS = flag("--status");
 const MANUAL = flag("--manual");
+const DO = flag("--do");
 const positional = args.filter((a) => !a.startsWith("--"));
+// --manual 로 읽은 설명서 버전을 기억해 두는 곳(--do 가 쓴다). 앱 주소마다 따로 — 시험 서버와 섞이지 않게.
+const STATE_FILE = path.join(os.tmpdir(), `freewill-seedance-manual-${SD.replace(/[^a-z0-9]+/gi, "_")}.json`);
+const rememberManual = (version) => { try { fs.writeFileSync(STATE_FILE, JSON.stringify({ version, at: Date.now() })); } catch {} };
+const rememberedManual = () => { try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")).version || null; } catch { return null; } };
+const readJsonArg = (raw) => {
+  const txt = raw.startsWith("@") ? fs.readFileSync(raw.slice(1), "utf8") : raw;
+  return JSON.parse(txt.replace(new RegExp("^" + String.fromCharCode(0xfeff)), ""));
+};
 
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -59,7 +73,7 @@ async function req(method, p, body, ms = 10000) {
   try { return { http: r.status, ...JSON.parse(text) }; } catch { return { http: r.status, raw: text.slice(0, 200) }; }
 }
 const get = (p) => req("GET", p);
-const post = (p, b) => req("POST", p, b);
+const post = (p, b, ms) => req("POST", p, b, ms);
 
 // 멈출 때는 던져서 main 끝에서 정리한다. process.exit() 를 바로 부르면 윈도의 Node 가 fetch 연결을 닫는 중에
 // 죽는다(libuv assertion, exit 127) — 에이전트에게는 엉뚱한 오류로 보인다.
@@ -86,11 +100,31 @@ async function readManual() {
 // jobs.json 의 manual 을 새 버전으로 바꿔 다시 보낸다.
 async function staleStop(notice) {
   const m = await readManual();
+  rememberManual(m.version);   // 새 설명서를 지금 보여 줬으니 --do 는 이 버전으로
   console.error(`멈춤: ${notice}`);
   log("", "──── 새 설명서 ────", "", m.text);
   log(`새 설명서 버전: ${m.version}`);
   log("이 설명서로 설정·확인 카드를 다시 정리해 사용자에게 보여 주고, jobs.json 의 \"manual\" 을 위 버전으로 바꿔 다시 보낼 것.");
   throw new Stop("", true);
+}
+
+// 앱 기능 명령 — 결과가 올 때까지 기다린다(서버가 60초 붙들고, 더 걸리면 이어서 묻는다).
+async function runCommand(name, cargs) {
+  const manual = rememberedManual();
+  if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual (그때 버전을 기억해 둔다)");
+  const s = await appStatus(manual);
+  if (!s.screenAlive) fail("시댄스 서버는 켜져 있지만 앱 화면이 응답하지 않는다 — 앱 창이 열려 있는지 확인해 달라고 할 것");
+  if (s.manualStale) await staleStop(s.notice || "앱이 업데이트됐다");
+  let r = await post("/api/agent/commands", { manual, command: name, args: cargs, wait: 60 }, 75000);
+  if (r.http === 409 && r.stale) await staleStop(r.error);
+  if (r.http !== 200 || !r.id) fail(r.error || r.raw || `HTTP ${r.http}`);
+  while (r.status === "pending" || r.status === "taken") {
+    await sleep(2000);
+    r = await get(`/api/agent/commands/${encodeURIComponent(r.id)}`);
+    if (r.http !== 200) fail(r.error || "명령이 사라짐(앱을 다시 켰나?)");
+  }
+  if (r.status === "failed") fail(`${name} 실패 — ${r.error || "이유 없음"}`);
+  return r.result;
 }
 
 const cardLine = (c) => `${c.status}${c.taskId ? ` · ${c.taskId}` : ""}${c.error ? ` · ${c.error}` : ""}${c.videoUrl ? `\n      ${c.videoUrl}` : ""}`;
@@ -129,8 +163,18 @@ async function main() {
   if (MANUAL) {
     await appStatus();
     const m = await readManual();
+    rememberManual(m.version);
     log(m.text);
-    log(`설명서 버전: ${m.version} — jobs.json 의 "manual" 에 이 값을 그대로 적는다.`);
+    log(`설명서 버전: ${m.version} — jobs.json 의 "manual" 에 이 값을 그대로 적는다(--do 는 알아서 쓴다).`);
+    return;
+  }
+  if (DO) {
+    const [name, raw] = positional;
+    if (!name) fail("--do 뒤에 명령 이름을 주세요 (설명서의 '명령' 목록)");
+    let cargs = {};
+    if (raw) { try { cargs = readJsonArg(raw); } catch (e) { fail(`인자 JSON 을 못 읽음 — ${e.message}`); } }
+    const result = await runCommand(name, cargs);
+    log(JSON.stringify(result, null, 2));
     return;
   }
   if (STATUS) {
