@@ -28,7 +28,8 @@
 - 빠른 룩 확인·스토리보드 → `gemini-3.1-flash-lite-image` 1K
 - 일반 고품질·디자인·글자 → `gpt-image-2.5-flare` (빠름) / `gpt-image-2.5-sunburst` (편집 정밀)
 - 레퍼런스 얼굴 살린 인물 → `seedream-5-0-pro-260628` 2K
-- 카툰·일러스트, 질감 강한 사진 → `gemini-3.1-flash-image` (Higgsfield 의 Nano Banana 2)
+- 카툰·일러스트, 질감 강한 사진 → `gemini-nano-banana-2.1` (Higgsfield 의 Nano Banana 2 자리 — 2.1 이 그 후속.
+  앱이 2.1 이전 버전이거나 512px 가 필요하면 `gemini-3.1-flash-image`)
 
 ## 영상 (시댄스)
 

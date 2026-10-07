@@ -4,16 +4,20 @@
 > 그걸 못 돌리는 환경(Cowork·웹)에서만 이 표를 쓴다. 앱이 업데이트되면 낡을 수 있다 — 사용자가 말한 모델이나
 > 값이 여기 없으면 지어내지 말고 앱 화면을 확인해 달라고 할 것.
 >
-> 기준: 나노바나나 소스 `v2026-09-2801` (`static/app.js` 의 `MODEL_SPECS`) · 시댄스 소스 `26.10.304`
-> (`src/store.ts` 의 `MODELS`, 첨부 규칙은 `ChatArea.tsx` 의 `attachFiles`). 2026-10-03 옮겨 적음.
+> 기준: 나노바나나 소스 `v2026-10-0701` (`static/app.js` 의 `MODEL_SPECS`, 2026-10-07 옮겨 적음) · 시댄스 소스 `26.10.304`
+> (`src/store.ts` 의 `MODELS`, 첨부 규칙은 `ChatArea.tsx` 의 `attachFiles`, 2026-10-03 옮겨 적음).
 
 ## 나노바나나 (이미지)
 
 공통: 한 번에 **1~10장**. 비율에 `auto` 가 있다 (레퍼런스나 모델이 정함).
 
+부르는 이름 (구글 이름 → 앱 모델 ID): Nano Banana Pro = `gemini-3-pro-image` · Nano Banana 2.1 = `gemini-nano-banana-2.1` ·
+Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-flash-lite-image` · Nano Banana = `gemini-2.5-flash-image`.
+
 | 모델 ID | 앱 설명 | 해상도 (기본) | 품질 (기본) | 레퍼런스 |
 |---|---|---|---|---|
 | `gemini-3-pro-image` | 앱 첫 선택 모델 | 1K / 2K / 4K (2K) | 없음 | 최대 14장 |
+| `gemini-nano-banana-2.1` | Nano Banana 2 의 후속 — 구글이 새 작업에 권장. 생각 단계 high 고정 | 1K / 2K / 4K (2K) — 512px 없음 | 없음 | 최대 14장 |
 | `gemini-3.1-flash-image` | | 512px / 1K / 2K / 4K (2K) | 없음 | 최대 14장 |
 | `gemini-3.1-flash-lite-image` | 초고속·저가 — 테스트·룩 확인용 | 1K 만 | 없음 | 최대 14장 |
 | `gemini-2.5-flash-image` | | 1K 만 | 없음 | 최대 3장 |
@@ -26,7 +30,7 @@
 비율:
 
 - Gemini 3 Pro · 2.5 Flash: auto, 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
-- Gemini 3.1 Flash · Lite: 위 + 1:4, 4:1, 1:8, 8:1
+- Nano Banana 2.1 · Gemini 3.1 Flash · Lite: 위 + 1:4, 4:1, 1:8, 8:1
 - Seedream: auto, 1:1, 4:3, 3:4, 16:9, 9:16, 3:2, 2:3, 21:9, custom
 - GPT 2 · 2.5: auto, 1:1, 3:2, 2:3, 4:3, 3:4, 4:5, 5:4, 16:9, 9:16, 21:9, 9:21, 3:1, 1:3, custom
 
@@ -36,6 +40,7 @@
   gpt-image-2 는 품질이 high 까지 (max 를 보내면 오류). 4K·max 는 장당 1~2분.
 - **Seedream**: 레퍼런스는 프롬프트에서 `image 1`, `image 2` 처럼 부른다.
 - **Gemini**: 분당 10회 제한 — 앱이 알아서 8회 정도로 늦춘다. 많이 뽑으면 오래 걸린다고 미리 말해 줄 것.
+  레퍼런스 14장 안에서 2.1 · 3.1 Flash 는 인물 일관성 4명 · 물체 10개까지, 3 Pro 는 인물 5명 · 물체 6개 · 스타일 3장까지(구글 문서).
 - **custom 픽셀**: GPT 는 16의 배수 · 긴 변 3840 이하 · 비율 3:1 이내 · 655,360~8,294,400 픽셀.
   Seedream 은 16의 배수 · 비율 16 이내 · 5.0 Pro 921,600~4,194,304 / 4.5 3,686,400~16,777,216 픽셀.
 
