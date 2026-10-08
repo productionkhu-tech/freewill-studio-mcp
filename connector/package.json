@@ -1,0 +1,9 @@
+{
+  "name": "freewill-mcp-connector",
+  "private": true,
+  "type": "module",
+  "description": "프리윌 스튜디오 MCP 원격 커넥터 (Cloudflare Worker) — 구글 로그인·사용 기록·관리자 화면",
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.0.0"
+  }
+}

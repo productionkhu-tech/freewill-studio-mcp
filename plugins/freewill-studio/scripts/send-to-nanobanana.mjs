@@ -12,10 +12,14 @@
 // 요청' 신호를 지우고, events 는 꺼내 가는 큐라 앱 화면의 팝업을 가로챈다. 진행 상황은
 // /api/projects 의 탭 요약으로 본다.
 //
-// 한도 (MCP 로 보내는 것, 이 PC 기준 — 대량 생성을 생각 없이 돌리는 걸 막는다. 앱에서 직접 만드는 건 막지 않는다):
+// 로그인과 사용 기록: 프리윌 스튜디오 MCP 커넥터(회사 구글 계정 로그인)가 이 스크립트를 내려줄 때 받는 사람의 표를
+// FREEWILL_TICKET 에 넣는다(12시간). 작업마다 앱에 넣기 직전에 커넥터에 "누가·어느 PC·무슨 모델·몇 장" 을 남기고
+// 하루 한도를 묻는다 — 표가 없거나 만료됐거나 커넥터에 닿지 않으면 보내지 않는다. 프롬프트·그림은 보내지 않는다.
+//
+// 한도 (MCP 로 보내는 것 — 대량 생성을 생각 없이 돌리는 걸 막는다. 앱에서 직접 만드는 건 막지 않는다):
 //   - 앱 전체에서 동시에 진행 중인 이미지 10장까지(사람이 Generate 한 번에 넣는 최대와 같다). 넘으면 앞의 것이
 //     끝날 때까지 기다렸다가 다음 작업을 넣는다. 기다리는 동안 탭 입력칸은 사람 것으로 돌려 둔다.
-//   - 하루 1000장. 넘으면 아무것도 보내지 않고 멈춘다.
+//   - 한 사람 하루 1000장(커넥터가 센다). 넘으면 아무것도 보내지 않고 멈춘다.
 //
 //   node send-to-nanobanana.mjs jobs.json            보내기
 //   node send-to-nanobanana.mjs jobs.json --watch    보내고 끝날 때까지 지켜본 뒤 새 파일 목록
@@ -47,18 +51,40 @@ const DRY = flag("--dry-run"); // 앱 연결·탭·팀/프로젝트만 확인하
 const TAB = opt("--tab");
 const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent"];
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
-const DAILY_MAX = 1000;     // 이 PC 에서 하루에 보내는 이미지
+
+// 커넥터 — 사용 기록과 하루 한도. 표는 커넥터가 내려줄 때 채운다(이 줄의 모양을 바꾸지 말 것).
+const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
+const FREEWILL_TICKET = "";
 
 let token = "";
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 하루 양은 이 PC(이 Windows 사용자)에서 이 스크립트로 보낸 것만 센다. 날짜가 바뀌면 0 부터. 시댄스 스크립트와 같은 파일.
-const DAILY_FILE = path.join(os.tmpdir(), "freewill-studio-daily.json");
-const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const dailyRead = () => { try { const s = JSON.parse(fs.readFileSync(DAILY_FILE, "utf8")); return s.date === today() ? s : { date: today() }; } catch { return { date: today() }; } };
-const dailyUsed = () => Number(dailyRead().nanobanana) || 0;
-const dailyAdd = (n) => { const s = dailyRead(); s.nanobanana = (Number(s.nanobanana) || 0) + n; try { fs.writeFileSync(DAILY_FILE, JSON.stringify(s)); } catch {} };
+// 표 안의 이름·만료만 읽는다(서명은 커넥터가 확인한다). 없거나 만료면 null.
+function ticketOwner() {
+  if (!FREEWILL_TICKET) return null;
+  try {
+    const b = FREEWILL_TICKET.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    const t = JSON.parse(Buffer.from(b, "base64").toString("utf8"));
+    return t.x > Date.now() ? t : null;
+  } catch { return null; }
+}
+const NO_TICKET = "이 스크립트에는 유효한 로그인 표가 없다(커넥터를 거치지 않았거나 12시간이 지남) — " +
+  "freewill_script(\"send-to-nanobanana\") 로 다시 받아서 실행할 것";
+
+async function usageApi(method, p, body) {
+  let r;
+  try {
+    r = await fetch(`${FREEWILL}${p}`, {
+      method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${FREEWILL_TICKET}` },
+      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    throw new Error("사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인할 것");
+  }
+  const j = await r.json().catch(() => ({}));
+  return { http: r.status, ...j };
+}
 
 async function req(method, path, body, ms = 15000) {
   const headers = { "Content-Type": "application/json" };
@@ -159,12 +185,22 @@ async function main() {
   const big = jobs.find((j) => countOf(j) > MAX_IN_FLIGHT);
   if (big) fail(`한 작업은 ${MAX_IN_FLIGHT}장까지 — "${big.name || ""}" 은 ${countOf(big)}장. 작업을 나눠서 적을 것`);
   const total = jobs.reduce((a, j) => a + countOf(j), 0);
-  const used = dailyUsed();
-  if (used + total > DAILY_MAX) {
-    fail(`오늘 이 PC 에서 보낸 이미지 ${used}장 — 하루 ${DAILY_MAX}장 한도라 이번 ${total}장은 보내지 않는다. ` +
-      "장수를 줄이거나 내일 보내고, 급하면 앱에서 직접 만들게 할 것");
+  const owner = ticketOwner();
+  let quota = "로그인 표 없음 — 보낼 때는 커넥터에서 다시 받은 스크립트로";
+  if (owner) {
+    const me = await usageApi("GET", "/usage/me");
+    if (me.http === 401) fail(me.error || NO_TICKET);
+    const q = me.apps?.nanobanana;
+    if (!q) fail(`사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
+    if (q.used + total > q.limit) {
+      fail(`오늘 ${owner.e} 계정이 MCP 로 보낸 이미지 ${q.used}장 — 하루 ${q.limit}장 한도라 이번 ${total}장은 보내지 않는다. ` +
+        "장수를 줄이거나 내일 보내고, 급하면 앱에서 직접 만들게 할 것");
+    }
+    quota = `${owner.e} · 오늘 남은 한도 ${q.limit - q.used}장`;
+  } else if (!DRY) {
+    fail(NO_TICKET);
   }
-  log(`  이번 ${total}장 · 오늘 남은 한도 ${DAILY_MAX - used}장 · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
+  log(`  이번 ${total}장 · ${quota} · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
     `(동시 ${MAX_IN_FLIGHT}장까지 — 넘으면 앞의 것이 끝나야 다음 작업을 넣는다)`);
   if (DRY) {
     log(`  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`);
@@ -207,35 +243,49 @@ async function main() {
       await waitForTab(tab);
       if (!dirty) snap = { settings: await get("/api/settings"), refs: (await get("/api/refs"))?.refs || [] };
 
-      const refs = j.refs || [];
-      if (refs.length || refsTouched || snap.refs.some((r) => !r.empty)) {
-        dirty = true;
-        refsTouched = true;
-        const err = await setRefs(refs);
-        if (err) throw new Error(err);
-      }
-      const s = { pid: tab.pid, fixed_prompt: "", prompt_sections: [String(j.prompt)] };
-      for (const k of SETTING_KEYS) {
-        const v = j[k] ?? defaults[k];
-        if (v !== undefined && v !== null) s[k] = v;
-      }
-      dirty = true;
-      const sr = await post("/api/settings", s);
-      if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
+      // 사용 기록 + 하루 한도 — 앱에 넣기 전에. 앱이 거절하면 아래에서 무른다.
+      const model = j.model ?? defaults.model ?? snap.settings.model;
+      const resolution = j.resolution ?? defaults.resolution ?? snap.settings.resolution;
+      const rsv = await usageApi("POST", "/usage", {
+        app: "nanobanana", n: need, model, resolution, job: j.name || `job_${i + 1}`,
+        billing: `${billing.team_id} / ${billing.project_id}`, project: tab.name, pc: os.hostname(), user: os.userInfo().username,
+      });
+      if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
+      const undo = () => usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});   // 앱이 안 받았으면 기록을 무른다
 
       let gr;
-      for (let attempt = 0; attempt < 12; attempt++) {
-        gr = await post("/api/generate", {});
-        const e = String(gr.error || "");
-        if (gr.ok || !/Queue full|Stopping previous batch/i.test(e)) break;
-        await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
+      try {
+        const refs = j.refs || [];
+        if (refs.length || refsTouched || snap.refs.some((r) => !r.empty)) {
+          dirty = true;
+          refsTouched = true;
+          const err = await setRefs(refs);
+          if (err) throw new Error(err);
+        }
+        const s = { pid: tab.pid, fixed_prompt: "", prompt_sections: [String(j.prompt)] };
+        for (const k of SETTING_KEYS) {
+          const v = j[k] ?? defaults[k];
+          if (v !== undefined && v !== null) s[k] = v;
+        }
+        dirty = true;
+        const sr = await post("/api/settings", s);
+        if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
+
+        for (let attempt = 0; attempt < 12; attempt++) {
+          gr = await post("/api/generate", {});
+          const e = String(gr.error || "");
+          if (gr.ok || !/Queue full|Stopping previous batch/i.test(e)) break;
+          await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
+        }
+      } catch (e) {
+        await undo();
+        throw e;
       }
+      if (!gr.ok) await undo();
       if (gr.needs_billing) throw new Error("앱이 팀·프로젝트를 다시 골라 달라고 함");
       if (!gr.ok) throw new Error(`Generate 실패 (${j.name || i + 1}): ${gr.error || gr.raw || "알 수 없음"}`);
-      dailyAdd(need);
       sent++;
-      log(`  보냄 ${sent}/${jobs.length} ${j.name || ""} · ${s.model || snap.settings.model} ${s.resolution || snap.settings.resolution} ×${need}` +
-        ` · 오늘 ${dailyUsed()}/${DAILY_MAX}장`);
+      log(`  보냄 ${sent}/${jobs.length} ${j.name || ""} · ${model} ${resolution} ×${need} · 오늘 ${rsv.used}/${rsv.limit}장`);
       await sleep(250);
     }
   } catch (e) {

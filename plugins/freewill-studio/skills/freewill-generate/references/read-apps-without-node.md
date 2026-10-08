@@ -46,6 +46,32 @@ Mac: `defaults read "/Applications/Freewill Seedance 2.0.app/Contents/Info" CFBu
 
 못 찾으면 `references/app-rules.md` 스냅샷으로 넘어가고, "앱 구조가 바뀌어 직접 못 읽었다"고 사용자에게 말한다.
 
+## Node 없이 보낼 때의 사용 기록 (두 앱 공통)
+
+스크립트와 똑같이, **앱에 넣기 직전마다 커넥터에 기록을 남기고 하루 한도를 묻는다**(프롬프트·그림은 보내지 않는다).
+로그인 표는 `freewill_script("send-to-nanobanana")`(시댄스면 `"send-to-seedance"`)를 받아 원문의 `const FREEWILL_TICKET = "…";`
+값을 쓴다 — 12시간 유효, 만료되면 다시 받는다.
+
+```powershell
+$fw = "https://freewill-mcp.production-khu.workers.dev"
+$ticket = "<freewill_script 로 받은 원문의 FREEWILL_TICKET 값>"
+function Use-FW($path, $obj) {
+  $bytes = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Compress))
+  try {
+    $r = Invoke-WebRequest -Method Post -Uri "$fw$path" -Headers @{ Authorization = "Bearer $ticket" } -ContentType "application/json; charset=utf-8" -Body $bytes -UseBasicParsing
+    [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) | ConvertFrom-Json
+  } catch {
+    if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message | ConvertFrom-Json } else { throw }
+  }
+}
+$u = Use-FW "/usage" @{ app = "nanobanana"; n = 2; model = "gemini-nano-banana-2.1"; resolution = "2K"; job = "cut_01"
+                        billing = "팀 / 프로젝트"; project = "탭 이름"; pc = $env:COMPUTERNAME; user = $env:USERNAME }
+if (-not $u.ok) { $u.error }   # 하루 한도 초과·표 만료 — 이 작업은 보내지 않는다
+```
+
+- `ok` 가 아니면 보내지 않는다. 앱이 받지 않았으면 `Use-FW "/usage/settle" @{ id = $u.id; n = 0 }` 로 무른다.
+- 시댄스는 `app = "seedance"`, `n` 은 그 요청의 `output_count`(모르면 3). 본편·재생성 명령도 같은 식으로 남긴다.
+
 ## Node 없이 보내기 — 나노바나나
 
 `scripts/send-to-nanobanana.mjs` 와 같은 순서를 PowerShell 로 한다. **한글이 깨지지 않게 보낼 때도 읽을 때도 UTF-8 로 직접 다룬다** —
@@ -72,7 +98,7 @@ $before = Get-NB "/api/settings"
 1. `Get-NB "/api/billing/state"` — `confirmed` 가 아니면 멈추고 앱에서 팀·프로젝트를 고르게 한다.
 2. 작업마다 (같은 탭이 계속 떠 있는지 `/api/projects` 의 `active` 로 확인하면서). **사내 규칙 2 의 한도는 여기서도 지킨다** —
    넣기 전에 `(Get-NB "/api/projects").projects` 의 `outstanding` 을 모두 더해, 이번 작업 장수를 더한 값이 10 을 넘으면
-   줄어들 때까지 기다린다(기다리는 동안은 3번처럼 탭 입력값을 되돌려 둔다). 하루 1,000장을 넘게 보내지 않는다.
+   줄어들 때까지 기다린다(기다리는 동안은 3번처럼 탭 입력값을 되돌려 둔다). 작업마다 위 "사용 기록" 을 먼저 남긴다.
    ```powershell
    Send-NB "/api/refs/clear" @{ preserve_pinned = $false }
    Send-NB "/api/refs/add-path" @{ filepath = "C:\경로\ref1.png" }     # 레퍼런스마다
@@ -129,7 +155,7 @@ $m = Get-SD "/api/agent/manual"      # 앱이 낸 사용 설명서 — $m.text �
    `failed` 면 `$j.error` 를 그대로 사용자에게 보여주고 나머지 작업은 보내지 않는다. `sent` 면 `$j.messages` 가 이번에 생긴 카드다.
    **사내 규칙 2 의 한도는 여기서도 지킨다** — 작업을 넣기 전에 열린 프로젝트의 카드 중 대기·생성 중(`queued`·`running`)인
    것과 이번 `output_count` 를 더해 3 을 넘으면 줄어들 때까지 기다린다(카드 목록은 26.10.305~ 의 `cards.list` 명령, 그 전
-   버전이면 이번에 넣은 요청의 `$j.messages` 로 센다). 하루 200개를 넘게 보내지 않는다.
+   버전이면 이번에 넣은 요청의 `$j.messages` 로 센다). 요청마다 위 "사용 기록" 을 먼저 남긴다.
 4. 지켜보기는 같은 주소를 5초쯤 간격으로 다시 읽어 `status` 가 `done` 이 될 때까지. 카드마다 `status`·`videoUrl`·`error` 가 있다.
 5. 진행 확인에 `/api/byteplus/tasks/<id>` 는 부르지 않는다 — 그 조회는 크레딧 보고·영상 보관을 하는 앱 화면 몫이다.
 

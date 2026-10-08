@@ -1,6 +1,27 @@
-# freewill 원격 MCP 커넥터 — 연결 주소: https://freewill-mcp.production-khu.workers.dev/mcp
-# 배포: 이 폴더에서 `npx wrangler deploy`. 바인딩·비밀값 없음 (GitHub 공개 저장소의 최신본을 읽기만 한다).
+# 프리윌 스튜디오 MCP 원격 커넥터 — 연결 주소: https://freewill-mcp.production-khu.workers.dev/mcp
+# 배포: 이 폴더에서 `npm install` 후 `npx wrangler@4 deploy`.
+# 회사 구글 계정 로그인(OAuth) · 사용 기록(D1) · 관리자 화면(/admin).
+# 비밀값(저장소에 안 넣음): `npx wrangler@4 secret put GOOGLE_CLIENT_SECRET` · `npx wrangler@4 secret put ADMIN_EMAILS`
 name = "freewill-mcp"
 main = "worker.js"
 compatibility_date = "2026-09-01"
+# 클라이언트 메타데이터 문서(CIMD)를 가져올 때 사내 주소로 새지 않게(SSRF 방지) — OAuth 라이브러리가 요구한다.
+compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = true
+
+[vars]
+PUBLIC_ORIGIN = "https://freewill-mcp.production-khu.workers.dev"
+ALLOWED_DOMAIN = "studiofreewill.com"
+# 구글 클라우드 콘솔에서 만든 OAuth 클라이언트 ID (공개돼도 되는 값)
+GOOGLE_CLIENT_ID = ""
+
+# 로그인 토큰 (OAuth 라이브러리)
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "42daf18477104ea99e2f2d6a5a67538c"
+
+# 사용 기록 — 스키마는 schema.sql
+[[d1_databases]]
+binding = "USAGE_DB"
+database_name = "freewill-usage"
+database_id = "d5c2ba78-df7a-4736-a46d-d5e0fdff399d"

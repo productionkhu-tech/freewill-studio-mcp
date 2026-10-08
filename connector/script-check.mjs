@@ -1,7 +1,8 @@
 // 앱 스크립트 통신 검사.
 //
 // 커넥터가 내려주는 스크립트(read-local-apps · send-to-*)는 테스터 PC 에서 그대로 node 로 실행된다.
-// 그래서 이 PC 의 앱(127.0.0.1)과 우리 GitHub 릴리스 페이지 말고는 어디와도 통신하지 못하게 한다.
+// 그래서 이 PC 의 앱(127.0.0.1), 우리 GitHub 릴리스 페이지, 이 커넥터(사용 기록·하루 한도) 말고는 어디와도
+// 통신하지 못하게 한다.
 // 워커는 내려주기 직전에, Actions(check-scripts.yml)는 푸시마다 같은 검사를 돌린다.
 //
 // 실수나 단순한 변조를 막는 장치다. 주소를 글자 단위로 쪼개 숨기는 식의 의도적인 변조까지 잡지는 못한다 —
@@ -11,6 +12,7 @@ const ALLOWED_URLS = [
   /^http:\/\/127\.0\.0\.1:\d+/,
   /^http:\/\/localhost:\d+/,
   /^https:\/\/github\.com\/productionkhu-tech\//,
+  /^https:\/\/freewill-mcp\.production-khu\.workers\.dev(?:\/|$)/,
 ];
 
 const ALLOWED_IMPORTS = new Set(["node:fs", "node:os", "node:path", "node:url", "node:util", "node:crypto"]);
