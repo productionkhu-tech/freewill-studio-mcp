@@ -1,0 +1,30 @@
+name: 앱 스크립트 통신 검사
+
+# 커넥터가 테스터 PC 로 내려주는 스크립트가 이 PC 의 앱(127.0.0.1)과 우리 GitHub 릴리스 말고는
+# 통신하지 않는지 푸시마다 본다. 걸리면 실패 메일이 가고, 커넥터도 같은 검사로 그 스크립트를 내려주지 않는다.
+
+on:
+  push:
+    paths:
+      - "plugins/freewill-studio/scripts/**"
+      - "connector/**"
+      - ".github/workflows/check-scripts.yml"
+  pull_request:
+    paths:
+      - "plugins/freewill-studio/scripts/**"
+      - "connector/**"
+      - ".github/workflows/check-scripts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node connector/check-scripts.mjs

@@ -8,6 +8,11 @@
 // 앱에 작업을 넣는 일은 PC 에서 도는 에이전트(Claude Code·Codex)가 여기서 받은 스크립트로 한다.
 //
 // MCP Streamable HTTP, 상태 없음: POST /mcp 로 JSON-RPC 를 받아 JSON 으로 답한다.
+//
+// 스크립트는 내려주기 직전에 통신 검사(script-check.mjs)를 거친다. 이 PC 의 앱과 우리 GitHub 릴리스 말고 다른 곳과
+// 통신하는 코드가 저장소에 들어오면, 테스터 PC 로 가기 전에 여기서 멈춘다.
+
+import { checkScript } from "./script-check.mjs";
 
 const RAW = "https://raw.githubusercontent.com/productionkhu-tech/freewill-studio-mcp/main";
 const PLUGIN = "plugins/freewill-studio";
@@ -136,6 +141,13 @@ async function callTool(name, args) {
     const path = SCRIPTS[key];
     if (!path) return toolError(`모르는 스크립트: ${key}. 쓸 수 있는 것: ${Object.keys(SCRIPTS).join(", ")}`);
     const code = await fromRepo(path);
+    const problems = checkScript(code);
+    if (problems.length) {
+      return toolError(
+        `${key} 스크립트가 통신 검사에 걸려 내려주지 않습니다. 실행하지 말고 관리자에게 이 내용을 알려 주세요.\n` +
+          problems.map((p) => `- ${p}`).join("\n"),
+      );
+    }
     return toolText(
       `아래 원문을 임시 폴더에 \`${key}.mjs\` 로 저장한 뒤 \`node <저장한 경로> ...\` 로 실행한다. 사용법은 원문 머리말.\n\n` +
         "```js\n" + code + "\n```",

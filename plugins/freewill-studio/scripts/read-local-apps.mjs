@@ -25,7 +25,7 @@ const SD = process.env.FREEWILL_SD_URL || "http://127.0.0.1:3000";
 
 async function nanobanana() {
   const out = ["## 나노바나나 (이미지)"];
-  const [ver, latest] = await Promise.all([getJson(`${NB}/api/version`, 1500), latestRelease("productionkhu-tech/freewill-nanobanana")]);
+  const [ver, latest] = await Promise.all([getJson(`${NB}/api/version`, 1500), latestRelease("freewill-nanobanana")]);
   if (!ver) {
     out.push("- **꺼져 있음** — 이 PC 앱의 규칙·설정을 읽으려면 나노바나나를 켜 달라고 할 것. 그 전까지는 `references/app-rules.md` 스냅샷.");
     if (latest) out.push(`- 최신 릴리즈: ${latest}`);
@@ -65,7 +65,7 @@ async function seedance() {
   const out = ["## 시댄스 (영상)"];
   const res = seedanceResources();
   const version = res ? asarVersion(path.join(res, "app.asar")) : null;
-  const [team, latest] = await Promise.all([getJson(`${SD}/api/team`, 1500), latestRelease("productionkhu-tech/freewill-seedance")]);
+  const [team, latest] = await Promise.all([getJson(`${SD}/api/team`, 1500), latestRelease("freewill-seedance")]);
 
   if (!res && !team) {
     out.push("- **설치돼 있지 않거나 찾지 못함** — 사용자에게 시댄스 설치 여부를 확인할 것.");
@@ -198,6 +198,9 @@ function asarVersion(file) {
 
 // ------------------------------------------------------------------ 공통
 
+// 이 스크립트가 인터넷에서 부르는 곳은 이 주소 아래 릴리스 페이지뿐이다 — 커넥터·Actions 의 통신 검사가 이걸 확인한다.
+const GITHUB_ORG = "https://github.com/productionkhu-tech/";
+
 async function latestRelease(repo) {
   // GitHub API 는 쓰지 않는다 — 로그인 없이 IP 당 시간 60회라, 사무실처럼 한 IP 를 여럿이 쓰면
   // 금방 막힌다. releases/latest 페이지가 최신 태그로 넘겨 주는 주소만 본다. 한 시간은 기억해 둔다.
@@ -208,7 +211,7 @@ async function latestRelease(repo) {
   if (hit && Date.now() - hit.at < 3600_000) return hit.tag;
   let tag = null;
   try {
-    const r = await fetch(`https://github.com/${repo}/releases/latest`, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(4000) });
+    const r = await fetch(`${GITHUB_ORG}${repo}/releases/latest`, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(4000) });
     tag = decodeURIComponent(r.headers.get("location")?.match(/\/releases\/tag\/([^/?#]+)/)?.[1] || "") || null;
   } catch {}
   if (tag) {
