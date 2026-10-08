@@ -22,3 +22,16 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS usage_day ON usage (day);
 CREATE INDEX IF NOT EXISTS usage_email_day_app ON usage (email, day, app);
+
+-- 사람별 하루 한도 (관리자 화면에서 정함). 없으면 기본(usage.js 의 LIMITS). until 은 그날까지(한국 날짜, 포함), 비면 계속.
+-- daily = 0 이면 그 사람은 MCP 로 보내지 못한다.
+CREATE TABLE IF NOT EXISTS limits (
+  email TEXT NOT NULL,
+  app TEXT NOT NULL,
+  daily INTEGER NOT NULL,
+  until TEXT,
+  note TEXT,
+  set_by TEXT,
+  set_at INTEGER,
+  PRIMARY KEY (email, app)
+);
