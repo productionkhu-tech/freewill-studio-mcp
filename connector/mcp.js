@@ -5,10 +5,12 @@
 // 스크립트를 내려줄 때는 (1) 통신 검사(script-check.mjs)를 거치고 (2) 받는 사람의 로그인 표를 넣는다 — 스크립트는
 // 보낼 때마다 그 표로 사용 기록을 남기고 하루 한도를 묻는다.
 //
-// MCP Streamable HTTP, 상태 없음: POST /mcp 로 JSON-RPC 를 받아 JSON 으로 답한다.
+// MCP Streamable HTTP, 상태 없음: POST /mcp 로 JSON-RPC 를 받아 JSON 으로 답한다. 예외 하나 — freewill_ask(선택 창)는
+// 사용자의 답을 기다려야 해서 SSE 로 답한다(ask.js).
 
 import { checkScript } from "./script-check.mjs";
 import { makeTicket, TICKET_HOURS } from "./auth.js";
+import { ASK_TOOL, askResponse, deliverAnswer, isAnswer } from "./ask.js";
 
 const RAW = "https://raw.githubusercontent.com/productionkhu-tech/freewill-studio-mcp/main";
 const PLUGIN = "plugins/freewill-studio";
@@ -43,6 +45,7 @@ const INSTRUCTIONS = [
   "이미지·영상을 만들거나 그 프롬프트를 쓰고 다듬는 일을 맡으면, 먼저 freewill_guide(topic=\"start\") 를 불러 그 절차를 그대로 따른다.",
   "지침 안의 파일 경로는 freewill_guide·freewill_script 로 받는다. 사용자가 개인 스킬을 지정하면 그걸 써도 되지만,",
   "팀·프로젝트는 사람이 앱에서 고르고, 보내기 전 확인 카드를 받고, 생성은 사용자가 띄워 둔 앱으로 보낸다는 규칙은 그대로다.",
+  "질문 도구(AskUserQuestion 등)가 없는 클라이언트(Codex)는 확인 카드·선택지 질문의 답을 freewill_ask 선택 창으로 받는다.",
 ].join(" ");
 
 const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub 최신본, ${REPO_URL}).
@@ -57,6 +60,7 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 >   **Codex 는 이 스크립트들을 네트워크 허용(샌드박스 밖)으로 실행 승인을 받아 돌린다** — 샌드박스 안에서는 앱(127.0.0.1)·커넥터에
 >   닿지 못해 "연결 못 함" 이 나온다(앱이 꺼진 게 아니다).
 >   PC 에서 명령을 돌릴 수 없는 곳(claude.ai 웹·Cowork·ChatGPT 웹)에서는 앱을 직접 다루지 못한다 — 프롬프트와 설정만 정리해 준다.
+> - 질문 도구(AskUserQuestion 등)가 없으면(Codex) 3단계 질문·5단계 확인 카드의 답을 \`freewill_ask\` 선택 창으로 받는다.
 
 `;
 
@@ -92,6 +96,7 @@ const TOOLS = [
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
+  ASK_TOOL,
 ];
 
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -211,9 +216,19 @@ export const mcpHandler = {
     let payload;
     try { payload = await request.json(); } catch { return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400); }
 
+    // 클라이언트가 보낸 JSON-RPC 응답 = freewill_ask 선택 창의 답 — 기다리는 도구 호출로 넘긴다(ask.js)
+    if (isAnswer(payload)) {
+      await deliverAnswer(payload, env, props);
+      return new Response(null, { status: 202 });
+    }
     if (Array.isArray(payload)) {
-      const out = (await Promise.all(payload.map((m) => handle(m, env, props)))).filter(Boolean);
+      await Promise.all(payload.filter(isAnswer).map((m) => deliverAnswer(m, env, props)));
+      const out = (await Promise.all(payload.filter((m) => !isAnswer(m)).map((m) => handle(m, env, props)))).filter(Boolean);
       return out.length ? json(out) : new Response(null, { status: 202 });
+    }
+    // freewill_ask 는 사용자의 답을 기다려야 해서 SSE 로 답한다
+    if (payload?.method === "tools/call" && payload?.params?.name === ASK_TOOL.name) {
+      return askResponse(request, { id: payload.id, args: payload.params.arguments, env, props, ctx });
     }
     const out = await handle(payload, env, props);
     return out ? json(out) : new Response(null, { status: 202 });

@@ -25,3 +25,12 @@ id = "42daf18477104ea99e2f2d6a5a67538c"
 binding = "USAGE_DB"
 database_name = "freewill-usage"
 database_id = "d5c2ba78-df7a-4736-a46d-d5e0fdff399d"
+
+# 선택 창(freewill_ask) — 도구 호출과 사용자가 고른 답이 만나는 자리 (ask.js, 질문 하나에 방 하나)
+[[durable_objects.bindings]]
+name = "ASK_ROOM"
+class_name = "AskRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AskRoom"]

@@ -6,7 +6,8 @@
   원본이 바뀌면 **매일 자동으로 따라간다.**
 - **이 PC 에 깔린 앱을 읽고** 그 버전의 규칙대로 묻는다 — 저장소가 더 새 버전이어도 이 PC 가 업데이트 전이면
   그 기능은 없으니까. 모델·모드에 따라 필요한 것만, 한 번에, 선택지로.
-- **확인을 받고 앱으로 넘긴다.** 팀·프로젝트는 사람이 앱에서 고른다.
+- **확인을 받고 앱으로 넘긴다** — 답은 버튼으로 한다(Claude 는 자체 선택지, Codex 는 커넥터가 띄우는 선택 창 `freewill_ask`).
+  팀·프로젝트는 사람이 앱에서 고른다.
 - **보내는 양에 한도가 있다** — 나노바나나는 동시 10장(그 PC 의 앱)·하루 1,000장(한 사람), 시댄스는 동시 3개·하루 200개.
   넘으면 스크립트가 앞의 것이 끝나길 기다리거나(동시) 보내지 않는다(하루). 사람이 앱에서 직접 만드는 건 그대로다.
 - **회사 구글 계정으로 로그인하고, MCP 로 보낸 건 누가·어느 PC·어떤 모델·몇 개인지 기록된다**(프롬프트·그림은 안 남김) — 관리자 화면 `/admin`.
@@ -129,6 +130,7 @@ Node.js 는 없어도 된다 — 없으면 기본 도구로 앱을 읽는다.
 
 ```
 connector/                             원격 MCP 커넥터 (Cloudflare 워커 freewill-mcp) — 저장소 최신본을 그대로 내려줌
+  ask.js                               선택 창(freewill_ask) — MCP elicitation, 답을 기다리는 자리는 Durable Object
 .claude-plugin/marketplace.json        Claude 용 마켓플레이스 "freewill"
 .agents/plugins/marketplace.json       GPT(Codex·ChatGPT) 용 마켓플레이스 "freewill"
 plugins/freewill-studio/

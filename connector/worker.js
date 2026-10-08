@@ -4,7 +4,7 @@
 // 최신본으로 내려준다(mcp.js). 생성은 하지 않는다 — 앱에 작업을 넣는 일은 PC 에서 도는 에이전트가 받은 스크립트로 한다.
 //
 // 2026-10-08 부터 회사 구글 계정(ALLOWED_DOMAIN)으로 로그인해야 쓴다(OAuth — @cloudflare/workers-oauth-provider).
-//   /mcp            로그인한 사람만 (MCP 본체, mcp.js)
+//   /mcp            로그인한 사람만 (MCP 본체, mcp.js — 선택 창 freewill_ask 는 ask.js, 답 기다리는 자리는 Durable Object AskRoom)
 //   /authorize · /callback   구글 로그인 (auth.js)
 //   /usage …        스크립트가 남기는 사용 기록·하루 한도 (usage.js, 스크립트의 로그인 표로 확인)
 //   /admin …        관리자 화면 (ADMIN_EMAILS 만, 구글 로그인)
@@ -16,6 +16,8 @@ import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp.js";
 import { adminLogin, adminUser, authorize, callback, originOf, page } from "./auth.js";
 import { admin, usage } from "./usage.js";
+
+export { AskRoom } from "./ask.js";
 
 const REPO_URL = "https://github.com/productionkhu-tech/freewill-studio-mcp";
 
