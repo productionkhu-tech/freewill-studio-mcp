@@ -99,8 +99,15 @@ function ticketOwner() {
     return t.x > Date.now() ? t : null;
   } catch { return null; }
 }
-const NO_TICKET = "이 스크립트에는 유효한 로그인 표가 없다(커넥터를 거치지 않았거나 12시간이 지남) — " +
-  "freewill_script(\"send-to-nanobanana\") 로 다시 받아서 실행할 것";
+// 표가 없으면(플러그인에 깔린 사본처럼 커넥터를 거치지 않음) 사람이 커넥터에 로그인해야 하고, 만료면 다시 받기만 하면 된다.
+const NO_TICKET = !FREEWILL_TICKET
+  ? "이 스크립트는 프리윌 스튜디오 MCP 커넥터에서 받은 것이 아니라(플러그인에 깔린 사본 등) 앱으로 보낼 수 없다. " +
+    "freewill_script 도구가 있으면 freewill_script(\"send-to-nanobanana\") 로 받아 그 원문을 실행할 것. " +
+    "도구가 없으면 사용자에게 커넥터 로그인을 안내할 것 — Codex: 터미널에서 codex mcp login freewill " +
+    "(연결이 없다고 나오면 먼저 codex mcp add freewill --url https://freewill-mcp.production-khu.workers.dev/mcp) 후 새 대화, " +
+    "Claude: 설정 → 커넥터 → freewill → 연결. 회사 구글 계정으로 로그인한다(7일 유지). " +
+    "나노바나나·시댄스 앱에는 로그인할 곳이 없으니 앱 안의 버튼·키를 지어내 안내하지 말 것"
+  : "받은 지 12시간이 지난 스크립트다 — freewill_script(\"send-to-nanobanana\") 로 다시 받아 실행할 것(사용자가 할 일은 없다)";
 
 async function usageApi(method, p, body) {
   let r;
