@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "freewill": {
+      "type": "http",
+      "url": "https://freewill-mcp.production-khu.workers.dev/mcp",
+      "oauth_resource": "https://freewill-mcp.production-khu.workers.dev/mcp"
+    }
+  }
+}

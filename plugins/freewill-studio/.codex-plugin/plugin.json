@@ -1,7 +1,7 @@
 {
   "name": "freewill-studio",
   "version": "0.1.12",
-  "description": "나노바나나(이미지)·시댄스(영상) 프롬프트를 모델별 공식 프롬프팅 스킬(BytePlus·Google·OpenAI)로 쓰고, 이 PC 앱의 규칙대로 묻고, 확인 후 앱으로 넘긴다. 공식 스킬은 매일 자동으로 따라간다.",
+  "description": "나노바나나(이미지)·시댄스(영상)를 Codex 대화로 — 프리윌 스튜디오 MCP 커넥터(회사 구글 로그인)가 같이 설치된다. 모델별 공식 가이드로 프롬프트를 쓰고, 이 PC 앱의 규칙대로 묻고, 확인 후 앱으로 보낸다.",
   "author": {
     "name": "프리윌루전",
     "url": "https://github.com/productionkhu-tech"
@@ -18,15 +18,17 @@
     "나노바나나"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.codex-mcp.json",
   "interface": {
-    "displayName": "Freewill Studio",
-    "shortDescription": "나노바나나·시댄스 프롬프트를 모델별 공식 가이드로",
-    "longDescription": "이미지(나노바나나)·영상(시댄스) 작업을 맡기면 이 PC 에 깔린 앱의 규칙을 읽고, 필요한 것만 선택지로 묻고, BytePlus·Google·OpenAI 공식 프롬프팅 스킬대로 프롬프트를 쓴 뒤 확인을 받아 넘긴다. 공식 스킬은 매일 원본과 비교해 자동으로 따라간다.",
+    "displayName": "프리윌 스튜디오",
+    "shortDescription": "나노바나나·시댄스를 대화로 — 회사 구글 로그인",
+    "longDescription": "설치하면 프리윌 스튜디오 MCP 커넥터가 같이 연결된다. 처음 쓸 때 회사 구글 계정으로 한 번 로그인하면(7일 유지) 이미지(나노바나나)·영상(시댄스) 작업을 말로 맡길 수 있다 — 이 PC 앱의 규칙을 읽고, 필요한 것만 묻고, 공식 프롬프팅 가이드대로 쓴 뒤 확인을 받아 앱으로 보낸다.",
     "developerName": "프리윌루전",
     "category": "Productivity",
     "capabilities": [
       "Interactive",
-      "Read"
+      "Read",
+      "Write"
     ],
     "websiteURL": "https://github.com/productionkhu-tech/freewill-studio-mcp",
     "defaultPrompt": [

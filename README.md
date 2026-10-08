@@ -39,7 +39,7 @@ https://freewill-mcp.production-khu.workers.dev/mcp
 |---|---|
 | **Claude** (웹·데스크톱·Code 탭 한 번에) | 설정 → 커넥터 → **커스텀 커넥터 추가** → 이름 `freewill`, 위 주소 → **연결**(구글 로그인). 회사 플랜에서 관리자만 추가할 수 있게 돼 있으면 관리자가 한 번 추가하고 팀원은 "연결"만 누른다 |
 | Claude Code (터미널) | `claude mcp add --scope user --transport http freewill https://freewill-mcp.production-khu.workers.dev/mcp` → `/mcp` 에서 freewill 인증 |
-| **Codex** (앱·CLI) | `codex mcp add freewill --url https://freewill-mcp.production-khu.workers.dev/mcp` 다음 `codex mcp login freewill`(구글 로그인) — Codex 앱 대화창에 "이거 실행해줘"라고 보내도 된다 |
+| **Codex** (앱·CLI) | **아래 플러그인을 설치한다** — 커넥터가 같이 등록된다. 처음 보낼 때 에이전트가 구글 로그인 창을 띄우고, 사람은 회사 계정만 고른다(터미널 명령 없음) |
 | ChatGPT | 설정 → 앱·커넥터에서 커스텀 커넥터(MCP)로 위 주소 추가 (플랜·워크스페이스 설정에 따라 관리자가 해야 할 수 있음) |
 
 커넥터는 생성을 하지 않는다 — 키 없이 지침과 스크립트만 내려준다. 띄워 둔 앱에 작업을 넣는 건 PC 에서 도는 에이전트(Code 탭·Codex)가
@@ -52,10 +52,10 @@ https://freewill-mcp.production-khu.workers.dev/mcp
 같은 화면의 **사람별 한도 조정**에서 특정 사람의 하루 한도를 늘리거나 줄이고(기간 지정 가능), 0 으로 막을 수 있다 — 배포 없이 바로 적용.
 앱에서 사람이 직접 만든 것은 여기 없고 각 앱의 집계에 있다.
 
-> 커넥터와 아래 플러그인은 **둘 중 하나만** 쓴다. 둘 다 있으면 같은 지침을 두 번 읽는다. 커넥터를 권장.
-> 플러그인으로 깔린 스크립트에는 로그인 표가 없어서 **앱으로 보내기는 커넥터로만 된다**(플러그인은 프롬프트·설정 정리용).
+> **플러그인에는 커넥터가 들어 있다**(2026-10-08~). Codex·Claude Code 는 플러그인 하나만 설치하면 되고, 커넥터를 따로 추가해 둔 게 있으면 지운다(같은 이름 freewill 이 둘이 된다). claude.ai 웹·데스크톱 채팅은 위 커스텀 커넥터로.
+> 보내기는 커넥터 로그인 뒤 `freewill_script` 로 받은 스크립트로만 된다 — 플러그인 폴더에 깔린 사본은 표가 없어서 보내지 못한다.
 
-## 플러그인으로 설치 (커넥터 대신)
+## 플러그인으로 설치 (Codex·Claude Code — 커넥터 포함)
 
 공개 저장소라 GitHub 계정은 필요 없다. 마켓플레이스 주소는 어디서든 이것 하나:
 

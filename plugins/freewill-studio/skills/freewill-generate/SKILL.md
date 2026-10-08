@@ -26,19 +26,28 @@ Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
 ## 로그인 — 앱으로 보내려면 커넥터 로그인이 필요하다
 
 **프롬프트 쓰기·다듬기는 로그인 없이 된다. 앱으로 보내기(6단계)는 "프리윌 스튜디오 MCP" 커넥터에 회사 구글 계정
-(@studiofreewill.com)으로 로그인돼 있어야 한다.** 로그인하는 곳은 커넥터 하나뿐이다 — **나노바나나·시댄스 앱에는 구글
-로그인이 없고, "Freewill Studio" 라는 앱도 없다.** 없는 버튼·메뉴·키를 지어내 안내하지 않는다.
+(@studiofreewill.com)으로 로그인돼 있어야 한다.** 커넥터는 이 플러그인을 설치하면 같이 등록된다. 로그인하는 곳은 커넥터
+하나뿐이다 — **나노바나나·시댄스 앱에는 구글 로그인이 없고, "Freewill Studio" 라는 앱도 없다.** 없는 버튼·메뉴·키를
+지어내 안내하지 않는다.
 
-- 로그인됐는지는 이 대화에 `freewill_script`·`freewill_guide` 도구가 있는지로 안다. 없으면(플러그인만 깔렸거나 로그인 전)
-  보내기는 안 된다 — 사용자에게 아래대로 안내하고, 그동안은 프롬프트·설정 정리까지만 한다.
-  - **Codex**: 터미널(PowerShell)에서 `codex mcp login freewill` → 브라우저에서 회사 구글 계정 선택. 연결 자체가 없다고 나오면
-    먼저 `codex mcp add freewill --url https://freewill-mcp.production-khu.workers.dev/mcp`. 끝나면 **새 대화**를 연다.
-  - **Claude**: 설정 → 커넥터 → freewill → **연결** → 회사 구글 계정. 커넥터가 없으면 "커스텀 커넥터 추가"로 위 주소.
-  - 플러그인(Freewill Studio)과 커넥터가 둘 다 있으면 지침이 겹친다 — 플러그인은 지워도 된다(Codex: `codex plugin remove freewill-studio@freewill`).
-- 로그인은 **7일** 유지된다(지나면 같은 방법으로 다시). 보내기 스크립트는 `freewill_script` 로 받을 때마다 12시간짜리 표가
-  들어 있어서, "표 없음/만료"가 나오면 **에이전트가 다시 받으면 된다 — 사용자에게 로그인을 다시 하라고 하지 않는다.**
-  "로그인 표"는 내부 장치라 사용자에게 꺼내 말하지 않는다.
-- 플러그인 폴더에 깔린 `scripts/send-to-*.mjs` 는 표가 없어서 보내지 못한다. 보낼 때는 항상 `freewill_script` 로 받은 원문을 쓴다.
+로그인됐는지는 이 대화에 `freewill_script`·`freewill_guide` 도구가 있는지로 안다. 없으면 **에이전트가 로그인을 시작한다 —
+사람은 브라우저에서 회사 구글 계정만 고른다.** 사용자에게 터미널 명령을 시키지 않는다(Codex 명령은 보통 PATH 에도 없다).
+
+- **Codex** — 아래를 직접 실행한다(실행 승인을 받는다). 브라우저가 열리고, 사람이 계정을 고를 때까지 기다린다(2분쯤):
+  ```powershell
+  $cx = if ($env:CODEX_CLI_PATH) { $env:CODEX_CLI_PATH } else { (Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin\*\codex.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName }
+  & $cx mcp login freewill
+  ```
+  "freewill 이 없다"고 나오면 플러그인이 옛 버전이다 — `& $cx mcp add freewill --url https://freewill-mcp.production-khu.workers.dev/mcp`
+  다음 다시 login. 로그인이 끝나면 **"새 대화를 열어 주세요"** 라고만 말한다(도구는 새 대화부터 보인다).
+- **Claude** — 에이전트가 대신 누를 수 없다. "설정 → 커넥터에서 freewill **연결**을 한 번 눌러 회사 구글 계정으로
+  로그인해 주세요" 라고 한 줄로 안내한다(Claude Code 터미널이면 `/mcp` → freewill → 인증).
+- 로그인 전에는 프롬프트·설정 정리까지만 하고, 로그인되면 이어서 보낸다.
+
+로그인은 **7일** 유지된다(지나면 같은 방식으로 다시). 보내기 스크립트는 `freewill_script` 로 받을 때마다 12시간짜리 표가
+들어 있어서, "표 없음/만료"가 나오면 **에이전트가 다시 받으면 된다 — 사용자에게 로그인을 다시 하라고 하지 않는다.**
+"로그인 표"는 내부 장치라 사용자에게 꺼내 말하지 않는다. 플러그인 폴더에 깔린 `scripts/send-to-*.mjs` 는 표가 없어서
+보내지 못한다 — 보낼 때는 항상 `freewill_script` 로 받은 원문을 쓴다.
 
 ## 1. 무엇을 만드는지 파악
 

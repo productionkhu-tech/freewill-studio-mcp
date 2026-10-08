@@ -1,8 +1,20 @@
 {
   "name": "freewill-studio",
-  "description": "나노바나나(이미지)·시댄스(영상) 프롬프트를 모델별 공식 프롬프팅 스킬(BytePlus·Google·OpenAI)로 쓰고, 앱 규칙대로 묻고, 확인 후 앱으로 넘긴다. 공식 스킬은 매일 자동으로 따라간다.",
+  "description": "나노바나나(이미지)·시댄스(영상)를 Claude 대화로 — 프리윌 스튜디오 MCP 커넥터(회사 구글 로그인)가 같이 설치된다. 모델별 공식 가이드로 프롬프트를 쓰고, 앱 규칙대로 묻고, 확인 후 앱으로 보낸다.",
   "author": {
     "name": "프리윌루전"
   },
-  "keywords": ["seedance", "nanobanana", "prompt", "image", "video"]
+  "keywords": [
+    "seedance",
+    "nanobanana",
+    "prompt",
+    "image",
+    "video"
+  ],
+  "mcpServers": {
+    "freewill": {
+      "type": "http",
+      "url": "https://freewill-mcp.production-khu.workers.dev/mcp"
+    }
+  }
 }
