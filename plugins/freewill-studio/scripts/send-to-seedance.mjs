@@ -33,6 +33,7 @@
 //
 // jobs.json:
 //   {
+//     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
 //     "manual": "읽은 설명서 버전 (--manual 이 알려 준 값 그대로) — 앱이 바뀌었으면 앱이 받지 않는다",
 //     "project": "앱 사이드바에 열린 프로젝트 이름 (확인 카드에 보여 준 것 — 다르면 앱이 안 보냄, 생략하면 지금 값)",
 //     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 다르면 앱이 안 보냄, 생략하면 지금 값)",
@@ -143,6 +144,12 @@ const COSTLY = { "card.final": 1, "card.regenerate": MAX_IN_FLIGHT };
 // 커넥터 — 사용 기록과 하루 한도. 표는 커넥터가 내려줄 때 채운다(이 줄의 모양을 바꾸지 말 것).
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
 const FREEWILL_TICKET = "";
+// 지침 버전 — 커넥터가 내려줄 때 채운다(이 줄 모양도 바꾸지 말 것). jobs.json 의 "guide" 와 다르면 이 대화가 읽은 지침이
+// 옛것이다 → 보내지 않고 다시 읽게 한다(앱 설명서 버전과 같은 방식). 비어 있으면(커넥터에서 받은 게 아니면) 보지 않는다.
+const FREEWILL_GUIDE = "";
+const GUIDE_STALE = (had) => `지침이 바뀌었다 (이 대화가 읽은 지침 ${had || "버전 없음"} → 지금 ${FREEWILL_GUIDE}) — ` +
+  `freewill_guide("start") 를 다시 받아 읽고 바뀐 규칙대로 프롬프트·확인 카드를 고친 뒤, jobs.json 에 "guide": "${FREEWILL_GUIDE}" 를 ` +
+  "적어 다시 실행할 것. 프롬프트·설정이 달라졌으면 확인 카드부터 다시. 사용자에게 지침 버전 얘기는 하지 않는다";
 
 // 표 안의 이름·만료만 읽는다(서명은 커넥터가 확인한다). 없거나 만료면 null.
 function ticketOwner() {
@@ -383,6 +390,7 @@ async function main() {
   let spec;
   try { spec = JSON.parse(fs.readFileSync(file, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch (e) { fail(`작업 파일을 못 읽음 — ${e.message}`); }
   if (!spec.manual) fail("jobs.json 에 \"manual\"(읽은 설명서 버전)이 없다 — 먼저 --manual 로 앱의 설명서를 읽고 그 버전을 적을 것");
+  if (FREEWILL_GUIDE && spec.guide !== FREEWILL_GUIDE) fail(GUIDE_STALE(spec.guide));
   const defaults = spec.defaults || {};
   const jobs = (spec.jobs || []).filter((j) => j && String(j.prompt || "").trim());
   if (!jobs.length) fail("보낼 작업이 없음 (prompt 가 빈 작업은 뺀다)");

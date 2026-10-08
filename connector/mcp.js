@@ -109,6 +109,19 @@ async function fromRepo(path) {
 
 const stripFrontmatter = (s) => s.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
 
+// 지침 버전 — 보내기 전에 지켜야 할 지침(start · house-rules · interview · app-rules)의 내용 지문. start 맨 위에 적어 주고
+// 보내기 스크립트에도 넣어 준다. 대화가 읽은 지침이 옛것이면(jobs.json 의 guide 가 다르면) 스크립트가 보내지 않고 다시
+// 읽게 한다 — 에이전트는 처음 읽은 지침을 기억하고 다시 받을지는 제 판단이라, 이미 하던 대화가 낡은 규칙으로 보내지 않게.
+const VERSIONED = ["start", "house-rules", "interview", "app-rules"];
+async function guideVersion() {
+  const texts = await Promise.all(VERSIONED.map((t) => fromRepo(GUIDES[t])));
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texts.join(String.fromCharCode(0))));
+  return [...new Uint8Array(hash)].slice(0, 5).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+const versionLine = (v) =>
+  `> - **지침 버전 \`${v}\`** — 앱으로 보내는 jobs.json 에 \`"guide": "${v}"\` 를 적는다. 보내기 스크립트가 "지침이 바뀌었다" 고\n` +
+  `>   하면 이 지침(start)을 다시 받아 읽고 바뀐 규칙대로 고친다 — 사용자에게 지침 버전 얘기는 하지 않는다.\n`;
+
 // 한 번에 내려주는 최대 글자 수. 시댄스 2.5 공식 스킬이 9만 자가 넘어서, 통째로 주면 클라이언트의
 // 도구 응답 한도(Claude Code 기본 약 2.5만 토큰)에 걸린다. 줄 단위로 끊어 part 로 나눠 준다.
 const PART_CHARS = 36000;
@@ -132,7 +145,9 @@ async function callTool(name, args, env, props) {
     const path = GUIDES[topic];
     if (!path) return toolError(`모르는 topic: ${topic}. 쓸 수 있는 것: ${Object.keys(GUIDES).join(", ")}`);
     const raw = await fromRepo(path);
-    const text = topic === "start" ? START_PREAMBLE + stripFrontmatter(raw) : raw;
+    const text = topic === "start"
+      ? `${START_PREAMBLE.trimEnd()}\n${versionLine(await guideVersion())}\n${stripFrontmatter(raw)}`
+      : raw;
     const p = paginate(text, args?.part);
     if (p.total === 1) return toolText(p.body);
     const tail = p.index < p.total
@@ -153,7 +168,9 @@ async function callTool(name, args, env, props) {
       );
     }
     const ticket = await makeTicket(env, props);
-    const ready = code.replace(/^const FREEWILL_TICKET = "";$/m, `const FREEWILL_TICKET = "${ticket}";`);
+    const ready = code
+      .replace(/^const FREEWILL_TICKET = "";$/m, `const FREEWILL_TICKET = "${ticket}";`)
+      .replace(/^const FREEWILL_GUIDE = "";$/m, `const FREEWILL_GUIDE = "${await guideVersion()}";`);
     return toolText(
       `아래 js 코드 블록 안의 코드만 임시 폴더에 \`${key}.mjs\` 로 저장한 뒤 \`node <저장한 경로> ...\` 로 실행한다(이 안내 문장은 빼고). 사용법은 원문 머리말.\n` +
         `Codex 는 네트워크 허용(샌드박스 밖)으로 실행 승인을 받아 돌린다 — 샌드박스 안에서는 앱·커넥터에 닿지 못한다.\n` +

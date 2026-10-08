@@ -202,8 +202,8 @@ Seedance 2.5 · 레퍼런스→영상 · 16:9 · 10초 · 초안 480p · 2개 ·
 **나노바나나**
 
 1. 작업 목록을 JSON 파일로 쓴다 (임시 폴더). 형식은 스크립트 머리말에 있다:
-   `{"defaults": {"model", "resolution", "aspect", "quality", "count"}, "jobs": [{"name", "prompt", "refs": [파일 경로], ...}]}`
-   레퍼런스는 PC 의 파일 경로 그대로.
+   `{"guide", "defaults": {"model", "resolution", "aspect", "quality", "count"}, "jobs": [{"name", "prompt", "refs": [파일 경로], ...}]}`
+   레퍼런스는 PC 의 파일 경로 그대로. `guide` 는 이 지침 맨 위의 **지침 버전** 그대로(아래 시댄스와 같다).
 2. 먼저 확인만 한다 (아무것도 안 보냄, 비용 0) — 앱이 켜져 있는지, 지금 탭, 팀·프로젝트:
    ```bash
    node "<플러그인 폴더>/scripts/send-to-nanobanana.mjs" <jobs.json> --dry-run
@@ -224,7 +224,9 @@ Seedance 2.5 · 레퍼런스→영상 · 16:9 · 10초 · 초안 480p · 2개 ·
 **시댄스** (앱 26.10.304 이상)
 
 1. 작업 목록을 JSON 파일로 쓴다 (임시 폴더). 형식은 스크립트 머리말에 있다:
-   `{"manual", "project", "billing", "defaults": {"model", "mode", "ratio", "duration", "resolution", "draft", "output_count", "generate_audio"}, "jobs": [{"name", "prompt", "refs": [경로 또는 {"path", "role"}]}]}`
+   `{"guide", "manual", "project", "billing", "defaults": {"model", "mode", "ratio", "duration", "resolution", "draft", "output_count", "generate_audio"}, "jobs": [{"name", "prompt", "refs": [경로 또는 {"path", "role"}]}]}`
+   - `guide` 는 이 지침 맨 위의 **지침 버전** 그대로. 지침이 그 사이 바뀌었으면 스크립트가 "지침이 바뀌었다" 며 멈춘다 —
+     start 를 다시 받아 읽고 바뀐 규칙대로 고친다(대화가 길어져도 낡은 지침으로 나가지 않게).
    - `manual` 은 2단계에서 읽은 **설명서 버전** 그대로. 없으면 스크립트가 먼저 설명서를 읽으라고 멈춘다.
    - 설정 키와 값은 설명서에 있는 것만. 레퍼런스 순서가 프롬프트의 `[Image N]`·`[Video N]`·`[Audio N]` 번호다
      (종류별로 센다). 첫·끝 프레임은 `role` 로. 2.5 는 `draft` 를 꼭 적는다 (빼면 앱 기본값 = 초안 480p).

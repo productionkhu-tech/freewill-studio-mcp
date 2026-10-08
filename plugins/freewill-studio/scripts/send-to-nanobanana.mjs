@@ -28,6 +28,7 @@
 //
 // jobs.json:
 //   {
+//     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
 //     "defaults": { "model": "gpt-image-2.5-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
 //     "jobs": [
@@ -58,6 +59,12 @@ const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미�
 // 커넥터 — 사용 기록과 하루 한도. 표는 커넥터가 내려줄 때 채운다(이 줄의 모양을 바꾸지 말 것).
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
 const FREEWILL_TICKET = "";
+// 지침 버전 — 커넥터가 내려줄 때 채운다(이 줄 모양도 바꾸지 말 것). jobs.json 의 "guide" 와 다르면 이 대화가 읽은 지침이
+// 옛것이다 → 보내지 않고 다시 읽게 한다(앱 설명서 버전과 같은 방식). 비어 있으면(커넥터에서 받은 게 아니면) 보지 않는다.
+const FREEWILL_GUIDE = "";
+const GUIDE_STALE = (had) => `지침이 바뀌었다 (이 대화가 읽은 지침 ${had || "버전 없음"} → 지금 ${FREEWILL_GUIDE}) — ` +
+  `freewill_guide("start") 를 다시 받아 읽고 바뀐 규칙대로 프롬프트·확인 카드를 고친 뒤, jobs.json 에 "guide": "${FREEWILL_GUIDE}" 를 ` +
+  "적어 다시 실행할 것. 프롬프트·설정이 달라졌으면 확인 카드부터 다시. 사용자에게 지침 버전 얘기는 하지 않는다";
 
 let token = "";
 const log = (...m) => console.log(...m);
@@ -202,6 +209,7 @@ async function main() {
   const defaults = spec.defaults || {};
   const jobs = (spec.jobs || []).filter((j) => j && String(j.prompt || "").trim());
   if (!jobs.length) fail("보낼 작업이 없음 (prompt 가 빈 작업은 뺀다)");
+  if (FREEWILL_GUIDE && spec.guide !== FREEWILL_GUIDE) fail(GUIDE_STALE(spec.guide));
   for (const j of jobs) for (const fp of j.refs || []) if (!fs.existsSync(fp)) fail(`레퍼런스 파일이 없음: ${fp}`);
 
   // 1) 앱이 켜져 있는지, 보안 토큰
