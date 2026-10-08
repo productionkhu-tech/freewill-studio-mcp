@@ -70,7 +70,9 @@ $before = Get-NB "/api/settings"
 ```
 
 1. `Get-NB "/api/billing/state"` — `confirmed` 가 아니면 멈추고 앱에서 팀·프로젝트를 고르게 한다.
-2. 작업마다 (같은 탭이 계속 떠 있는지 `/api/projects` 의 `active` 로 확인하면서):
+2. 작업마다 (같은 탭이 계속 떠 있는지 `/api/projects` 의 `active` 로 확인하면서). **사내 규칙 2 의 한도는 여기서도 지킨다** —
+   넣기 전에 `(Get-NB "/api/projects").projects` 의 `outstanding` 을 모두 더해, 이번 작업 장수를 더한 값이 10 을 넘으면
+   줄어들 때까지 기다린다(기다리는 동안은 3번처럼 탭 입력값을 되돌려 둔다). 하루 1,000장을 넘게 보내지 않는다.
    ```powershell
    Send-NB "/api/refs/clear" @{ preserve_pinned = $false }
    Send-NB "/api/refs/add-path" @{ filepath = "C:\경로\ref1.png" }     # 레퍼런스마다
@@ -125,6 +127,9 @@ $m = Get-SD "/api/agent/manual"      # 앱이 낸 사용 설명서 — $m.text �
    do { Start-Sleep -Seconds 2; $j = Get-SD "/api/agent/jobs/$($job.id)" } while ($j.status -in "pending", "taken")
    ```
    `failed` 면 `$j.error` 를 그대로 사용자에게 보여주고 나머지 작업은 보내지 않는다. `sent` 면 `$j.messages` 가 이번에 생긴 카드다.
+   **사내 규칙 2 의 한도는 여기서도 지킨다** — 작업을 넣기 전에 열린 프로젝트의 카드 중 대기·생성 중(`queued`·`running`)인
+   것과 이번 `output_count` 를 더해 3 을 넘으면 줄어들 때까지 기다린다(카드 목록은 26.10.305~ 의 `cards.list` 명령, 그 전
+   버전이면 이번에 넣은 요청의 `$j.messages` 로 센다). 하루 200개를 넘게 보내지 않는다.
 4. 지켜보기는 같은 주소를 5초쯤 간격으로 다시 읽어 `status` 가 `done` 이 될 때까지. 카드마다 `status`·`videoUrl`·`error` 가 있다.
 5. 진행 확인에 `/api/byteplus/tasks/<id>` 는 부르지 않는다 — 그 조회는 크레딧 보고·영상 보관을 하는 앱 화면 몫이다.
 

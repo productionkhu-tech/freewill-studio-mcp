@@ -12,6 +12,11 @@
 // 진행은 /api/agent/* 로만 본다. /api/byteplus/tasks/<id> 는 부르지 않는다 — 그 조회는 성공을 처음 본 순간
 // 크레딧 보고·영상 보관을 하고 기록을 지운다(앱 화면이 하는 일이다).
 //
+// 한도 (MCP 로 보내는 것, 이 PC 기준 — 대량 생성을 생각 없이 돌리는 걸 막는다. 앱에서 직접 만드는 건 막지 않는다):
+//   - 열린 프로젝트에서 동시에 진행 중인(대기 포함) 영상 3개까지 — 앱의 한 번 최대 개수와 같다. 넘으면 앞의 것이
+//     끝날 때까지 기다렸다가 다음 요청을 넣는다. 과금되는 명령(card.final · card.regenerate)도 같다.
+//   - 하루 200개. 넘으면 보내지 않고 멈춘다.
+//
 //   node send-to-seedance.mjs --manual              앱의 사용 설명서와 그 버전 (처음 한 번, 그리고 앱이 바뀌었다고 할 때)
 //   node send-to-seedance.mjs jobs.json --dry-run   앱 상태만 확인(설명서 버전·프로젝트·과금·권한) — 아무것도 안 보냄
 //   node send-to-seedance.mjs jobs.json             보내기 — 앱이 받아서 보낼 때까지 하나씩
@@ -64,6 +69,19 @@ const readJsonArg = (raw) => {
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const MAX_IN_FLIGHT = 3;   // 열린 프로젝트에서 동시에 진행 중인(대기 포함) 영상
+const DAILY_MAX = 200;     // 이 PC 에서 하루에 보내는 영상
+const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]);
+// 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
+const COSTLY = { "card.final": 1, "card.regenerate": MAX_IN_FLIGHT };
+
+// 하루 양은 이 PC(이 Windows 사용자)에서 이 스크립트로 보낸 것만 센다. 날짜가 바뀌면 0 부터. 나노바나나 스크립트와 같은 파일.
+const DAILY_FILE = path.join(os.tmpdir(), "freewill-studio-daily.json");
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const dailyRead = () => { try { const s = JSON.parse(fs.readFileSync(DAILY_FILE, "utf8")); return s.date === today() ? s : { date: today() }; } catch { return { date: today() }; } };
+const dailyUsed = () => Number(dailyRead().seedance) || 0;
+const dailyAdd = (n) => { const s = dailyRead(); s.seedance = (Number(s.seedance) || 0) + n; try { fs.writeFileSync(DAILY_FILE, JSON.stringify(s)); } catch {} };
+
 async function req(method, p, body, ms = 10000) {
   const r = await fetch(`${SD}${p}`, {
     method, headers: { "Content-Type": "application/json" },
@@ -115,6 +133,10 @@ async function runCommand(name, cargs) {
   const s = await appStatus(manual);
   if (!s.screenAlive) fail("시댄스 서버는 켜져 있지만 앱 화면이 응답하지 않는다 — 앱 창이 열려 있는지 확인해 달라고 할 것");
   if (s.manualStale) await staleStop(s.notice || "앱이 업데이트됐다");
+  return sendCommand(manual, name, cargs);
+}
+
+async function sendCommand(manual, name, cargs) {
   let r = await post("/api/agent/commands", { manual, command: name, args: cargs, wait: 60 }, 75000);
   if (r.http === 409 && r.stale) await staleStop(r.error);
   if (r.http !== 200 || !r.id) fail(r.error || r.raw || `HTTP ${r.http}`);
@@ -125,6 +147,47 @@ async function runCommand(name, cargs) {
   }
   if (r.status === "failed") fail(`${name} 실패 — ${r.error || "이유 없음"}`);
   return r.result;
+}
+
+// 열린 프로젝트에서 아직 안 끝난(대기·생성 중) 영상 — 카드 하나가 영상 하나다. 명령이 없는 앱(26.10.304)이면
+// 이번에 보낸 요청의 카드만 센다.
+async function inFlight(manual, project, ownIds = []) {
+  try {
+    const r = await sendCommand(manual, "cards.list", { project, limit: 100 });
+    return (r?.cards || []).filter((c) => !DONE.has(c.status)).length;
+  } catch (e) {
+    if (e instanceof Stop && e.quiet) throw e;   // 앱이 업데이트됨 — 새 설명서를 이미 보여 줬다
+    let n = 0;
+    for (const id of ownIds) {
+      const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
+      n += (j.messages || []).filter((c) => !DONE.has(c.status)).length;
+    }
+    return n;
+  }
+}
+
+async function waitForRoom(manual, project, need, ownIds) {
+  let last = -1, changedAt = Date.now();
+  for (;;) {
+    const n = await inFlight(manual, project, ownIds);
+    if (n + need <= MAX_IN_FLIGHT) return;
+    if (n !== last) {
+      log(`  기다리는 중 — "${project}" 에서 진행 중인 영상 ${n}개(동시 ${MAX_IN_FLIGHT}개 한도). 끝나는 대로 이어서 보낸다`);
+      last = n;
+      changedAt = Date.now();
+    }
+    if (Date.now() - changedAt > 45 * 60 * 1000) fail(`진행 중인 영상이 45분째 ${n}개 그대로 — 앱 화면을 확인해 달라고 할 것`);
+    await sleep(10000);
+  }
+}
+
+function dailyCheck(n, what) {
+  const used = dailyUsed();
+  if (used + n > DAILY_MAX) {
+    fail(`오늘 이 PC 에서 보낸 영상 ${used}개 — 하루 ${DAILY_MAX}개 한도라 이번 요청(${what})은 보내지 않는다. ` +
+      "개수를 줄이거나 내일 보내고, 급하면 앱에서 직접 하게 할 것");
+  }
+  return used;
 }
 
 const cardLine = (c) => `${c.status}${c.taskId ? ` · ${c.taskId}` : ""}${c.error ? ` · ${c.error}` : ""}${c.videoUrl ? `\n      ${c.videoUrl}` : ""}`;
@@ -173,7 +236,17 @@ async function main() {
     if (!name) fail("--do 뒤에 명령 이름을 주세요 (설명서의 '명령' 목록)");
     let cargs = {};
     if (raw) { try { cargs = readJsonArg(raw); } catch (e) { fail(`인자 JSON 을 못 읽음 — ${e.message}`); } }
+    // 과금되는 명령도 하루 한도와 동시 진행 한도를 지킨다.
+    const need = COSTLY[name] || 0;
+    if (need) {
+      const manual = rememberedManual();
+      if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual (그때 버전을 기억해 둔다)");
+      dailyCheck(need, name);
+      const s = await appStatus(manual);
+      if (s.project) await waitForRoom(manual, s.project, need, []);
+    }
     const result = await runCommand(name, cargs);
+    if (need) dailyAdd(Array.isArray(result?.cards) ? result.cards.length : 1);
     log(JSON.stringify(result, null, 2));
     return;
   }
@@ -231,6 +304,19 @@ async function main() {
       log(`  주의: ${j.name || ""} 의 모델 ${model} 은 이 과금 프로젝트에 권한이 없다 — 앱이 막는다. 다른 모델을 사용자에게 물을 것`);
     }
   }
+
+  // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
+  const videosOf = (j) => {
+    const n = Number(settingsOf(j).output_count);
+    return n >= 1 ? Math.min(Math.round(n), MAX_IN_FLIGHT) : MAX_IN_FLIGHT;
+  };
+  if (jobs.some((j) => !(Number(settingsOf(j).output_count) >= 1))) {
+    log(`  참고: output_count 를 안 적은 작업은 앱 설정을 따르므로 ${MAX_IN_FLIGHT}개로 잡고 센다(적어 두면 더 빨리 보낼 수 있다)`);
+  }
+  const total = jobs.reduce((a, j) => a + videosOf(j), 0);
+  const used = dailyCheck(total, `최대 ${total}개`);
+  log(`  이번 최대 ${total}개 · 오늘 남은 한도 ${DAILY_MAX - used}개 · 지금 "${project}" 에서 진행 중 ` +
+    `${await inFlight(spec.manual, project)}개 (동시 ${MAX_IN_FLIGHT}개까지 — 넘으면 앞의 것이 끝나야 다음을 보낸다)`);
   if (DRY) {
     for (const [i, j] of jobs.entries()) {
       const st = settingsOf(j);
@@ -239,9 +325,10 @@ async function main() {
     return;
   }
 
-  // 2) 하나씩 넣고, 앱이 보낼 때까지 기다린다. 하나라도 실패하면 거기서 멈춘다 — 같은 실수를 나머지에 반복하지 않게.
+  // 2) 하나씩 — 자리가 나면 넣고, 앱이 보낼 때까지 기다린다. 하나라도 실패하면 거기서 멈춘다(같은 실수를 반복하지 않게).
   const sent = [];
   for (const [i, j] of jobs.entries()) {
+    await waitForRoom(spec.manual, project, videosOf(j), sent.map((x) => x.id));
     const r = await post("/api/agent/jobs", {
       manual: spec.manual, name: j.name || `job_${i + 1}`, prompt: String(j.prompt), project, billing,
       settings: settingsOf(j), refs: j.refs,
@@ -264,7 +351,9 @@ async function main() {
     }
     sent.push({ id: r.id, name: j.name || `job_${i + 1}` });
     const cards = res.messages || [];
-    log(`  보냄 ${sent.length}/${jobs.length} ${j.name || ""} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}`);
+    dailyAdd(cards.length || videosOf(j));
+    log(`  보냄 ${sent.length}/${jobs.length} ${j.name || ""} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
+      ` · 오늘 ${dailyUsed()}/${DAILY_MAX}개`);
     for (const c of cards) if (c.status === "failed") log(`    카드 ${cardLine(c)}`);
   }
   if (!sent.length) return;
