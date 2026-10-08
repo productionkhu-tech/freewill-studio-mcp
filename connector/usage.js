@@ -46,23 +46,27 @@ export async function usage(request, env) {
   const app = String(b.app || "");
   const n = Math.round(Number(b.n));
   if (!LIMITS[app] || !(n >= 1 && n <= 10)) return json({ ok: false, error: "app 이나 n 이 올바르지 않음" }, 400);
+  // 한도 확인과 기록을 한 문장으로 — Claude 와 Codex 처럼 같은 계정의 두 보내기가 동시에 들어와도 한도를 넘지 않는다.
+  const id = crypto.randomUUID();
+  const day = kstDay();
+  const res = await env.USAGE_DB.prepare(
+    `INSERT INTO usage (id, ts, day, email, name, pc, win_user, ip, app, kind, model, resolution, n, billing, project, job, status)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent'
+      WHERE (SELECT COALESCE(SUM(n), 0) FROM usage WHERE email = ? AND day = ? AND app = ? AND status = 'sent') + ? <= ?`,
+  ).bind(
+    id, Date.now(), day, t.e, text(t.n), text(b.pc), text(b.user), text(request.headers.get("CF-Connecting-IP")),
+    app, text(b.kind) || "generate", text(b.model), text(b.resolution), n, text(b.billing), text(b.project), text(b.job),
+    t.e, day, app, n, LIMITS[app],
+  ).run();
   const used = await usedToday(env, t.e, app);
-  if (used + n > LIMITS[app]) {
+  if (!res.meta?.changes) {
     return json({
       ok: false, used, limit: LIMITS[app],
       error: `오늘 ${t.e} 계정이 MCP 로 보낸 ${WHAT[app]} ${used}${UNIT[app]} — 하루 ${LIMITS[app]}${UNIT[app]} 한도라 이번 ${n}${UNIT_TOPIC[app]} 보내지 않는다. ` +
         "개수를 줄이거나 내일 보내고, 급하면 앱에서 직접 만들게 할 것",
     }, 429);
   }
-  const id = crypto.randomUUID();
-  await env.USAGE_DB.prepare(
-    `INSERT INTO usage (id, ts, day, email, name, pc, win_user, ip, app, kind, model, resolution, n, billing, project, job, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')`,
-  ).bind(
-    id, Date.now(), kstDay(), t.e, text(t.n), text(b.pc), text(b.user), text(request.headers.get("CF-Connecting-IP")),
-    app, text(b.kind) || "generate", text(b.model), text(b.resolution), n, text(b.billing), text(b.project), text(b.job),
-  ).run();
-  return json({ ok: true, id, used: used + n, limit: LIMITS[app] });
+  return json({ ok: true, id, used, limit: LIMITS[app] });
 }
 
 // ---------------------------------------------------------------- 관리자 화면

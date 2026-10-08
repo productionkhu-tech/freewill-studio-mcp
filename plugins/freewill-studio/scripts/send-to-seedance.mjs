@@ -73,6 +73,36 @@ const readJsonArg = (raw) => {
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 같은 PC 에서 보내기가 둘 이상 겹칠 때(예: Claude 와 Codex 가 동시에) "자리 확인 → 한 작업 넣기" 를 한 번에 하나만 하게 하는
+// 잠금. 그래야 동시 진행 한도를 둘이 같이 지킨다. 주인이 죽었거나(프로세스 없음) 15분 넘게 쥐고 있으면 풀어 준다.
+async function withSendLock(name, fn) {
+  const file = path.join(os.tmpdir(), `freewill-${name}-send.lock`);
+  const mine = JSON.stringify({ pid: process.pid, at: Date.now(), r: Math.random() });
+  for (;;) {
+    try {
+      fs.writeFileSync(file, mine, { flag: "wx" });
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+    }
+    let stale = false;
+    try {
+      const h = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (Date.now() - h.at > 15 * 60 * 1000) stale = true;
+      else { try { process.kill(h.pid, 0); } catch (k) { stale = k.code === "ESRCH"; } }
+    } catch {
+      try { stale = Date.now() - fs.statSync(file).mtimeMs > 5000; } catch { stale = false; }   // 막 만들어지는 중이면 기다린다
+    }
+    if (stale) { try { fs.rmSync(file, { force: true }); } catch {} continue; }
+    await sleep(300 + Math.random() * 400);
+  }
+  try {
+    return await fn();
+  } finally {
+    try { if (fs.readFileSync(file, "utf8") === mine) fs.rmSync(file, { force: true }); } catch {}
+  }
+}
+
 const MAX_IN_FLIGHT = 3;   // 열린 프로젝트에서 동시에 진행 중인(대기 포함) 영상
 const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]);
 // 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
@@ -377,40 +407,61 @@ async function main() {
   }
 
   // 2) 하나씩 — 자리가 나면 넣고, 앱이 보낼 때까지 기다린다. 하나라도 실패하면 거기서 멈춘다(같은 실수를 반복하지 않게).
+  //    [자리 확인 → 기록 → 넣기 → 앱이 받을 때까지] 는 PC 잠금 안에서 — 같은 PC 의 다른 보내기와 동시 3개 한도를 같이 지킨다.
   const sent = [];
+  const unsent = (from) => jobs.slice(from).map((j, k) => j.name || `job_${from + k + 1}`).join(", ");
   for (const [i, j] of jobs.entries()) {
-    await waitForRoom(spec.manual, project, videosOf(j), sent.map((x) => x.id));
+    const need = videosOf(j);
     const st = settingsOf(j);
-    const rsv = await reserve(videosOf(j), {
-      kind: "generate", model: st.model, resolution: st.draft ? "480p 초안" : st.resolution, project, billing, job: j.name || `job_${i + 1}`,
-    });
-    const r = await post("/api/agent/jobs", {
-      manual: spec.manual, name: j.name || `job_${i + 1}`, prompt: String(j.prompt), project, billing,
-      settings: st, refs: j.refs,
-    });
-    if (r.http === 409 && r.stale) {
-      await rsv.settle(0);
-      if (sent.length) log(`  (그 전까지 ${sent.length}건은 보냈다: ${sent.map((x) => x.name).join(", ")})`);
-      await staleStop(r.error);
+    let out = null;
+    while (!out) {
+      await waitForRoom(spec.manual, project, need, sent.map((x) => x.id));
+      out = await withSendLock("seedance", async () => {
+        if ((await inFlight(spec.manual, project, sent.map((x) => x.id))) + need > MAX_IN_FLIGHT) return null;
+        let rsv;
+        try {
+          rsv = await reserve(need, {
+            kind: "generate", model: st.model, resolution: st.draft ? "480p 초안" : st.resolution, project, billing, job: j.name || `job_${i + 1}`,
+          });
+        } catch (e) {
+          if (e instanceof Stop && !e.quiet) return { error: e.message };
+          throw e;
+        }
+        const r = await post("/api/agent/jobs", {
+          manual: spec.manual, name: j.name || `job_${i + 1}`, prompt: String(j.prompt), project, billing,
+          settings: st, refs: j.refs,
+        });
+        if (r.http === 409 && r.stale) { await rsv.settle(0); return { stale: r.error }; }
+        if (r.http !== 200 || !r.id) {
+          await rsv.settle(0);
+          return { error: `요청을 못 넣음 (${j.name || i + 1}): ${r.error || r.raw || r.http}` };
+        }
+        const res = await waitTaken(r.id);
+        const cards = res.messages || [];
+        await rsv.settle(res.status === "failed" ? cards.length : (cards.length || need));
+        return { r, res, cards, rsv };
+      });
     }
-    if (r.http !== 200 || !r.id) {
-      await rsv.settle(0);
-      console.error(`멈춤: 요청을 못 넣음 (${j.name || i + 1}): ${r.error || r.raw || r.http}`);
+    if (out.stale) {
+      if (sent.length) log(`  (그 전까지 ${sent.length}건은 보냈다: ${sent.map((x) => x.name).join(", ")})`);
+      await staleStop(out.stale);
+    }
+    if (out.error) {
+      console.error(`멈춤: ${out.error}`);
+      console.error(`  ${sent.length}/${jobs.length}건까지 보냄 · 안 보낸 작업: ${unsent(i)}`);
       process.exitCode = 1;
       break;
     }
-    const res = await waitTaken(r.id);
-    const cards = res.messages || [];
-    await rsv.settle(res.status === "failed" ? cards.length : (cards.length || videosOf(j)));
+    const { r, res, cards, rsv } = out;
     if (res.status === "failed") {
       console.error(`멈춤: ${j.name || i + 1} 실패 — ${res.error || "이유 없음"}`);
-      if (jobs.length - i - 1 > 0) console.error(`  나머지 ${jobs.length - i - 1}건은 보내지 않았다`);
+      if (jobs.length - i - 1 > 0) console.error(`  안 보낸 작업: ${unsent(i + 1)}`);
       process.exitCode = 1;
       break;
     }
     sent.push({ id: r.id, name: j.name || `job_${i + 1}` });
     log(`  보냄 ${sent.length}/${jobs.length} ${j.name || ""} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
-      ` · 오늘 ${rsv.used - videosOf(j) + (cards.length || videosOf(j))}/${rsv.limit}개`);
+      ` · 오늘 ${rsv.used - need + (cards.length || need)}/${rsv.limit}개`);
     for (const c of cards) if (c.status === "failed") log(`    카드 ${cardLine(c)}`);
   }
   if (!sent.length) return;

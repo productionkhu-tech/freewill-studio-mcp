@@ -60,6 +60,36 @@ let token = "";
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 같은 PC 에서 보내기가 둘 이상 겹칠 때(예: Claude 와 Codex 가 동시에) "자리 확인 → 한 작업 넣기" 를 한 번에 하나만 하게 하는
+// 잠금. 그래야 동시 진행 한도를 둘이 같이 지킨다. 주인이 죽었거나(프로세스 없음) 15분 넘게 쥐고 있으면 풀어 준다.
+async function withSendLock(name, fn) {
+  const file = path.join(os.tmpdir(), `freewill-${name}-send.lock`);
+  const mine = JSON.stringify({ pid: process.pid, at: Date.now(), r: Math.random() });
+  for (;;) {
+    try {
+      fs.writeFileSync(file, mine, { flag: "wx" });
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+    }
+    let stale = false;
+    try {
+      const h = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (Date.now() - h.at > 15 * 60 * 1000) stale = true;
+      else { try { process.kill(h.pid, 0); } catch (k) { stale = k.code === "ESRCH"; } }
+    } catch {
+      try { stale = Date.now() - fs.statSync(file).mtimeMs > 5000; } catch { stale = false; }   // 막 만들어지는 중이면 기다린다
+    }
+    if (stale) { try { fs.rmSync(file, { force: true }); } catch {} continue; }
+    await sleep(300 + Math.random() * 400);
+  }
+  try {
+    return await fn();
+  } finally {
+    try { if (fs.readFileSync(file, "utf8") === mine) fs.rmSync(file, { force: true }); } catch {}
+  }
+}
+
 // 표 안의 이름·만료만 읽는다(서명은 커넥터가 확인한다). 없거나 만료면 null.
 function ticketOwner() {
   if (!FREEWILL_TICKET) return null;
@@ -211,93 +241,90 @@ async function main() {
     return;
   }
 
-  // 4) 탭 입력칸 — 이 스크립트가 바꿔 둔 동안(dirty)만 다르다. 다 넣었을 때, 그리고 자리를 기다려야 할 때
-  //    사람 것으로 돌려놓는다. 기다린 뒤에는 그사이 사람이 바꾼 걸 다시 담아 둔다.
-  let snap = { settings: base, refs: (await get("/api/refs"))?.refs || [] };
-  let dirty = false, refsTouched = false;
+  // 4) 작업마다 — 같은 PC 의 다른 보내기(예: Claude 와 Codex 가 동시에)와 겹치지 않게 PC 잠금 안에서
+  //    [자리·탭 확인 → 기록 → 입력칸 담아 두기 → 레퍼런스·설정·프롬프트 → Generate → 입력칸 되돌리기] 를 한 번에 한다.
+  //    그래서 동시 10장 한도를 둘이 같이 지키고, 서로의 입력칸을 덮지 않으며, 작업 사이에는 탭이 늘 사람 것이다.
   const galleryBefore = new Set(((await get(`/api/gallery?pid=${encodeURIComponent(tab.pid)}`))?.items || []).map((i) => i.filepath));
-  const restoreTab = async () => {
+  let refNoted = false;
+  const restoreTab = async (snap, refsTouched) => {
     const before = snap.settings;
     const restore = { pid: tab.pid, fixed_prompt: before.fixed_prompt ?? "", prompt_sections: before.prompt_sections ?? [] };
     for (const k of SETTING_KEYS) if (before[k] !== undefined) restore[k] = before[k];
     await post("/api/settings", restore);
-    if (refsTouched) {
-      await post("/api/refs/clear", { preserve_pinned: false });
-      for (const r of snap.refs.filter((r) => !r.empty && r.path)) await post("/api/refs/add-path", { filepath: r.path });
-      if (snap.refs.some((r) => r.empty)) log("  참고: 탭의 레퍼런스는 되돌렸지만 비어 있던 칸(번호 구멍)은 메워졌다");
-      if (snap.refs.some((r) => r.pinned)) log("  참고: 고정(핀)해 둔 레퍼런스는 다시 고정해야 한다");
+    if (!refsTouched) return;
+    await post("/api/refs/clear", { preserve_pinned: false });
+    for (const r of snap.refs.filter((r) => !r.empty && r.path)) await post("/api/refs/add-path", { filepath: r.path });
+    if (!refNoted && snap.refs.some((r) => r.empty || r.pinned)) {
+      log("  참고: 탭의 레퍼런스는 되돌렸지만 비어 있던 칸(번호 구멍)은 메워지고, 고정(핀)은 다시 걸어야 한다");
+      refNoted = true;
     }
-    dirty = false;
-    refsTouched = false;
   };
 
-  // 5) 작업마다: 자리 → 탭 → 레퍼런스 → 설정·프롬프트 → Generate
+  // 한 작업 넣기(잠금 안). 그사이 자리가 찼거나 탭이 바뀌었으면 false — 잠금을 풀고 다시 기다린다.
+  async function sendOne(j, i, need) {
+    if ((await inFlight()) + need > MAX_IN_FLIGHT) return false;
+    if ((await activeTab())?.pid !== tab.pid) return false;
+    const snap = { settings: await get("/api/settings"), refs: (await get("/api/refs"))?.refs || [] };
+    const model = j.model ?? defaults.model ?? snap.settings.model;
+    const resolution = j.resolution ?? defaults.resolution ?? snap.settings.resolution;
+    // 사용 기록 + 하루 한도 — 앱에 넣기 전에. 앱이 안 받으면 아래에서 무른다.
+    const rsv = await usageApi("POST", "/usage", {
+      app: "nanobanana", n: need, model, resolution, job: j.name || `job_${i + 1}`,
+      billing: `${billing.team_id} / ${billing.project_id}`, project: tab.name, pc: os.hostname(), user: os.userInfo().username,
+    });
+    if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
+    const refs = j.refs || [];
+    const refsTouched = refs.length > 0 || snap.refs.some((r) => !r.empty);
+    let gr = { ok: false };
+    try {
+      if (refsTouched) {
+        const err = await setRefs(refs);
+        if (err) throw new Error(err);
+      }
+      const s = { pid: tab.pid, fixed_prompt: "", prompt_sections: [String(j.prompt)] };
+      for (const k of SETTING_KEYS) {
+        const v = j[k] ?? defaults[k];
+        if (v !== undefined && v !== null) s[k] = v;
+      }
+      const sr = await post("/api/settings", s);
+      if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
+      for (let attempt = 0; attempt < 12; attempt++) {
+        gr = await post("/api/generate", {});
+        const e = String(gr.error || "");
+        if (gr.ok || !/Queue full|Stopping previous batch/i.test(e)) break;
+        await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
+      }
+    } finally {
+      if (!gr.ok) await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});
+      if (!KEEP) await restoreTab(snap, refsTouched);
+    }
+    if (gr.needs_billing) throw new Error("앱이 팀·프로젝트를 다시 골라 달라고 함");
+    if (!gr.ok) throw new Error(`Generate 실패 (${j.name || i + 1}): ${gr.error || gr.raw || "알 수 없음"}`);
+    return { model, resolution, rsv };
+  }
+
   let sent = 0;
   try {
     for (const [i, j] of jobs.entries()) {
       const need = countOf(j);
-      if ((await inFlight()) + need > MAX_IN_FLIGHT) {
-        if (dirty && !KEEP) await restoreTab();
+      let done = false;
+      while (!done) {
         await waitForRoom(need);
+        await waitForTab(tab);
+        done = await withSendLock("nanobanana", () => sendOne(j, i, need));
       }
-      await waitForTab(tab);
-      if (!dirty) snap = { settings: await get("/api/settings"), refs: (await get("/api/refs"))?.refs || [] };
-
-      // 사용 기록 + 하루 한도 — 앱에 넣기 전에. 앱이 거절하면 아래에서 무른다.
-      const model = j.model ?? defaults.model ?? snap.settings.model;
-      const resolution = j.resolution ?? defaults.resolution ?? snap.settings.resolution;
-      const rsv = await usageApi("POST", "/usage", {
-        app: "nanobanana", n: need, model, resolution, job: j.name || `job_${i + 1}`,
-        billing: `${billing.team_id} / ${billing.project_id}`, project: tab.name, pc: os.hostname(), user: os.userInfo().username,
-      });
-      if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
-      const undo = () => usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});   // 앱이 안 받았으면 기록을 무른다
-
-      let gr;
-      try {
-        const refs = j.refs || [];
-        if (refs.length || refsTouched || snap.refs.some((r) => !r.empty)) {
-          dirty = true;
-          refsTouched = true;
-          const err = await setRefs(refs);
-          if (err) throw new Error(err);
-        }
-        const s = { pid: tab.pid, fixed_prompt: "", prompt_sections: [String(j.prompt)] };
-        for (const k of SETTING_KEYS) {
-          const v = j[k] ?? defaults[k];
-          if (v !== undefined && v !== null) s[k] = v;
-        }
-        dirty = true;
-        const sr = await post("/api/settings", s);
-        if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
-
-        for (let attempt = 0; attempt < 12; attempt++) {
-          gr = await post("/api/generate", {});
-          const e = String(gr.error || "");
-          if (gr.ok || !/Queue full|Stopping previous batch/i.test(e)) break;
-          await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
-        }
-      } catch (e) {
-        await undo();
-        throw e;
-      }
-      if (!gr.ok) await undo();
-      if (gr.needs_billing) throw new Error("앱이 팀·프로젝트를 다시 골라 달라고 함");
-      if (!gr.ok) throw new Error(`Generate 실패 (${j.name || i + 1}): ${gr.error || gr.raw || "알 수 없음"}`);
       sent++;
-      log(`  보냄 ${sent}/${jobs.length} ${j.name || ""} · ${model} ${resolution} ×${need} · 오늘 ${rsv.used}/${rsv.limit}장`);
+      log(`  보냄 ${sent}/${jobs.length} ${j.name || ""} · ${done.model} ${done.resolution} ×${need} · 오늘 ${done.rsv.used}/${done.rsv.limit}장`);
       await sleep(250);
     }
   } catch (e) {
-    console.error(`멈춤: ${e.message}${sent < jobs.length ? ` — ${sent}/${jobs.length}건까지 들어감` : ""}`);
+    console.error(`멈춤: ${e.message}`);
+    if (sent < jobs.length) {
+      console.error(`  ${sent}/${jobs.length}건까지 들어감 · 안 보낸 작업: ${jobs.slice(sent).map((j, k) => j.name || `job_${sent + k + 1}`).join(", ")}`);
+    }
     process.exitCode = 1;
   }
-
-  // 6) 탭 입력값 되돌리기 — 들어간 작업은 각자 설정을 저장해 둬서 영향 없다
-  if (dirty && !KEEP) {
-    await restoreTab();
-    log(`  "${tab.name}" 탭 입력값을 원래대로 돌려놓음`);
-  }
+  if (sent && !KEEP) log(`  "${tab.name}" 탭 입력칸은 작업마다 원래대로 돌려놓았다`);
   if (!sent) return;
 
   // 6) 지켜보기 — 탭 요약만 읽는다
