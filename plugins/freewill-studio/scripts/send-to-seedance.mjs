@@ -103,6 +103,8 @@ async function withSendLock(name, fn) {
   }
 }
 
+// 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
+const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 3;   // 열린 프로젝트에서 동시에 진행 중인(대기 포함) 영상
 const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]);
 // 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
@@ -138,7 +140,7 @@ async function usageApi(method, p, body) {
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000),
     });
   } catch {
-    throw new Stop("사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인할 것");
+    throw new Stop(`사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인하거나, ${BLOCKED}`);
   }
   const j = await r.json().catch(() => ({}));
   return { http: r.status, ...j };
@@ -172,7 +174,11 @@ function fail(msg) {
 
 async function appStatus(manual) {
   let s;
-  try { s = await get(`/api/agent/status${manual ? `?manual=${encodeURIComponent(manual)}` : ""}`); } catch { fail("시댄스가 꺼져 있다 — 앱을 켜 달라고 할 것"); }
+  try { s = await get(`/api/agent/status${manual ? `?manual=${encodeURIComponent(manual)}` : ""}`); }
+  catch (e) {
+    const code = e?.cause?.code || (e?.name === "TimeoutError" ? "시간 초과" : e?.name || "오류");
+    fail(code === "ECONNREFUSED" ? "시댄스가 꺼져 있다 — 앱을 켜 달라고 할 것" : `시댄스에 연결 못 함 (${code}) — ${BLOCKED}`);
+  }
   // 작업함이 없는 옛 버전은 이 주소에 화면(HTML)이나 404 를 준다.
   if (!s || s.ok !== true) fail("이 PC 의 시댄스는 에이전트 연결 전 버전이다 — 앱을 껐다 켜서 업데이트(26.10.304 이상)해 달라고 할 것");
   return s;

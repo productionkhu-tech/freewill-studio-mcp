@@ -50,6 +50,8 @@ const KEEP = flag("--keep");
 const DRY = flag("--dry-run"); // 앱 연결·탭·팀/프로젝트만 확인하고 아무것도 보내지 않음 (비용 0)
 const TAB = opt("--tab");
 const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent"];
+// 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
+const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
 
 // 커넥터 — 사용 기록과 하루 한도. 표는 커넥터가 내려줄 때 채운다(이 줄의 모양을 바꾸지 말 것).
@@ -116,7 +118,7 @@ async function usageApi(method, p, body) {
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000),
     });
   } catch {
-    throw new Error("사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인할 것");
+    throw new Error(`사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인하거나, ${BLOCKED}`);
   }
   const j = await r.json().catch(() => ({}));
   return { http: r.status, ...j };
@@ -203,8 +205,11 @@ async function main() {
 
   // 1) 앱이 켜져 있는지, 보안 토큰
   let html = "";
-  try { html = await (await fetch(`${NB}/`, { signal: AbortSignal.timeout(3000) })).text(); } catch {}
+  let netCode = "";
+  try { html = await (await fetch(`${NB}/`, { signal: AbortSignal.timeout(3000) })).text(); }
+  catch (e) { netCode = e?.cause?.code || (e?.name === "TimeoutError" ? "시간 초과" : e?.name || "오류"); }
   token = html.match(/<meta name="nb-csrf" content="([^"]+)"/)?.[1] || "";
+  if (!token && netCode && netCode !== "ECONNREFUSED") fail(`나노바나나에 연결 못 함 (${netCode}) — ${BLOCKED}`);
   if (!token) fail("나노바나나가 꺼져 있다 — 앱을 켜 달라고 할 것");
 
   // 2) 어느 탭으로 들어가는지, 팀·프로젝트가 골라져 있는지

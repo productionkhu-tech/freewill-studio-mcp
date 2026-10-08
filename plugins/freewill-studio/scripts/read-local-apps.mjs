@@ -25,9 +25,12 @@ const SD = process.env.FREEWILL_SD_URL || "http://127.0.0.1:3000";
 
 async function nanobanana() {
   const out = ["## 나노바나나 (이미지)"];
-  const [ver, latest] = await Promise.all([getJson(`${NB}/api/version`, 1500), latestRelease("freewill-nanobanana")]);
+  const [probe, latest] = await Promise.all([reach(`${NB}/api/version`, 1500), latestRelease("freewill-nanobanana")]);
+  const ver = probe.json;
   if (!ver) {
-    out.push("- **꺼져 있음** — 이 PC 앱의 규칙·설정을 읽으려면 나노바나나를 켜 달라고 할 것. 그 전까지는 `references/app-rules.md` 스냅샷.");
+    out.push(probe.off
+      ? "- **꺼져 있음** — 이 PC 앱의 규칙·설정을 읽으려면 나노바나나를 켜 달라고 할 것. 그 전까지는 `references/app-rules.md` 스냅샷."
+      : `- **연결 못 함 (${probe.code})** — ${BLOCKED}`);
     if (latest) out.push(`- 최신 릴리즈: ${latest}`);
     return out;
   }
@@ -65,14 +68,16 @@ async function seedance() {
   const out = ["## 시댄스 (영상)"];
   const res = seedanceResources();
   const version = res ? asarVersion(path.join(res, "app.asar")) : null;
-  const [team, latest] = await Promise.all([getJson(`${SD}/api/team`, 1500), latestRelease("freewill-seedance")]);
+  const [probe, latest] = await Promise.all([reach(`${SD}/api/team`, 1500), latestRelease("freewill-seedance")]);
+  const team = probe.json;
+  if (!team && !probe.off) out.push(`- **연결 못 함 (${probe.code})** — ${BLOCKED}`);
 
   if (!res && !team) {
     out.push("- **설치돼 있지 않거나 찾지 못함** — 사용자에게 시댄스 설치 여부를 확인할 것.");
     if (latest) out.push(`- 최신 릴리즈: ${latest}`);
     return out;
   }
-  out.push(`- ${team ? "실행 중" : "꺼져 있음 (설치 파일에서 읽음)"} · 이 PC 버전 **${version || "?"}**${releaseNote(version, latest)}`);
+  out.push(`- ${team ? "실행 중" : probe.off ? "꺼져 있음 (설치 파일에서 읽음)" : "연결 못 함 (설치 파일에서 읽음)"} · 이 PC 버전 **${version || "?"}**${releaseNote(version, latest)}`);
   if (team?.known) out.push(`- 팀: ${team.team}`);
   out.push("- 프로젝트는 앱 화면에서 고른다. 프로젝트마다 쓸 수 있는 모델이 다르고, 권한 없는 모델은 앱이 막는다.");
   // 자동 보내기(에이전트 작업함, 26.10.304~). 켜져 있으면 지금 화면 상태까지, 꺼져 있으면 버전으로만 판단한다.
@@ -236,6 +241,22 @@ function compareVersions(a, b) {
     if (d) return d;
   }
   return 0;
+}
+
+// 앱이 켜져 있는지 — 연결 거부(ECONNREFUSED)만 "꺼짐" 이다. 그 밖의 실패(EACCES·시간 초과 등)는 이 실행 환경이 네트워크를
+// 막은 것일 수 있어서(Codex 샌드박스) "꺼짐" 이라고 하지 않는다 — 그렇게 말하면 에이전트가 사람에게 앱을 다시 켜라고만 한다.
+const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
+async function reach(url, ms) {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
+    const t = r.ok ? await r.text() : null;
+    let json = null;
+    try { json = t ? JSON.parse(t) : null; } catch {}
+    return { json, off: false, code: `HTTP ${r.status}` };
+  } catch (e) {
+    const code = e?.cause?.code || (e?.name === "TimeoutError" ? "시간 초과" : e?.name || "오류");
+    return { json: null, off: code === "ECONNREFUSED", code };
+  }
 }
 
 async function getText(url, ms, headers = {}) {

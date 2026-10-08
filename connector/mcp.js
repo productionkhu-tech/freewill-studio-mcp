@@ -54,6 +54,8 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 > - \`official/imagegen/references/prompting.md\` → \`"official:imagegen/prompting"\`, \`sample-prompts.md\` → \`"official:imagegen/sample-prompts"\`
 > - \`<플러그인 폴더>/scripts/<이름>.mjs\` → \`freewill_script("<이름>")\` 로 받아 **임시 폴더에 .mjs 로 저장한 뒤** \`node\` 로 실행한다.
 >   받은 스크립트에는 로그인한 사람의 표가 들어 있어 ${TICKET_HOURS}시간 동안 쓸 수 있다 — 만료됐다고 나오면 다시 받는다.
+>   **Codex 는 이 스크립트들을 네트워크 허용(샌드박스 밖)으로 실행 승인을 받아 돌린다** — 샌드박스 안에서는 앱(127.0.0.1)·커넥터에
+>   닿지 못해 "연결 못 함" 이 나온다(앱이 꺼진 게 아니다).
 >   PC 에서 명령을 돌릴 수 없는 곳(claude.ai 웹·Cowork·ChatGPT 웹)에서는 앱을 직접 다루지 못한다 — 프롬프트와 설정만 정리해 준다.
 
 `;
@@ -148,7 +150,8 @@ async function callTool(name, args, env, props) {
     const ticket = await makeTicket(env, props);
     const ready = code.replace(/^const FREEWILL_TICKET = "";$/m, `const FREEWILL_TICKET = "${ticket}";`);
     return toolText(
-      `아래 원문을 임시 폴더에 \`${key}.mjs\` 로 저장한 뒤 \`node <저장한 경로> ...\` 로 실행한다. 사용법은 원문 머리말.\n` +
+      `아래 js 코드 블록 안의 코드만 임시 폴더에 \`${key}.mjs\` 로 저장한 뒤 \`node <저장한 경로> ...\` 로 실행한다(이 안내 문장은 빼고). 사용법은 원문 머리말.\n` +
+        `Codex 는 네트워크 허용(샌드박스 밖)으로 실행 승인을 받아 돌린다 — 샌드박스 안에서는 앱·커넥터에 닿지 못한다.\n` +
         `${props?.email || "로그인한 사람"} 의 표가 들어 있어 ${TICKET_HOURS}시간 동안 쓸 수 있다(만료되면 다시 받는다).\n\n` +
         "```js\n" + ready + "\n```",
     );
