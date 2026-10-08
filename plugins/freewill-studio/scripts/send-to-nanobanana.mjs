@@ -35,6 +35,7 @@
 //       { "name": "loc_01", "prompt": "...", "model": "seedream-5-0-pro-260628", "resolution": "2K" }
 //     ]
 //   }
+// 프롬프트 본문은 영어(그림에 넣을 글자만 따옴표 안에 그 언어로) — 한국어 본문이면 보내지 않는다. 일부러면 "prompt_language": "ko".
 
 import fs from "node:fs";
 import os from "node:os";
@@ -219,6 +220,13 @@ async function main() {
   const billing = await get("/api/billing/state");
   if (!(billing?.confirmed && billing.project_id)) fail(`"${tab.name}" 탭에 팀·프로젝트가 안 골라져 있다 — 앱에서 먼저 고르게 할 것`);
   log(`탭 "${tab.name}" · ${billing.team_id} / ${billing.project_id} 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"}`);
+  // 프롬프트 본문은 영어 — 따옴표 안(그림 속 글자)만 그 언어로. 일부러 한국어면 "prompt_language": "ko" (시댄스와 같은 규칙)
+  const korean = jobs.filter((j) => (j.prompt_language ?? defaults.prompt_language) !== "ko" &&
+    /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(String(j.prompt).replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/g, "")));
+  if (korean.length) {
+    fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'): ${korean.map((j) => j.name || "(이름 없음)").join(", ")} — ` +
+      "본문이 한국어다. 영어로 쓴다(그림에 넣을 글자만 따옴표 안에 그 언어로). 사용자용 한국어 요약은 확인 카드에");
+  }
 
   // 3) 이번에 넣을 장수와 한도 — 하루 한도에 걸리면 하나도 보내지 않는다
   const base = await get("/api/settings");

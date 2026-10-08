@@ -40,13 +40,15 @@
 //                   "ratio": "16:9", "duration": 10, "resolution": "720p", "draft": true,
 //                   "output_count": 1, "generate_audio": true },
 //     "jobs": [
-//       { "name": "cut_01", "prompt": "[Image 1] 의 인물이 ...", "refs": ["C:/path/a.png"] },
+//       { "name": "cut_01", "prompt": "The woman in [Image 1] walks ...", "refs": ["C:/path/a.png"] },
 //       { "name": "cut_02", "prompt": "...", "mode": "image_to_video_first_last",
 //         "refs": [{ "path": "C:/a.png", "role": "first_frame" }, { "path": "C:/b.png", "role": "last_frame" }] }
 //     ]
 //   }
 // 설정 키와 값의 범위는 설명서에. 안 준 값은 앱의 지금 설정을 따른다(모델·모드를 바꾸면 그 조합의 기본값).
 // 레퍼런스 순서가 프롬프트의 [Image N]·[Video N]·[Audio N] 번호다(종류별로 센다). 첫·끝 프레임은 role 로 정한다.
+// 프롬프트는 보내기 전에 점검한다(lintPrompt) — 본문은 영어, 앱 표기 [Image N], 첫·끝 프레임 모드엔 [Image N] 없음.
+// 일부러 한국어 프롬프트로 보내려면 작업(또는 defaults)에 "prompt_language": "ko".
 
 import fs from "node:fs";
 import os from "node:os";
@@ -72,6 +74,34 @@ const readJsonArg = (raw) => {
 
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 프롬프트 점검 — 앱 표기·모드와 어긋나는 쓰기를 글로 돌려준다(10/8: GPT 가 한국어 본문, 첫 프레임 모드에 [Image 1]).
+// 따옴표 안(대사·화면 글자)은 한국어여도 된다. 첫·끝 프레임은 앱이 role 로 묶고 알약(바인딩 표시)으로 안 바꾼다.
+const KINDS = { Image: /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif)$/i, Video: /\.(mp4|mov|m4v|webm)$/i, Audio: /\.(wav|mp3)$/i };
+const FRAME_MODES = ["image_to_video_first", "image_to_video_first_last"];
+function lintPrompt(j, { mode, omniTask, lang }) {
+  const p = String(j.prompt);
+  const out = [];
+  const bare = p.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/g, "");
+  if (lang !== "ko" && /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(bare)) {
+    out.push("본문이 한국어다 — 영어로 쓴다(대사·화면 글자만 따옴표 안에 그 언어로). 사용자용 한국어 요약은 확인 카드에");
+  }
+  if (/@(?:Image|Video|Audio) ?\d/i.test(p)) out.push("@Image1 은 공식 스킬의 표기다 — 앱에서는 [Image 1] · [Video 1] · [Audio 1] (대괄호, 띄어 씀)");
+  const marks = [...p.matchAll(/\[(Image|Video|Audio) (\d+)\]/g)];
+  if (omniTask === "edit" || omniTask === "extend") {
+    if (marks.length) out.push(`Omni ${omniTask} 는 앱이 [Video N] 같은 표시를 지우고 보낸다 — "the source video" 처럼 말로 쓴다`);
+  } else if (FRAME_MODES.includes(mode) || omniTask === "image_to_video" || j.refs.some((r) => r.role === "first_frame" || r.role === "last_frame")) {
+    if (marks.length) out.push("첫·끝 프레임 모드는 그림을 refs 의 role 로 묶는다 — [Image N] 을 쓰지 말고 그 장면에서 무엇이 일어나는지만 쓴다(앱이 프레임은 알약으로 안 바꿔 글자로 남는다)");
+  } else {
+    const have = { Image: 0, Video: 0, Audio: 0 };
+    for (const r of j.refs) for (const k of Object.keys(KINDS)) if (KINDS[k].test(r.path)) have[k]++;
+    for (const [m, k, n] of marks) if (Number(n) > have[k]) out.push(`${m} — 넘긴 레퍼런스 중 ${k} 는 ${have[k]}개뿐이다`);
+    if ((mode === "multimodal_reference" || omniTask === "reference_to_video") && j.refs.length && !marks.length) {
+      out.push("레퍼런스→영상인데 [Image N] 이 없다 — 레퍼런스마다 맡을 역할을 [Image 1] 처럼 적어 묶는다(앱이 알약으로 바인딩한다)");
+    }
+  }
+  return [...new Set(out)];
+}
 
 // 같은 PC 에서 보내기가 둘 이상 겹칠 때(예: Claude 와 Codex 가 동시에) "자리 확인 → 한 작업 넣기" 를 한 번에 하나만 하게 하는
 // 잠금. 그래야 동시 진행 한도를 둘이 같이 지킨다. 주인이 죽었거나(프로세스 없음) 15분 넘게 쥐고 있으면 풀어 준다.
@@ -389,7 +419,7 @@ async function main() {
     return out;
   };
   const unknown = [...new Set(jobs.flatMap((j) => Object.keys({ ...defaults, ...j })).filter((k) =>
-    !keys.includes(k) && !["name", "prompt", "refs"].includes(k)))];
+    !keys.includes(k) && !["name", "prompt", "refs", "prompt_language"].includes(k)))];
   if (unknown.length) log(`  참고: 설명서에 없는 키는 보내지 않는다 — ${unknown.join(", ")}`);
   for (const j of jobs) {
     const model = j.model ?? defaults.model;
@@ -397,6 +427,11 @@ async function main() {
       log(`  주의: ${j.name || ""} 의 모델 ${model} 은 이 과금 프로젝트에 권한이 없다 — 앱이 막는다. 다른 모델을 사용자에게 물을 것`);
     }
   }
+  // dry-run 에서 먼저 걸리게 — 확인 카드 전에 고친다
+  const problems = jobs.flatMap((j) =>
+    lintPrompt(j, { mode: j.mode ?? defaults.mode, omniTask: j.omniTask ?? defaults.omniTask, lang: j.prompt_language ?? defaults.prompt_language })
+      .map((p) => `${j.name || "(이름 없음)"}: ${p}`));
+  if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}`);
 
   // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
   const videosOf = (j) => {
