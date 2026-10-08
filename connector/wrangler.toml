@@ -13,7 +13,7 @@ workers_dev = true
 PUBLIC_ORIGIN = "https://freewill-mcp.production-khu.workers.dev"
 ALLOWED_DOMAIN = "studiofreewill.com"
 # 구글 클라우드 콘솔에서 만든 OAuth 클라이언트 ID (공개돼도 되는 값)
-GOOGLE_CLIENT_ID = ""
+GOOGLE_CLIENT_ID = "87813803557-nhspjr2gc55679ln4kkcjgfjb4cjdgat.apps.googleusercontent.com"
 
 # 로그인 토큰 (OAuth 라이브러리)
 [[kv_namespaces]]
