@@ -136,7 +136,8 @@ plugins/freewill-studio/
   .codex-plugin/plugin.json            GPT 용 (version 있음 — 자동으로 올라감)
   scripts/read-local-apps.mjs          이 PC 앱의 버전·모델 규칙·지금 설정 읽기
   skills/freewill-generate/            ← 두 쪽이 같이 쓰는 스킬
-    SKILL.md                           질문 → 공식 가이드 → 확인 카드 → 앱
+    SKILL.md                           시작점 — 로그인, 그리고 "최신 지침은 커넥터에서"
+    GUIDE.md                           전체 지침(질문 → 공식 가이드 → 확인 카드 → 앱) — 커넥터가 이걸 내려준다
     references/
       read-apps-without-node.md        Node 없는 PC 에서 앱 읽는 법
       app-rules.md                     앱 규칙 스냅샷 (마지막 수단)
@@ -178,7 +179,7 @@ node sync/sync.mjs --accept higgsfield-generate
 ### 새 모델이 나오면
 
 1. 이슈로 새 공식 스킬 알림이 온다 (예: `sd3-pe`).
-2. `sync/sources.json` 의 `tracked` 에 추가하고, `SKILL.md` 4단계 대응표에 모델 ID ↔ 스킬을 연결한다.
+2. `sync/sources.json` 의 `tracked` 에 추가하고, `GUIDE.md` 4단계 대응표에 모델 ID ↔ 스킬을 연결한다.
 3. 앱에 새 모델이 들어가면 `references/app-rules.md` 도 갱신한다 (앱 MCP 가 생기면 불필요).
 
 ## 개인 스킬

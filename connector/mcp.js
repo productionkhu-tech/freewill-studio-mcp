@@ -15,9 +15,9 @@ const PLUGIN = "plugins/freewill-studio";
 const SKILL = `${PLUGIN}/skills/freewill-generate`;
 const REPO_URL = "https://github.com/productionkhu-tech/freewill-studio-mcp";
 
-// topic → 저장소 경로. 지침(SKILL.md) 안에 적힌 상대 경로를 이 이름으로 바꿔 받는다.
+// topic → 저장소 경로. 전체 지침은 GUIDE.md(플러그인의 SKILL.md 는 "여기서 최신본을 받으라" 는 시작점뿐) — 지침 안의 상대 경로를 이 이름으로 바꿔 받는다.
 const GUIDES = {
-  start: `${SKILL}/SKILL.md`,
+  start: `${SKILL}/GUIDE.md`,
   interview: `${SKILL}/references/interview.md`,
   "house-rules": `${SKILL}/references/house-rules.md`,
   "app-rules": `${SKILL}/references/app-rules.md`,

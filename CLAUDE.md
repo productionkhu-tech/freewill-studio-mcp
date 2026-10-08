@@ -15,7 +15,7 @@
 ## 절대 하지 말 것
 
 1. **`plugins/freewill-studio/skills/freewill-generate/official/` 을 손으로 고치지 말 것.** 동기화가 덮어쓴다.
-   공식 스킬과 다르게 써야 할 부분은 `SKILL.md` 4단계 대응표의 "건너뛰는 부분"에 적는다.
+   공식 스킬과 다르게 써야 할 부분은 `GUIDE.md` 4단계 대응표의 "건너뛰는 부분"에 적는다.
 2. **Claude 쪽(`.claude-plugin/`) plugin.json · marketplace.json 에 `version` 을 넣지 말 것.** 비워 두면 커밋마다 새 버전으로
    잡혀 자동 업데이트가 따라간다. 넣으면 매번 올려야 하고, 깜빡하면 아무도 업데이트를 못 받는다.
    **OpenAI 쪽(`.codex-plugin/plugin.json`)은 반대로 version 이 있어야 한다** — Codex 는 버전 번호로 폴더를 나눠서, 번호가 같으면
@@ -34,7 +34,7 @@
 
 ## 함께 고쳐야 하는 것
 
-- 공식 스킬 추가·삭제: `sync/sources.json` 의 `tracked` + `SKILL.md` 4단계 대응표 (+ `models` 목록)
+- 공식 스킬 추가·삭제: `sync/sources.json` 의 `tracked` + `GUIDE.md` 4단계 대응표 (+ `models` 목록)
 - 앱에 모델이 추가·변경됨: `references/app-rules.md` (앱 MCP 의 규칙 도구가 생기면 이 파일은 지운다)
   - 나노바나나 원본: `나노바나나 api/static/app.js` 의 `MODEL_SPECS`
   - 시댄스 원본: 렌더러의 모델 목록(`Rt`)과 2.5 사양(`kA`) — 설치본 `resources/dist/assets/index-*.js`

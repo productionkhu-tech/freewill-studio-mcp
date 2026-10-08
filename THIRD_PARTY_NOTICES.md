@@ -1,9 +1,9 @@
 # Third-party notices / 외부 공식 스킬 출처
 
 `plugins/freewill-studio/skills/freewill-generate/official/` contains official prompting skills copied **unmodified**
-from the sources below by `sync/sync.mjs`. How they are used is defined in our own `SKILL.md`.
+from the sources below by `sync/sync.mjs`. How they are used is defined in our own `GUIDE.md`.
 
-`official/` 의 내용은 아래 원본을 고치지 않고 그대로 받아 온 것이다. 쓰는 방식만 우리 스킬(`SKILL.md`)에서 정한다.
+`official/` 의 내용은 아래 원본을 고치지 않고 그대로 받아 온 것이다. 쓰는 방식만 우리 지침(`GUIDE.md`)에서 정한다.
 
 | Folder | Source | License |
 |---|---|---|

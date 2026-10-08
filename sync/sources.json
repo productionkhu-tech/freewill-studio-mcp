@@ -1,5 +1,5 @@
 {
-  "$comment": "공식 프롬프팅 스킬 목록. tracked = 받아서 플러그인에 넣는 것, watch = 새 스킬이 생기는지 지켜보는 원본. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept 로 반영. models 는 이 가이드를 쓰는 앱 모델 ID (SKILL.md 대응표와 같이 고칠 것).",
+  "$comment": "공식 프롬프팅 스킬 목록. tracked = 받아서 플러그인에 넣는 것, watch = 새 스킬이 생기는지 지켜보는 원본. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept 로 반영. models 는 이 가이드를 쓰는 앱 모델 ID (GUIDE.md 대응표와 같이 고칠 것).",
   "skillsCli": "skills@1.7.0",
   "tracked": [
     {

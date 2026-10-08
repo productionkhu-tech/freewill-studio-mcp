@@ -136,7 +136,7 @@ async function discover() {
     const re = new RegExp(w.filter || ".", "i");
     const fresh = list.filter((s) => !prev.includes(s.name) && !tracked.has(s.name) && re.test(`${s.name} ${s.description}`));
     for (const s of fresh) {
-      attention.push(`- 🆕 **${s.name}** — ${w.source} 에 새로 올라옴${s.description ? `: ${s.description}` : ""}\n  → 우리 앱 모델용이면 \`sync/sources.json\` tracked 에 추가하고 SKILL.md 대응표에 연결`);
+      attention.push(`- 🆕 **${s.name}** — ${w.source} 에 새로 올라옴${s.description ? `: ${s.description}` : ""}\n  → 우리 앱 모델용이면 \`sync/sources.json\` tracked 에 추가하고 GUIDE.md 대응표에 연결`);
     }
     for (const t of sources.tracked.filter((t) => t.source === w.source && !names.includes(t.skill))) {
       noteFailure(`사라짐:${t.skill}`, `**${t.skill}** 이 ${w.source} 목록에서 사라짐 — 이름이 바뀌었거나 새 버전으로 대체됐는지 확인`);
