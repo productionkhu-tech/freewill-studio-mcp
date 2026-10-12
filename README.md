@@ -40,7 +40,7 @@ https://freewill-mcp.production-khu.workers.dev/mcp
 
 | 어디서 | 연결하는 곳 |
 |---|---|
-| **Claude** (웹·데스크톱·Code 탭 한 번에) | 설정 → 커넥터 → **커스텀 커넥터 추가** → 이름 `freewill`, 위 주소 → **연결**(구글 로그인). 회사 플랜에서 관리자만 추가할 수 있게 돼 있으면 관리자가 한 번 추가하고 팀원은 "연결"만 누른다 |
+| **Claude** (웹·데스크톱·Code 탭 한 번에) | 설정 → 커넥터 → **커스텀 커넥터 추가** → 이름 `프리윌 스튜디오 MCP`, 위 주소 → **연결**(구글 로그인). 회사 플랜에서 관리자만 추가할 수 있게 돼 있으면 관리자가 한 번 추가하고 팀원은 "연결"만 누른다 |
 | Claude Code (터미널) | `claude mcp add --scope user --transport http freewill https://freewill-mcp.production-khu.workers.dev/mcp` → `/mcp` 에서 freewill 인증 |
 | **Codex** (앱·CLI) | **아래 플러그인을 설치한다** — 커넥터가 같이 등록된다. 처음 보낼 때 에이전트가 구글 로그인 창을 띄우고, 사람은 회사 계정만 고른다(터미널 명령 없음) |
 | ChatGPT | 설정 → 앱·커넥터에서 커스텀 커넥터(MCP)로 위 주소 추가 (플랜·워크스페이스 설정에 따라 관리자가 해야 할 수 있음) |

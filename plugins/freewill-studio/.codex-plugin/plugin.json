@@ -20,7 +20,7 @@
   "skills": "./skills/",
   "mcpServers": "./.codex-mcp.json",
   "interface": {
-    "displayName": "프리윌 스튜디오",
+    "displayName": "프리윌 스튜디오 MCP",
     "shortDescription": "나노바나나·시댄스를 대화로 — 회사 구글 로그인",
     "longDescription": "설치하면 프리윌 스튜디오 MCP 커넥터가 같이 연결된다. 처음 쓸 때 회사 구글 계정으로 한 번 로그인하면(7일 유지) 이미지(나노바나나)·영상(시댄스) 작업을 말로 맡길 수 있다 — 이 PC 앱의 규칙을 읽고, 필요한 것만 묻고, 공식 프롬프팅 가이드대로 쓴 뒤 확인을 받아 앱으로 보낸다.",
     "developerName": "프리윌루전",
