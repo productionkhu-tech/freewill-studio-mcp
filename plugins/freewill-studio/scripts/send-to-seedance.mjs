@@ -80,7 +80,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 따옴표 안(대사·화면 글자)은 한국어여도 된다. 첫·끝 프레임은 앱이 role 로 묶고 알약(바인딩 표시)으로 안 바꾼다.
 const KINDS = { Image: /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif)$/i, Video: /\.(mp4|mov|m4v|webm)$/i, Audio: /\.(wav|mp3)$/i };
 const FRAME_MODES = ["image_to_video_first", "image_to_video_first_last"];
-function lintPrompt(j, { mode, omniTask, lang }) {
+function lintPrompt(j, { mode, omniTask, lang, model }) {
   const p = String(j.prompt);
   const out = [];
   const bare = p.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/g, "");
@@ -99,6 +99,34 @@ function lintPrompt(j, { mode, omniTask, lang }) {
     for (const [m, k, n] of marks) if (Number(n) > have[k]) out.push(`${m} — 넘긴 레퍼런스 중 ${k} 는 ${have[k]}개뿐이다`);
     if ((mode === "multimodal_reference" || omniTask === "reference_to_video") && j.refs.length && !marks.length) {
       out.push("레퍼런스→영상인데 [Image N] 이 없다 — 레퍼런스마다 맡을 역할을 [Image 1] 처럼 적어 묶는다(앱이 알약으로 바인딩한다)");
+    }
+  }
+  // 시댄스 2.5 공식 템플릿(sd25-pe) 기준 — 10/12 알파젠 10케이스를 코드 틀로 찍어내 끝 상태·대사 없음 제약이 빠지고 틀 문구가 남았던 것
+  if (/seedance-2-5/.test(model || "") && lang !== "ko") {
+    const ev = p.match(/【Event Script】([\s\S]*?)(?=【|$)/);
+    if (ev && !/\bat the end\b/i.test(ev[1])) {
+      out.push("【Event Script】 에 끝 상태가 없다 — 공식 템플릿대로 At the start … / Principal event … / At the end …(끝의 위치·자세·상태)");
+    }
+    // 대사 표시는 { } — 엘리먼트 멘션 @{이름} 은 대사가 아니다
+    const talks = /(^|[^@])\{[^}\n]+\}|\b(says|said|asks|whispers|shouts|speaks|replies|calls out|sings)\b/i.test(p);
+    if (!talks && !(/\bno (dialogue|narration|speech|voice-?over)\b/i.test(p) && /\b(subtitles?|on-screen text|captions?)\b/i.test(p))) {
+      out.push("대사 없는 장면 제약이 없다 — 공식대로 'No dialogue or narration; mouths stay naturally closed. No subtitles or on-screen text.' 를 넣는다");
+    }
+    if (/<(subject|summary|placeholder|relationship|fixed features|observable state|final visual state|initial state|starting state|main event)\b[^>]*>/i.test(p)) {
+      out.push("템플릿 자리표(<subject> 등)가 남았다 — 그 장면의 구체 내용으로 바꾼다");
+    }
+    for (const line of p.split("\n")) {
+      const use = line.match(/use only ([^;.]*)/i)?.[1] || "";
+      if (/\b[a-z]+ or [a-z]+\b/i.test(use)) {
+        out.push(`'use only' 목록에 'A or B' 같은 틀 문구가 남았다 — 이 그림에서 쓸 것만 구체적으로: "${use.trim().slice(0, 70)}"`);
+        break;
+      }
+    }
+    for (const line of p.split("\n")) {
+      if (/use only/i.test(line) && /\b(views|sheet|turnaround|jointly define)\b/i.test(line) && !/\b(backdrop|background|panel|layout)\b/i.test(line)) {
+        out.push("인물 시트 레퍼런스에 제외 문구가 없다 — 같은 줄에 \"do not use the sheet's gray backdrop or panel layout\"");
+        break;
+      }
     }
   }
   return [...new Set(out)];
@@ -437,8 +465,12 @@ async function main() {
   }
   // dry-run 에서 먼저 걸리게 — 확인 카드 전에 고친다
   const problems = jobs.flatMap((j) =>
-    lintPrompt(j, { mode: j.mode ?? defaults.mode, omniTask: j.omniTask ?? defaults.omniTask, lang: j.prompt_language ?? defaults.prompt_language })
+    lintPrompt(j, { mode: j.mode ?? defaults.mode, omniTask: j.omniTask ?? defaults.omniTask, lang: j.prompt_language ?? defaults.prompt_language, model: j.model ?? defaults.model })
       .map((p) => `${j.name || "(이름 없음)"}: ${p}`));
+  // 여러 작업을 코드 틀로 찍어내면 목표 문장이 같아진다 — 프롬프트가 통째로 같은(일부러 다시 보내는) 경우는 빼고
+  const goals = jobs.map((j) => ({ p: String(j.prompt), g: String(j.prompt).match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1]?.trim() }));
+  const same = goals.filter((x, i) => x.g && goals.some((y, k) => k !== i && y.g === x.g && y.p !== x.p));
+  if (same.length) problems.push(`여러 작업의 【Generation Goal】 이 똑같다(${same.length}건) — 장면마다 주 대상·주 사건을 그 장면 내용으로 쓴다(공통 문장을 끼워 넣지 않는다)`);
   if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}`);
 
   // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
