@@ -103,6 +103,11 @@ function lintPrompt(j, { mode, omniTask, lang, model }) {
   }
   // 시댄스 2.5 공식 템플릿(sd25-pe) 기준 — 10/12 알파젠 10케이스를 코드 틀로 찍어내 끝 상태·대사 없음 제약이 빠지고 틀 문구가 남았던 것
   if (/seedance-2-5/.test(model || "") && lang !== "ko") {
+    // 공식 목표 문장 = "Generate <core event>. The core subject is <subject>, and the principal event is <summary>."
+    const goal = p.match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1] || "";
+    if (/\b(event|events|action|sequence|script) below\b|\bthe referenced (subjects?|assets?|characters?)\b/i.test(goal)) {
+      out.push("【Generation Goal】 이 '레퍼런스 주체'·'아래 사건'만 가리킨다 — 공식 템플릿대로 핵심 주체와 주된 사건을 목표 문장에 직접 쓴다");
+    }
     const ev = p.match(/【Event Script】([\s\S]*?)(?=【|$)/);
     if (ev && !/\bat the end\b/i.test(ev[1])) {
       out.push("【Event Script】 에 끝 상태가 없다 — 공식 템플릿대로 At the start … / Principal event … / At the end …(끝의 위치·자세·상태)");
