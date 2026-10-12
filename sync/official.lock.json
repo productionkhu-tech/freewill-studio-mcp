@@ -82,9 +82,7 @@
         "references/sample-prompts.md"
       ],
       "kind": "skill",
-      "families": [
-        "gpt-image"
-      ]
+      "families": []
     },
     "higgsfield-generate": {
       "vendor": "Higgsfield",
@@ -129,7 +127,8 @@
       "appliedAt": "2026-10-12",
       "files": [
         "GUIDE.md"
-      ]
+      ],
+      "live": false
     },
     "veo": {
       "kind": "doc",
@@ -146,10 +145,12 @@
       "appliedAt": "2026-10-12",
       "files": [
         "GUIDE.md"
-      ]
+      ],
+      "live": false
     },
     "seedream": {
       "kind": "doc",
+      "live": true,
       "vendor": "BytePlus",
       "source": "https://docs.byteplus.com/en/docs/ModelArk/seedream-4-0-5-0-prompt-guide",
       "mode": "auto",
@@ -158,12 +159,28 @@
         "seedream"
       ],
       "version": null,
-      "hash": "40fef1af898f0bddd2a677293e75453405fba4503c34f1b85fe97400352be49f",
+      "hash": "62bb2d0c1fca773ffcca4304e46c10fb7f48f9ab0757f80809e59a8331072517",
       "digest": null,
       "appliedAt": "2026-10-12",
-      "files": [
-        "GUIDE.md"
-      ]
+      "chars": 13714,
+      "files": []
+    },
+    "gpt-image": {
+      "kind": "doc",
+      "live": true,
+      "vendor": "OpenAI",
+      "source": "https://developers.openai.com/api/docs/guides/image-prompting.md",
+      "mode": "auto",
+      "models": [],
+      "families": [
+        "gpt-image"
+      ],
+      "version": null,
+      "hash": "ff47a722821f700d3920d2eddb75c26f56561f7b129b24d8e369dfb78f1dc913",
+      "digest": null,
+      "appliedAt": "2026-10-12",
+      "chars": 41742,
+      "files": []
     }
   },
   "held": {},

@@ -1,5 +1,5 @@
 {
-  "$comment": "모델별 공식 프롬프트 가이드 목록 — 매일 sync.mjs 가 원본과 비교해 반영하고, official/VERSIONS.md 의 '모델 → 가이드' 표를 새로 만든다(커넥터가 start 지침 4단계에 그대로 넣는다). tracked = 공식 스킬, docs = 스킬이 없는 회사의 공식 문서(필요한 절만 뽑음, format byteplus-doc 은 BytePlus 문서 페이지 안의 마크다운 원문), routes = 공식 가이드가 없는 모델 묶음이 대신 쓸 것(공식이 생기면 표에서 저절로 빠짐). modes = 긴 공식 스킬을 앱 mode 별로 필요한 절만(_common + 그 mode) 커넥터가 잘라 준다 — 절 이름이 바뀌면 sync 가 알린다. families = 앱 모델 ID 에 들어가면 그 가이드를 쓰는 글자(정규식). watch 의 adopt=true 원본에 새 프롬프트 스킬이 올라오면 사람 손 없이 tracked 에 붙인다. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept.",
+  "$comment": "모델별 공식 프롬프트 가이드 목록 — 매일 sync.mjs 가 원본과 비교해 반영하고, official/VERSIONS.md 의 '모델 → 가이드' 표를 새로 만든다(커넥터가 start 지침 4단계에 그대로 넣는다). tracked = 공식 스킬, docs = 스킬이 없는 회사의 공식 문서(필요한 절만 뽑음 — connector/docs.js, format byteplus-doc 은 BytePlus 문서 페이지 안의 마크다운 원문, store:false 는 저장소에 복사하지 않고 커넥터가 원문에서 바로), routes = 공식 가이드가 없는 모델 묶음이 대신 쓸 것(공식이 생기면 표에서 저절로 빠짐). modes = 긴 공식 스킬을 앱 mode 별로 필요한 절만(_common + 그 mode) 커넥터가 잘라 준다 — 절 이름이 바뀌면 sync 가 알린다. families = 앱 모델 ID 에 들어가면 그 가이드를 쓰는 글자(정규식). watch 의 adopt=true 원본에 새 프롬프트 스킬이 올라오면 사람 손 없이 tracked 에 붙인다. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept.",
   "skillsCli": "skills@1.7.0",
   "tracked": [
     {
@@ -109,16 +109,15 @@
       "vendor": "OpenAI",
       "source": "openai/skills",
       "mode": "auto",
-      "families": [
-        "gpt-image"
-      ],
+      "families": [],
       "models": [
         "gpt-image-2",
         "gpt-image-2.5-flare",
         "gpt-image-2.5-sunburst"
       ],
-      "use": "SKILL.md 의 Prompt augmentation, Specificity policy, Use-case taxonomy, Shared prompt schema, Prompting best practices, Guidance by asset type + references/prompting.md, references/sample-prompts.md",
-      "skip": "image_gen 도구, CLI, OPENAI_API_KEY, 저장 경로 규칙. \"Use case: / Asset type:\" 같은 필드 양식은 GPT Image 에만 쓴다"
+      "use": "참고용 — GPT Image 는 OpenAI 개발자 문서(official:gpt-image)를 쓴다",
+      "skip": "image_gen 도구, CLI, OPENAI_API_KEY, 저장 경로 규칙. \"Use case: / Asset type:\" 같은 필드 양식은 GPT Image 에만 쓴다",
+      "role": "extra"
     },
     {
       "skill": "higgsfield-generate",
@@ -134,17 +133,32 @@
   ],
   "docs": [
     {
+      "name": "gpt-image",
+      "vendor": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/guides/image-prompting.md",
+      "store": false,
+      "dropFences": "python|ruby|javascript|js|typescript|ts|bash|sh|shell|curl|json",
+      "license": "OpenAI 개발자 문서 — 저장소에 복사하지 않고 커넥터가 원문에서 바로",
+      "mode": "auto",
+      "families": [
+        "gpt-image"
+      ],
+      "use": "전체 — 모델 고르기(2.5 Flare·Sunburst), 프롬프트 기본, 만들기·편집·여러 턴 예시 프롬프트",
+      "skip": "코드 예시(SDK)"
+    },
+    {
       "name": "seedream",
       "vendor": "BytePlus",
       "url": "https://docs.byteplus.com/en/docs/ModelArk/seedream-4-0-5-0-prompt-guide",
       "format": "byteplus-doc",
-      "license": "게시처(BytePlus)가 라이선스를 밝히지 않음 — 출처를 남기고 사내용으로만, 요청 시 삭제",
+      "license": "게시처(BytePlus)가 라이선스를 밝히지 않음 — 저장소에 복사하지 않고 커넥터가 원문에서 바로",
       "mode": "auto",
       "families": [
         "seedream"
       ],
       "use": "전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다)",
-      "skip": "—"
+      "skip": "—",
+      "store": false
     },
     {
       "name": "nano-banana",
@@ -162,7 +176,8 @@
         "nano-banana"
       ],
       "use": "전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations",
-      "skip": "—"
+      "skip": "—",
+      "imageLines": "drop"
     },
     {
       "name": "veo",
@@ -179,7 +194,8 @@
         "veo"
       ],
       "use": "전체",
-      "skip": "—"
+      "skip": "—",
+      "imageLines": "drop"
     }
   ],
   "routes": [

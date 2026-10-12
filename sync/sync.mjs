@@ -24,6 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pickSections } from "../connector/sections.js";
+import { extractDoc } from "../connector/docs.js";
 
 const SYNC_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SYNC_DIR, "..");
@@ -79,57 +80,26 @@ function fetchSkill(t) {
   return { dir, hash: contentHash(dir), digest: entry.wellKnownDigest || null, version: versionOf(dir) };
 }
 
-// 스킬을 내지 않는 회사의 공식 문서 — 필요한 절만 뽑아 GUIDE.md 로(언어별 코드 예시 탭·그림은 뺀다).
+// 스킬을 내지 않는 회사의 공식 문서 — 프롬프트 가이드 부분만 뽑는다(connector/docs.js). 자유 이용 라이선스(구글 CC BY)는
+// GUIDE.md 로 보관하고, 아닌 것(store:false — OpenAI·BytePlus 문서)은 저장소에 복사하지 않고 지문만 기록한다 — 내용은 커넥터가
+// 그때그때 원문에서 같은 방식으로 뽑아 내려준다. 어느 쪽이든 바뀌면 반영 기록이 남고 표의 버전이 바뀐다.
 async function fetchDoc(d) {
   const res = await fetch(d.url, { headers: { "User-Agent": "freewill-sync" } });
   if (!res.ok) throw new Error(`문서 ${res.status}`);
-  let text = await res.text();
-  if (d.format === "byteplus-doc") text = byteplusMarkdown(text);
-  const body = d.sections ? extractSections(text, d.sections, d.drop) : `${text.replace(/\n{3,}/g, "\n\n").trim()}\n`;
-  if (body.length < 500) throw new Error(`뽑은 내용이 ${body.length}자뿐 — 문서 구조(절 제목)가 바뀌었는지 확인`);
+  const body = extractDoc(await res.text(), d);
+  if (body.length < 500) throw new Error(`뽑은 내용이 ${body.length}자뿐 — 문서 구조(절 제목·형식)가 바뀌었는지 확인`);
   const dir = path.join(STAGING, "docs", d.name);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "GUIDE.md"),
-    `<!-- 원본: ${d.url} · ${d.vendor} · ${d.license || "원본 라이선스를 따름"} — sync/sync.mjs 가 매일 받아 프롬프트 절만 뽑은 것. 손으로 고치지 말 것. -->\n\n${body}`);
-  return { dir, hash: contentHash(dir), digest: null, version: null };
-}
+  const file = d.store === false ? "SOURCE.md" : "GUIDE.md";
+  fs.writeFileSync(path.join(dir, file),
+    d.store === false
+      ? `<!-- 원본: ${d.url} · ${d.vendor} — 저장소에는 복사하지 않음(커넥터가 원문에서 바로). 이 파일은 지문 계산용. -->
 
-// BytePlus 문서 사이트는 화면을 스크립트로 그리지만, 페이지 안 데이터에 마크다운 원문(MDContent)이 들어 있다.
-// 그걸 꺼내 앵커·이스케이프·그림·레이아웃 태그를 걷어 낸다(예시 표의 글은 남긴다).
-function byteplusMarkdown(html) {
-  const key = '"MDContent":';
-  const at = html.indexOf(key);
-  if (at < 0) throw new Error("페이지에 MDContent 가 없음 — BytePlus 문서 형식이 바뀌었는지 확인");
-  const start = at + key.length;
-  let end = start + 1, esc = false;
-  for (; end < html.length; end++) {
-    const c = html[end];
-    if (esc) { esc = false; continue; }
-    if (c === "\\") { esc = true; continue; }
-    if (c === '"') break;
-  }
-  return JSON.parse(html.slice(start, end + 1))
-    .replace(/<span id="[^"]*"><\/span>\n?/g, "")
-    .replace(/\\([-.()[\]_*#+!>|])/g, "$1")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/<\/?columns?\b[^>]*>/g, "")
-    .replace(/[ \t]+\n/g, "\n");
-}
+${body}`
+      : `<!-- 원본: ${d.url} · ${d.vendor} · ${d.license || "원본 라이선스를 따름"} — sync/sync.mjs 가 매일 받아 프롬프트 절만 뽑은 것. 손으로 고치지 말 것. -->
 
-// "## 제목" 이 sections 중 하나로 시작하는 절만 남긴다. 그 안의 drop 제목(### Python 등) 아래는 다음 제목까지 버린다.
-function extractSections(text, sections, drop) {
-  const dropRe = drop ? new RegExp(`^#{2,4} (${drop})\\s*$`, "i") : null;
-  const out = [];
-  let on = false, skip = false;
-  for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
-    const h = line.match(/^(#{1,6}) (.*)$/);
-    if (h && h[1].length === 2) { on = sections.some((s) => h[2].trim().startsWith(s)); skip = false; }
-    if (!on) continue;
-    if (h) { skip = !!dropRe?.test(line); if (skip) continue; }
-    if (skip || line.includes("![")) continue;
-    out.push(line);
-  }
-  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
+${body}`);
+  return { dir, hash: contentHash(dir), digest: null, version: null, chars: body.length };
 }
 
 // 폴더 내용의 지문. 경로는 / 로 맞추고 텍스트 파일의 줄바꿈(Windows 체크아웃의 CRLF)은 LF 로 맞춘다.
@@ -273,6 +243,18 @@ function check(t, newDir, oldDir) {
 
 function apply(t, got, note) {
   const dest = path.join(OFFICIAL_DIR, t.skill);
+  if (t.live) {
+    // 저장소에 복사하지 않는 공식 문서 — 지문·날짜만 남긴다(전에 보관하던 사본이 있으면 지운다)
+    if (!DRY) fs.rmSync(dest, { recursive: true, force: true });
+    const prev = lock.skills[t.skill];
+    changelog.push(`- **${t.skill}** (${t.vendor} 공식 문서 · 커넥터가 원문에서 바로) ${prev ? `${short(prev.hash)} → ` : "처음 연결 "}${short(got.hash)} · ${got.chars}자${note ? ` · ${note}` : ""}`);
+    lock.skills[t.skill] = {
+      kind: "doc", live: true, vendor: t.vendor, source: t.source, mode: t.mode, models: [], families: t.families || [],
+      version: null, hash: got.hash, digest: null, appliedAt: today, chars: got.chars,
+    };
+    delete lock.held[t.skill];
+    return;
+  }
   const before = snapshot(dest);
   if (!DRY) {
     fs.rmSync(dest, { recursive: true, force: true });
@@ -300,7 +282,7 @@ async function main() {
   const items = [
     ...sources.tracked.map((t) => ({ t, get: () => fetchSkill(t) })),
     ...(sources.docs || []).map((d) => ({
-      t: { skill: d.name, kind: "doc", vendor: d.vendor, source: d.url, mode: d.mode || "auto", models: [], families: d.families || [] },
+      t: { skill: d.name, kind: "doc", live: d.store === false, vendor: d.vendor, source: d.url, mode: d.mode || "auto", models: [], families: d.families || [] },
       get: () => fetchDoc(d),
     })),
   ];
@@ -316,7 +298,8 @@ async function main() {
     const prev = lock.skills[t.skill];
     const accepted = ACCEPT.has(t.skill);
     // 기준은 기록(lock)이 아니라 플러그인에 실제로 들어 있는 내용이다. 같으면 할 일이 없다.
-    if (!accepted && got.hash === contentHash(path.join(OFFICIAL_DIR, t.skill))) {
+    const current = t.live ? (fs.existsSync(path.join(OFFICIAL_DIR, t.skill)) ? null : prev?.hash) : contentHash(path.join(OFFICIAL_DIR, t.skill));
+    if (!accepted && got.hash === current) {
       if (prev && prev.hash !== got.hash) prev.hash = got.hash; // 지문 계산 방식이 바뀐 경우 조용히 맞춘다
       delete lock.held[t.skill];
       log(`  같음   ${t.skill} ${got.version || short(got.hash)}`);
@@ -342,7 +325,7 @@ async function main() {
   // 커넥터가 topic(official:<이름>/<파일>)을 만들 수 있게 반영된 것마다 파일 목록·종류·계열을 지금 기준으로 적어 둔다.
   const meta = new Map([
     ...sources.tracked.map((t) => [t.skill, { kind: "skill", families: t.families || [] }]),
-    ...(sources.docs || []).map((d) => [d.name, { kind: "doc", families: d.families || [] }]),
+    ...(sources.docs || []).map((d) => [d.name, { kind: "doc", live: d.store === false, families: d.families || [] }]),
   ]);
   for (const [name, v] of Object.entries(lock.skills)) {
     const dir = path.join(OFFICIAL_DIR, name);
@@ -403,8 +386,8 @@ function writeVersions() {
   const fam = (fs_) => (fs_ || []).map((f) => `\`${f}\``).join(" · ");
   const ver = (name) => { const v = lock.skills[name]; return v ? `${v.version || short(v.hash)} · ${v.appliedAt}` : "아직 못 받음"; };
   const official = [
-    ...sources.tracked.filter((t) => t.role !== "fallback").map((t) => ({ name: t.skill, kind: "공식 스킬", ...t })),
-    ...(sources.docs || []).map((d) => ({ name: d.name, kind: "공식 문서", ...d })),
+    ...sources.tracked.filter((t) => !t.role).map((t) => ({ name: t.skill, kind: "공식 스킬", ...t })),
+    ...(sources.docs || []).map((d) => ({ name: d.name, kind: d.store === false ? "공식 문서(원문에서 바로)" : "공식 문서", ...d })),
   ].filter((x) => lock.skills[x.name]);
   const covered = new Set(official.flatMap((x) => x.families || []));
   const topicOf = (x) => {

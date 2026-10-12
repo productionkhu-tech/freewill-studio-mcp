@@ -11,8 +11,8 @@
 | `seedance-2-5` | `official:sd25-pe/<앱 mode>` — `text_to_video` · `image_to_video_first` · `image_to_video_first_last` · `multimodal_reference` · `edit_video` · `extend_video` (그 모드에 필요한 절만) · 전체 `official:sd25-pe` | BytePlus 공식 스킬 | 모드별 topic(공통 원칙 + 그 모드 템플릿만). 모드가 정해지지 않았으면 전체 | "Self-update before triggering" | 0.1.1 · 2026-10-02 |
 | `seedance-2-0` | `official:sd2-pe` | BytePlus 공식 스킬 | 전체 | — | #301a03be · 2026-10-02 |
 | `gemini-omni` | `official:gemini-omni-flash-api` | Google 공식 스킬 | "Prompting Gemini Omni Flash" 이하 | SDK·스크립트·업로드·의존성 | #96bcfe08 · 2026-10-02 |
-| `gpt-image` | `official:imagegen` | OpenAI 공식 스킬 | SKILL.md 의 Prompt augmentation, Specificity policy, Use-case taxonomy, Shared prompt schema, Prompting best practices, Guidance by asset type + references/prompting.md, references/sample-prompts.md | image_gen 도구, CLI, OPENAI_API_KEY, 저장 경로 규칙. "Use case: / Asset type:" 같은 필드 양식은 GPT Image 에만 쓴다 | #0db6b41f · 2026-10-02 |
-| `seedream` | `official:seedream` | BytePlus 공식 문서 | 전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다) | — | #40fef1af · 2026-10-12 |
+| `gpt-image` | `official:gpt-image` | OpenAI 공식 문서(원문에서 바로) | 전체 — 모델 고르기(2.5 Flare·Sunburst), 프롬프트 기본, 만들기·편집·여러 턴 예시 프롬프트 | 코드 예시(SDK) | #ff47a722 · 2026-10-12 |
+| `seedream` | `official:seedream` | BytePlus 공식 문서(원문에서 바로) | 전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다) | — | #62bb2d0c · 2026-10-12 |
 | `gemini-.*image` · `nano-banana` | `official:nano-banana` | Google 공식 문서 | 전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations | — | #99b20e9a · 2026-10-12 |
 | `veo` | `official:veo` | Google 공식 문서 | 전체 | — | #5c35e0fa · 2026-10-12 |
 

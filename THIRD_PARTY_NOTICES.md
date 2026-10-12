@@ -4,6 +4,7 @@
 from the sources below by `sync/sync.mjs`. How they are used is defined in our own `GUIDE.md`.
 
 `official/` 의 내용은 아래 원본을 고치지 않고 그대로 받아 온 것이다. 쓰는 방식만 우리 지침(`GUIDE.md`)에서 정한다.
+자유 이용 라이선스가 없는 문서(OpenAI·BytePlus 문서)는 저장소에 복사하지 않고, 커넥터가 요청 때 원문에서 바로 받아 내려준다.
 
 | Folder | Source | License |
 |---|---|---|
@@ -11,7 +12,8 @@ from the sources below by `sync/sync.mjs`. How they are used is defined in our o
 | `gemini-omni-flash-api` | Google — https://github.com/google-gemini/gemini-skills | Apache License 2.0 |
 | `imagegen` | OpenAI — https://github.com/openai/skills | Apache License 2.0 |
 | `higgsfield-generate` | Higgsfield — https://github.com/higgsfield-ai/skills | MIT License |
-| `seedream` | BytePlus ModelArk docs — https://docs.byteplus.com/en/docs/ModelArk/seedream-4-0-5-0-prompt-guide (the page's own Markdown source; images and layout tags removed) | No license stated by the publisher. Included with attribution for our team's use; will be removed on the publisher's request. |
+| `gpt-image` | OpenAI developer docs — https://developers.openai.com/api/docs/guides/image-prompting | **Not copied into this repository.** The connector fetches the page when asked and serves only the prompting text (code samples and images removed), with the source URL. |
+| `seedream` | BytePlus ModelArk docs — https://docs.byteplus.com/en/docs/ModelArk/seedream-4-0-5-0-prompt-guide | **Not copied into this repository.** The connector fetches the page when asked and serves the guide's own Markdown (images and layout tags removed), with the source URL. |
 | `nano-banana`, `veo` | Google for Developers — https://ai.google.dev/gemini-api/docs/image-generation , https://ai.google.dev/gemini-api/docs/veo (the "Prompting guide and strategies" / "Veo prompt guide" and "Limitations" sections only; code-sample tabs and images removed) | Creative Commons Attribution 4.0 (CC BY 4.0). Text unmodified apart from the section extraction; source URL kept at the top of each `GUIDE.md`. |
 
 ## Apache License 2.0

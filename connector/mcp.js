@@ -12,6 +12,7 @@ import { checkScript } from "./script-check.mjs";
 import { makeTicket, TICKET_HOURS } from "./auth.js";
 import { ASK_TOOL, askResponse, deliverAnswer, isAnswer } from "./ask.js";
 import { pickSections } from "./sections.js";
+import { extractDoc } from "./docs.js";
 
 const RAW = "https://raw.githubusercontent.com/productionkhu-tech/freewill-studio-mcp/main";
 const PLUGIN = "plugins/freewill-studio";
@@ -118,8 +119,11 @@ const stripFrontmatter = (s) => s.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
 async function guideMap() {
   const map = { ...GUIDES };
   try {
-    const lock = JSON.parse(await fromRepo("sync/official.lock.json"));
+    const [lock, src] = await Promise.all(["sync/official.lock.json", "sync/sources.json"].map(async (p) => JSON.parse(await fromRepo(p))));
     for (const [name, v] of Object.entries(lock.skills || {})) {
+      // 저장소에 복사하지 않는 공식 문서(OpenAI·BytePlus) — 원문 주소에서 바로 받아 뽑는다
+      const def = v.live && (src.docs || []).find((d) => d.name === name);
+      if (def) { map[`official:${name}`] = { live: true, def }; continue; }
       const main = v.kind === "doc" ? "GUIDE.md" : "SKILL.md";
       map[`official:${name}`] = `${SKILL}/official/${name}/${main}`;
       for (const f of v.files || []) {
@@ -127,7 +131,6 @@ async function guideMap() {
       }
     }
     // 긴 공식 스킬은 앱 mode 별로 필요한 절만 — official:<스킬>/<mode> (sources.json 의 modes)
-    const src = JSON.parse(await fromRepo("sync/sources.json"));
     for (const t of src.tracked || []) {
       const common = t.modes?._common || [];
       for (const [mode, titles] of Object.entries(t.modes || {})) {
@@ -137,6 +140,13 @@ async function guideMap() {
     }
   } catch { /* 기본 목록으로 */ }
   return map;
+}
+
+// 원문에서 바로 받는 공식 문서 — sync 와 같은 방식(docs.js)으로 프롬프트 가이드 부분만. 원문은 한 시간 캐시.
+async function liveDoc(def) {
+  const r = await fetch(def.url, { headers: { "User-Agent": "freewill-mcp" }, cf: { cacheTtl: 3600, cacheEverything: true } });
+  if (!r.ok) throw new Error(`${def.vendor} 문서를 못 받음 (${r.status}) — ${def.url}`);
+  return `> ${def.vendor} 공식 문서(${def.url})에서 커넥터가 방금 받아 프롬프트 가이드 부분만 뽑은 것.\n\n${extractDoc(await r.text(), def)}`;
 }
 
 // official:<스킬>/<mode> — 공통 원칙 + 그 모드 템플릿만. 원본에서 절을 못 찾으면 전체를 읽으라고 덧붙인다.
@@ -192,7 +202,8 @@ async function callTool(name, args, env, props) {
     const entry = map[topic];
     if (!entry) return toolError(`모르는 topic: ${topic}. 쓸 수 있는 것: ${Object.keys(map).join(", ")}`);
     let text;
-    if (typeof entry === "object") text = await modeGuide(entry);
+    if (entry.live) text = await liveDoc(entry.def);
+    else if (typeof entry === "object") text = await modeGuide(entry);
     else if (topic === "start") {
       text = `${START_PREAMBLE.trimEnd()}\n${versionLine(await guideVersion())}\n${await withModelGuides(stripFrontmatter(await fromRepo(entry)))}`;
     } else text = await fromRepo(entry);

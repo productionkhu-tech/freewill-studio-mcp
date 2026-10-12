@@ -7,6 +7,8 @@
 - **nano-banana** (Google) 처음 반영 #99b20e9a · 파일 1개, +265 −0줄
 - **veo** (Google) 처음 반영 #5c35e0fa · 파일 1개, +188 −0줄
 - **seedream** (BytePlus) 처음 반영 #40fef1af · 파일 1개, +172 −0줄
+- **gpt-image** (OpenAI 공식 문서 · 커넥터가 원문에서 바로) 처음 연결 #ff47a722 · 41742자
+- **seedream** (BytePlus 공식 문서 · 커넥터가 원문에서 바로) #40fef1af → #62bb2d0c · 13714자
 
 ## 2026-10-02
 
