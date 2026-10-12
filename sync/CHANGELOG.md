@@ -6,6 +6,7 @@
 
 - **nano-banana** (Google) 처음 반영 #99b20e9a · 파일 1개, +265 −0줄
 - **veo** (Google) 처음 반영 #5c35e0fa · 파일 1개, +188 −0줄
+- **seedream** (BytePlus) 처음 반영 #40fef1af · 파일 1개, +172 −0줄
 
 ## 2026-10-02
 

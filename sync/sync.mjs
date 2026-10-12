@@ -23,6 +23,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pickSections } from "../connector/sections.js";
 
 const SYNC_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SYNC_DIR, "..");
@@ -82,13 +83,37 @@ function fetchSkill(t) {
 async function fetchDoc(d) {
   const res = await fetch(d.url, { headers: { "User-Agent": "freewill-sync" } });
   if (!res.ok) throw new Error(`문서 ${res.status}`);
-  const body = extractSections(await res.text(), d.sections, d.drop);
+  let text = await res.text();
+  if (d.format === "byteplus-doc") text = byteplusMarkdown(text);
+  const body = d.sections ? extractSections(text, d.sections, d.drop) : `${text.replace(/\n{3,}/g, "\n\n").trim()}\n`;
   if (body.length < 500) throw new Error(`뽑은 내용이 ${body.length}자뿐 — 문서 구조(절 제목)가 바뀌었는지 확인`);
   const dir = path.join(STAGING, "docs", d.name);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "GUIDE.md"),
     `<!-- 원본: ${d.url} · ${d.vendor} · ${d.license || "원본 라이선스를 따름"} — sync/sync.mjs 가 매일 받아 프롬프트 절만 뽑은 것. 손으로 고치지 말 것. -->\n\n${body}`);
   return { dir, hash: contentHash(dir), digest: null, version: null };
+}
+
+// BytePlus 문서 사이트는 화면을 스크립트로 그리지만, 페이지 안 데이터에 마크다운 원문(MDContent)이 들어 있다.
+// 그걸 꺼내 앵커·이스케이프·그림·레이아웃 태그를 걷어 낸다(예시 표의 글은 남긴다).
+function byteplusMarkdown(html) {
+  const key = '"MDContent":';
+  const at = html.indexOf(key);
+  if (at < 0) throw new Error("페이지에 MDContent 가 없음 — BytePlus 문서 형식이 바뀌었는지 확인");
+  const start = at + key.length;
+  let end = start + 1, esc = false;
+  for (; end < html.length; end++) {
+    const c = html[end];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') break;
+  }
+  return JSON.parse(html.slice(start, end + 1))
+    .replace(/<span id="[^"]*"><\/span>\n?/g, "")
+    .replace(/\\([-.()[\]_*#+!>|])/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/<\/?columns?\b[^>]*>/g, "")
+    .replace(/[ \t]+\n/g, "\n");
 }
 
 // "## 제목" 이 sections 중 하나로 시작하는 절만 남긴다. 그 안의 drop 제목(### Python 등) 아래는 다음 제목까지 버린다.
@@ -325,6 +350,17 @@ async function main() {
     Object.assign(v, meta.get(name) || {});
   }
 
+  // 모드별로 잘라 주는 스킬 — 원본이 바뀌어 절 이름이 사라졌으면 알린다(커넥터는 그때 전체를 읽으라고 덧붙인다).
+  for (const t of sources.tracked.filter((x) => x.modes)) {
+    const file = path.join(OFFICIAL_DIR, t.skill, "SKILL.md");
+    if (!fs.existsSync(file)) continue;
+    const md = fs.readFileSync(file, "utf8");
+    const titles = [...new Set(Object.values(t.modes).flat())];
+    const { missing } = pickSections(md, titles);
+    if (missing.length) noteFailure(`모드:${t.skill}`, `**${t.skill}** 모드별 절 이름을 원본에서 못 찾음: ${missing.join(", ")} — \`sync/sources.json\` 의 modes 를 새 절 이름으로`);
+    else clearFailure(`모드:${t.skill}`);
+  }
+
   if (DRY) {
     log(`\n[dry-run] 반영 예정 ${changelog.length}건, 알림 ${attention.length}건 — 파일은 그대로 둠`);
     [...changelog, ...attention].forEach((l) => log(l));
@@ -371,9 +407,15 @@ function writeVersions() {
     ...(sources.docs || []).map((d) => ({ name: d.name, kind: "공식 문서", ...d })),
   ].filter((x) => lock.skills[x.name]);
   const covered = new Set(official.flatMap((x) => x.families || []));
+  const topicOf = (x) => {
+    const modes = Object.keys(x.modes || {}).filter((m) => m !== "_common");
+    return modes.length
+      ? `\`official:${x.name}/<앱 mode>\` — ${modes.map((m) => `\`${m}\``).join(" · ")} (그 모드에 필요한 절만) · 전체 \`official:${x.name}\``
+      : `\`official:${x.name}\``;
+  };
   const rows = [
     ...official.filter((x) => (x.families || []).length).map((x) =>
-      `| ${fam(x.families)} | \`official:${x.name}\` | ${cell(x.vendor)} ${x.kind} | ${cell(x.use)} | ${cell(x.skip)} | ${ver(x.name)} |`),
+      `| ${fam(x.families)} | ${topicOf(x)} | ${cell(x.vendor)} ${x.kind} | ${cell(x.use)} | ${cell(x.skip)} | ${ver(x.name)} |`),
     ...(sources.routes || []).filter((r) => !r.families.some((f) => covered.has(f))).map((r) =>
       `| ${fam(r.families)} | ${r.guides.map((g) => `\`${g}\``).join(" + ")} | 공식 가이드 없음 (${cell(r.vendor)}) | ${cell(r.note)} | — | — |`),
   ];

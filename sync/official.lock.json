@@ -147,6 +147,23 @@
       "files": [
         "GUIDE.md"
       ]
+    },
+    "seedream": {
+      "kind": "doc",
+      "vendor": "BytePlus",
+      "source": "https://docs.byteplus.com/en/docs/ModelArk/seedream-4-0-5-0-prompt-guide",
+      "mode": "auto",
+      "models": [],
+      "families": [
+        "seedream"
+      ],
+      "version": null,
+      "hash": "40fef1af898f0bddd2a677293e75453405fba4503c34f1b85fe97400352be49f",
+      "digest": null,
+      "appliedAt": "2026-10-12",
+      "files": [
+        "GUIDE.md"
+      ]
     }
   },
   "held": {},

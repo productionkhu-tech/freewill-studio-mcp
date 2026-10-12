@@ -1,5 +1,5 @@
 {
-  "$comment": "모델별 공식 프롬프트 가이드 목록 — 매일 sync.mjs 가 원본과 비교해 반영하고, official/VERSIONS.md 의 '모델 → 가이드' 표를 새로 만든다(커넥터가 start 지침 4단계에 그대로 넣는다). tracked = 공식 스킬, docs = 스킬이 없는 회사의 공식 문서(필요한 절만 뽑음), routes = 공식 가이드가 없는 모델 묶음이 대신 쓸 것. families = 앱 모델 ID 에 들어가면 그 가이드를 쓰는 글자(정규식). watch 의 adopt=true 원본에 새 프롬프트 스킬이 올라오면 사람 손 없이 tracked 에 붙인다. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept.",
+  "$comment": "모델별 공식 프롬프트 가이드 목록 — 매일 sync.mjs 가 원본과 비교해 반영하고, official/VERSIONS.md 의 '모델 → 가이드' 표를 새로 만든다(커넥터가 start 지침 4단계에 그대로 넣는다). tracked = 공식 스킬, docs = 스킬이 없는 회사의 공식 문서(필요한 절만 뽑음, format byteplus-doc 은 BytePlus 문서 페이지 안의 마크다운 원문), routes = 공식 가이드가 없는 모델 묶음이 대신 쓸 것(공식이 생기면 표에서 저절로 빠짐). modes = 긴 공식 스킬을 앱 mode 별로 필요한 절만(_common + 그 mode) 커넥터가 잘라 준다 — 절 이름이 바뀌면 sync 가 알린다. families = 앱 모델 ID 에 들어가면 그 가이드를 쓰는 글자(정규식). watch 의 adopt=true 원본에 새 프롬프트 스킬이 올라오면 사람 손 없이 tracked 에 붙인다. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept.",
   "skillsCli": "skills@1.7.0",
   "tracked": [
     {
@@ -13,8 +13,65 @@
       "models": [
         "dreamina-seedance-2-5-260628"
       ],
-      "use": "전체 — 입력 상태, 핵심 워크플로 1~8, 템플릿, 원칙",
-      "skip": "\"Self-update before triggering\""
+      "use": "모드별 topic(공통 원칙 + 그 모드 템플릿만). 모드가 정해지지 않았으면 전체",
+      "skip": "\"Self-update before triggering\"",
+      "modes": {
+        "_common": [
+          "Purpose",
+          "Non-Negotiable Principles",
+          "1. Parse the User's Goal",
+          "7. Apply Task Parameter Rules",
+          "8. Apply the Template and Clean the Prompt",
+          "Emotion, Cinematography, and Sound",
+          "Output Contract",
+          "Final Checklist"
+        ],
+        "text_to_video": [
+          "2. Compile Novels and Long Text",
+          "Basic Generation",
+          "Long Videos and Time Segments"
+        ],
+        "image_to_video_first": [
+          "3. Inventory and Understand the Assets",
+          "Basic Generation",
+          "Long Videos and Time Segments"
+        ],
+        "image_to_video_first_last": [
+          "3. Inventory and Understand the Assets",
+          "Basic Generation",
+          "First Frame, Last Frame, and Other References"
+        ],
+        "multimodal_reference": [
+          "Input States",
+          "3. Inventory and Understand the Assets",
+          "4. Assign Asset Roles and Subject Mappings",
+          "5. Handle Mapping Confidence",
+          "6. Select One Primary Task",
+          "2. Compile Novels and Long Text",
+          "Generation with Reference Assets",
+          "Organizing Multiple Reference Assets",
+          "Long Videos and Time Segments",
+          "Keyframe Anchors"
+        ],
+        "edit_video": [
+          "Input States",
+          "3. Inventory and Understand the Assets",
+          "4. Assign Asset Roles and Subject Mappings",
+          "5. Handle Mapping Confidence",
+          "6. Select One Primary Task",
+          "Video Editing Template",
+          "Organizing Multiple Reference Assets"
+        ],
+        "extend_video": [
+          "Input States",
+          "3. Inventory and Understand the Assets",
+          "4. Assign Asset Roles and Subject Mappings",
+          "5. Handle Mapping Confidence",
+          "6. Select One Primary Task",
+          "Video Extension Template",
+          "Organizing Multiple Reference Assets"
+        ]
+      }
     },
     {
       "skill": "sd2-pe",
@@ -76,6 +133,19 @@
     }
   ],
   "docs": [
+    {
+      "name": "seedream",
+      "vendor": "BytePlus",
+      "url": "https://docs.byteplus.com/en/docs/ModelArk/seedream-4-0-5-0-prompt-guide",
+      "format": "byteplus-doc",
+      "license": "게시처(BytePlus)가 라이선스를 밝히지 않음 — 출처를 남기고 사내용으로만, 요청 시 삭제",
+      "mode": "auto",
+      "families": [
+        "seedream"
+      ],
+      "use": "전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다)",
+      "skip": "—"
+    },
     {
       "name": "nano-banana",
       "vendor": "Google",

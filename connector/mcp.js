@@ -11,6 +11,7 @@
 import { checkScript } from "./script-check.mjs";
 import { makeTicket, TICKET_HOURS } from "./auth.js";
 import { ASK_TOOL, askResponse, deliverAnswer, isAnswer } from "./ask.js";
+import { pickSections } from "./sections.js";
 
 const RAW = "https://raw.githubusercontent.com/productionkhu-tech/freewill-studio-mcp/main";
 const PLUGIN = "plugins/freewill-studio";
@@ -125,8 +126,25 @@ async function guideMap() {
         if (f !== main) map[`official:${name}/${f.replace(/^references\//, "").replace(/\.md$/, "")}`] = `${SKILL}/official/${name}/${f}`;
       }
     }
+    // 긴 공식 스킬은 앱 mode 별로 필요한 절만 — official:<스킬>/<mode> (sources.json 의 modes)
+    const src = JSON.parse(await fromRepo("sync/sources.json"));
+    for (const t of src.tracked || []) {
+      const common = t.modes?._common || [];
+      for (const [mode, titles] of Object.entries(t.modes || {})) {
+        if (mode === "_common") continue;
+        map[`official:${t.skill}/${mode}`] = { path: `${SKILL}/official/${t.skill}/SKILL.md`, skill: t.skill, mode, titles: [...common, ...titles] };
+      }
+    }
   } catch { /* 기본 목록으로 */ }
   return map;
+}
+
+// official:<스킬>/<mode> — 공통 원칙 + 그 모드 템플릿만. 원본에서 절을 못 찾으면 전체를 읽으라고 덧붙인다.
+async function modeGuide(entry) {
+  const { text, missing } = pickSections(stripFrontmatter(await fromRepo(entry.path)), entry.titles);
+  return `> 공식 \`${entry.skill}\` 중 \`${entry.mode}\` 모드에 필요한 절만 골라 낸 것(공통 원칙 + 그 모드 템플릿). 전체는 \`official:${entry.skill}\`.` +
+    (missing.length ? `\n> 원본에서 못 찾은 절: ${missing.join(", ")} — 원본이 바뀐 것이니 이번엔 전체(\`official:${entry.skill}\`)를 읽는다.` : "") +
+    `\n\n${text}\n`;
 }
 
 // start 4단계의 자리표를 '앱 모델 → 공식 가이드' 표(official/VERSIONS.md, sync 가 매일 새로 씀)로 바꾼다.
@@ -171,12 +189,13 @@ async function callTool(name, args, env, props) {
   if (name === "freewill_guide") {
     const topic = String(args?.topic || "");
     const map = await guideMap();
-    const path = map[topic];
-    if (!path) return toolError(`모르는 topic: ${topic}. 쓸 수 있는 것: ${Object.keys(map).join(", ")}`);
-    const raw = await fromRepo(path);
-    const text = topic === "start"
-      ? `${START_PREAMBLE.trimEnd()}\n${versionLine(await guideVersion())}\n${await withModelGuides(stripFrontmatter(raw))}`
-      : raw;
+    const entry = map[topic];
+    if (!entry) return toolError(`모르는 topic: ${topic}. 쓸 수 있는 것: ${Object.keys(map).join(", ")}`);
+    let text;
+    if (typeof entry === "object") text = await modeGuide(entry);
+    else if (topic === "start") {
+      text = `${START_PREAMBLE.trimEnd()}\n${versionLine(await guideVersion())}\n${await withModelGuides(stripFrontmatter(await fromRepo(entry)))}`;
+    } else text = await fromRepo(entry);
     const p = paginate(text, args?.part);
     if (p.total === 1) return toolText(p.body);
     const tail = p.index < p.total
