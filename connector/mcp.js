@@ -18,6 +18,7 @@ const SKILL = `${PLUGIN}/skills/freewill-generate`;
 const REPO_URL = "https://github.com/productionkhu-tech/freewill-studio-mcp";
 
 // topic → 저장소 경로. 전체 지침은 GUIDE.md(플러그인의 SKILL.md 는 "여기서 최신본을 받으라" 는 시작점뿐) — 지침 안의 상대 경로를 이 이름으로 바꿔 받는다.
+// 공식 가이드(official:…)는 아래가 기본이고, 실제로는 guideMap() 이 sync 의 official.lock.json 으로 그때그때 늘린다.
 const GUIDES = {
   start: `${SKILL}/GUIDE.md`,
   interview: `${SKILL}/references/interview.md`,
@@ -53,8 +54,8 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 > - \`references/interview.md\` → \`freewill_guide("interview")\` · \`references/house-rules.md\` → \`"house-rules"\` ·
 >   \`references/app-rules.md\` → \`"app-rules"\` · \`references/read-apps-without-node.md\` → \`"read-apps-without-node"\` ·
 >   \`official/VERSIONS.md\` → \`"versions"\`
-> - \`official/<이름>/SKILL.md\` → \`freewill_guide("official:<이름>")\` — 예: \`"official:sd25-pe"\`
-> - \`official/imagegen/references/prompting.md\` → \`"official:imagegen/prompting"\`, \`sample-prompts.md\` → \`"official:imagegen/sample-prompts"\`
+> - \`official/<이름>/SKILL.md\`·\`GUIDE.md\` → \`freewill_guide("official:<이름>")\` — 예: \`"official:sd25-pe"\`, \`"official:nano-banana"\`
+> - \`official/<이름>/references/<파일>.md\` → \`"official:<이름>/<파일>"\` — 예: \`"official:imagegen/prompting"\`, \`"official:higgsfield-generate/model-catalog"\`
 > - \`<플러그인 폴더>/scripts/<이름>.mjs\` → \`freewill_script("<이름>")\` 로 받아 **임시 폴더에 .mjs 로 저장한 뒤** \`node\` 로 실행한다.
 >   받은 스크립트에는 로그인한 사람의 표가 들어 있어 ${TICKET_HOURS}시간 동안 쓸 수 있다 — 만료됐다고 나오면 다시 받는다.
 >   **Codex 는 이 스크립트들을 네트워크 허용(샌드박스 밖)으로 실행 승인을 받아 돌린다** — 샌드박스 안에서는 앱(127.0.0.1)·커넥터에
@@ -69,8 +70,8 @@ const TOOLS = [
     name: "freewill_guide",
     title: "프리윌 스튜디오 지침",
     description:
-      "나노바나나·시댄스 생성/프롬프트 작업 지침과 모델별 공식 프롬프팅 스킬(BytePlus·Google·OpenAI·Higgsfield)을 GitHub 최신본으로 받는다. " +
-      "처음에는 topic=\"start\" 를 받아 그 절차를 따른다.",
+      "나노바나나·시댄스 생성/프롬프트 작업 지침과 모델별 공식 프롬프트 가이드(BytePlus·Google·OpenAI 공식 스킬·문서, 없으면 Higgsfield)를 " +
+      "GitHub 최신본으로 받는다. 처음에는 topic=\"start\" 를 받아 그 절차를 따른다 — 어느 모델에 어느 가이드인지는 start 4단계 표.",
     inputSchema: {
       type: "object",
       properties: {
@@ -101,18 +102,45 @@ const TOOLS = [
 
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
+// 시험(wrangler dev)에서는 REPO_RAW 로 이 PC 의 저장소 파일을 읽게 할 수 있다 — 올리기 전에 지침·표를 확인하려고.
+let rawBase = RAW;
 async function fromRepo(path) {
-  const r = await fetch(`${RAW}/${path}`, { cf: { cacheTtl: 300, cacheEverything: true } });
+  const r = await fetch(`${rawBase}/${path}`, { cf: { cacheTtl: 300, cacheEverything: true } });
   if (!r.ok) throw new Error(`저장소에서 ${path} 를 못 받음 (${r.status})`);
   return r.text();
 }
 
 const stripFrontmatter = (s) => s.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
 
+// 공식 가이드 topic 을 sync 가 쓰는 official.lock.json 에서 만든다 — 새 공식 스킬·문서가 붙으면 커넥터를 다시 배포하지
+// 않아도 official:<이름>(본문) · official:<이름>/<references 파일> 로 받을 수 있다. 못 읽으면 기본(GUIDES)만.
+async function guideMap() {
+  const map = { ...GUIDES };
+  try {
+    const lock = JSON.parse(await fromRepo("sync/official.lock.json"));
+    for (const [name, v] of Object.entries(lock.skills || {})) {
+      const main = v.kind === "doc" ? "GUIDE.md" : "SKILL.md";
+      map[`official:${name}`] = `${SKILL}/official/${name}/${main}`;
+      for (const f of v.files || []) {
+        if (f !== main) map[`official:${name}/${f.replace(/^references\//, "").replace(/\.md$/, "")}`] = `${SKILL}/official/${name}/${f}`;
+      }
+    }
+  } catch { /* 기본 목록으로 */ }
+  return map;
+}
+
+// start 4단계의 자리표를 '앱 모델 → 공식 가이드' 표(official/VERSIONS.md, sync 가 매일 새로 씀)로 바꾼다.
+const MODEL_GUIDES = /<!-- MODEL_GUIDES:[^>]*-->/;
+async function withModelGuides(text) {
+  if (!MODEL_GUIDES.test(text)) return text;
+  const table = (await fromRepo(GUIDES.versions)).replace(/^# .*\r?\n+/, "").trim();
+  return text.replace(MODEL_GUIDES, () => table);
+}
+
 // 지침 버전 — 보내기 전에 지켜야 할 지침(start · house-rules · interview · app-rules)의 내용 지문. start 맨 위에 적어 주고
 // 보내기 스크립트에도 넣어 준다. 대화가 읽은 지침이 옛것이면(jobs.json 의 guide 가 다르면) 스크립트가 보내지 않고 다시
 // 읽게 한다 — 에이전트는 처음 읽은 지침을 기억하고 다시 받을지는 제 판단이라, 이미 하던 대화가 낡은 규칙으로 보내지 않게.
-const VERSIONED = ["start", "house-rules", "interview", "app-rules"];
+const VERSIONED = ["start", "house-rules", "interview", "app-rules", "versions"];
 async function guideVersion() {
   const texts = await Promise.all(VERSIONED.map((t) => fromRepo(GUIDES[t])));
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texts.join(String.fromCharCode(0))));
@@ -142,11 +170,12 @@ function paginate(text, part) {
 async function callTool(name, args, env, props) {
   if (name === "freewill_guide") {
     const topic = String(args?.topic || "");
-    const path = GUIDES[topic];
-    if (!path) return toolError(`모르는 topic: ${topic}. 쓸 수 있는 것: ${Object.keys(GUIDES).join(", ")}`);
+    const map = await guideMap();
+    const path = map[topic];
+    if (!path) return toolError(`모르는 topic: ${topic}. 쓸 수 있는 것: ${Object.keys(map).join(", ")}`);
     const raw = await fromRepo(path);
     const text = topic === "start"
-      ? `${START_PREAMBLE.trimEnd()}\n${versionLine(await guideVersion())}\n${stripFrontmatter(raw)}`
+      ? `${START_PREAMBLE.trimEnd()}\n${versionLine(await guideVersion())}\n${await withModelGuides(stripFrontmatter(raw))}`
       : raw;
     const p = paginate(text, args?.part);
     if (p.total === 1) return toolText(p.body);
@@ -203,9 +232,17 @@ async function handle(msg, env, props) {
       case "ping":
         result = {};
         break;
-      case "tools/list":
-        result = { tools: TOOLS };
+      case "tools/list": {
+        // topic 목록은 지금 붙어 있는 공식 가이드까지 — 새 대화부터 보인다(이미 하던 대화도 이름을 알면 받을 수 있다)
+        const topics = Object.keys(await guideMap());
+        result = {
+          tools: TOOLS.map((t) => t.name !== "freewill_guide" ? t : {
+            ...t,
+            inputSchema: { ...t.inputSchema, properties: { ...t.inputSchema.properties, topic: { ...t.inputSchema.properties.topic, enum: topics } } },
+          }),
+        };
         break;
+      }
       case "tools/call":
         result = await callTool(params?.name, params?.arguments, env, props);
         break;
@@ -226,6 +263,7 @@ const json = (body, status = 200) =>
 export const mcpHandler = {
   async fetch(request, env, ctx) {
     const props = ctx?.props || {};
+    rawBase = env.REPO_RAW || RAW;
     if (request.method === "GET") return new Response("SSE 스트림은 없다 — POST 로 보낼 것", { status: 405, headers: { Allow: "POST" } });
     if (request.method === "DELETE") return new Response(null, { status: 204 });
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });

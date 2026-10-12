@@ -1,5 +1,5 @@
 {
-  "$comment": "공식 프롬프팅 스킬 목록. tracked = 받아서 플러그인에 넣는 것, watch = 새 스킬이 생기는지 지켜보는 원본. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept 로 반영. models 는 이 가이드를 쓰는 앱 모델 ID (GUIDE.md 대응표와 같이 고칠 것).",
+  "$comment": "모델별 공식 프롬프트 가이드 목록 — 매일 sync.mjs 가 원본과 비교해 반영하고, official/VERSIONS.md 의 '모델 → 가이드' 표를 새로 만든다(커넥터가 start 지침 4단계에 그대로 넣는다). tracked = 공식 스킬, docs = 스킬이 없는 회사의 공식 문서(필요한 절만 뽑음), routes = 공식 가이드가 없는 모델 묶음이 대신 쓸 것. families = 앱 모델 ID 에 들어가면 그 가이드를 쓰는 글자(정규식). watch 의 adopt=true 원본에 새 프롬프트 스킬이 올라오면 사람 손 없이 tracked 에 붙인다. mode: auto 는 바뀌면 바로 반영, review 는 사람이 보고 --accept.",
   "skillsCli": "skills@1.7.0",
   "tracked": [
     {
@@ -7,52 +7,143 @@
       "vendor": "BytePlus",
       "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
       "mode": "auto",
-      "models": ["dreamina-seedance-2-5-260628"]
+      "families": [
+        "seedance-2-5"
+      ],
+      "models": [
+        "dreamina-seedance-2-5-260628"
+      ],
+      "use": "전체 — 입력 상태, 핵심 워크플로 1~8, 템플릿, 원칙",
+      "skip": "\"Self-update before triggering\""
     },
     {
       "skill": "sd2-pe",
       "vendor": "BytePlus",
       "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
       "mode": "auto",
-      "models": ["dreamina-seedance-2-0-260128", "dreamina-seedance-2-0-fast-260128", "dreamina-seedance-2-0-mini-260615"]
+      "families": [
+        "seedance-2-0"
+      ],
+      "models": [
+        "dreamina-seedance-2-0-260128",
+        "dreamina-seedance-2-0-fast-260128",
+        "dreamina-seedance-2-0-mini-260615"
+      ],
+      "use": "전체",
+      "skip": "—"
     },
     {
       "skill": "gemini-omni-flash-api",
       "vendor": "Google",
       "source": "google-gemini/gemini-skills",
       "mode": "auto",
-      "models": ["gemini-omni-flash-preview", "gemini-omni-1.1-flash"]
+      "families": [
+        "gemini-omni"
+      ],
+      "models": [
+        "gemini-omni-flash-preview",
+        "gemini-omni-1.1-flash"
+      ],
+      "use": "\"Prompting Gemini Omni Flash\" 이하",
+      "skip": "SDK·스크립트·업로드·의존성"
     },
     {
       "skill": "imagegen",
       "vendor": "OpenAI",
       "source": "openai/skills",
       "mode": "auto",
-      "models": ["gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"]
+      "families": [
+        "gpt-image"
+      ],
+      "models": [
+        "gpt-image-2",
+        "gpt-image-2.5-flare",
+        "gpt-image-2.5-sunburst"
+      ],
+      "use": "SKILL.md 의 Prompt augmentation, Specificity policy, Use-case taxonomy, Shared prompt schema, Prompting best practices, Guidance by asset type + references/prompting.md, references/sample-prompts.md",
+      "skip": "image_gen 도구, CLI, OPENAI_API_KEY, 저장 경로 규칙. \"Use case: / Asset type:\" 같은 필드 양식은 GPT Image 에만 쓴다"
     },
     {
       "skill": "higgsfield-generate",
       "vendor": "Higgsfield",
       "source": "higgsfield-ai/skills",
-      "mode": "review",
-      "models": []
+      "mode": "auto",
+      "role": "fallback",
+      "families": [],
+      "models": [],
+      "use": "references/prompt-engineering.md(기본 원칙) + references/model-catalog.md(모델별 성격·고르는 기준) — 공식 가이드가 없는 모델에",
+      "skip": "CLI 설치·로그인·명령, Marketing Studio, Soul, \"200토큰 이하\"(공식 가이드가 있으면 공식을 따른다)"
+    }
+  ],
+  "docs": [
+    {
+      "name": "nano-banana",
+      "vendor": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/image-generation.md.txt",
+      "sections": [
+        "Prompting guide and strategies",
+        "Limitations"
+      ],
+      "drop": "Python|JavaScript|Java|Go|REST",
+      "license": "CC BY 4.0 (Google for Developers 문서)",
+      "mode": "auto",
+      "families": [
+        "gemini-.*image",
+        "nano-banana"
+      ],
+      "use": "전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations",
+      "skip": "—"
+    },
+    {
+      "name": "veo",
+      "vendor": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/veo.md.txt",
+      "sections": [
+        "Veo prompt guide",
+        "Limitations"
+      ],
+      "drop": "Python|JavaScript|Java|Go|REST",
+      "license": "CC BY 4.0 (Google for Developers 문서)",
+      "mode": "auto",
+      "families": [
+        "veo"
+      ],
+      "use": "전체",
+      "skip": "—"
+    }
+  ],
+  "routes": [
+    {
+      "families": [
+        "seedream"
+      ],
+      "vendor": "BytePlus",
+      "guides": [
+        "official:nano-banana",
+        "official:higgsfield-generate/model-catalog",
+        "official:higgsfield-generate/prompt-engineering"
+      ],
+      "note": "BytePlus 공식 시드림 프롬프트 가이드가 아직 없다 — 이미지 프롬프트 공식 원칙(구글 nano-banana) + 힉스필드 모델 성격. BytePlus 가 내면 감시에서 잡혀 자동으로 붙는다"
     }
   ],
   "watch": [
     {
       "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
       "type": "well-known",
-      "filter": "."
+      "filter": ".",
+      "adopt": true
     },
     {
       "source": "google-gemini/gemini-skills",
       "type": "github",
-      "filter": "image|video|omni|imagen|veo|nano|banana|prompt"
+      "filter": "image|video|omni|imagen|veo|nano|banana|prompt",
+      "adopt": true
     },
     {
       "source": "openai/skills",
       "type": "github",
-      "filter": "image|video|sora|gpt-image|prompt"
+      "filter": "image|video|sora|gpt-image|prompt",
+      "adopt": true
     },
     {
       "source": "higgsfield-ai/skills",

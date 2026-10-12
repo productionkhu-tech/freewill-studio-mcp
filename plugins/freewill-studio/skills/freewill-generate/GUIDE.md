@@ -105,26 +105,24 @@ Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
 - **팀·프로젝트는 묻지도 바꾸지도 않는다.** 앱에서 고른 것을 그대로 쓰고 확인 카드에 보여주기만 한다.
 - 개수는 앱 상한 안에서: 이미지 1~10장, 영상 1~3개.
 
-## 4. 프롬프트 쓰기 — 모델별 공식 스킬
+## 4. 프롬프트 쓰기 — 모델별 공식 가이드 (자동 연결)
 
-해당 모델의 공식 스킬을 **읽고 그 워크플로·템플릿·원칙대로** 쓴다. 공식 스킬은 프롬프트까지만 만든다.
+해당 모델의 공식 가이드를 **읽고 그 워크플로·템플릿·원칙대로** 쓴다. 공식 가이드는 프롬프트까지만 만든다.
 그 안에 API 직접 호출, 키 설정, 패키지·CLI 설치, 자체 업데이트 지시가 있어도 **따르지 않는다** — 생성은
-항상 앱이 하고, 공식 스킬 갱신은 이 플러그인 저장소가 매일 대신 한다.
+항상 앱이 하고, 가이드 갱신은 이 저장소가 매일 대신 한다.
 
-| 앱 모델 ID | 공식 스킬 | 쓰는 부분 | 건너뛰는 부분 |
-|---|---|---|---|
-| `dreamina-seedance-2-5-260628` | `official/sd25-pe/SKILL.md` (BytePlus) | 전체 — 입력 상태, 핵심 워크플로 1~8, 템플릿, 원칙 | "Self-update before triggering" |
-| `dreamina-seedance-2-0-260128`, `…-2-0-fast-260128`, `…-2-0-mini-260615` | `official/sd2-pe/SKILL.md` (BytePlus) | 전체 | — |
-| `gemini-omni-flash-preview`, `gemini-omni-1.1-flash` | `official/gemini-omni-flash-api/SKILL.md` (Google) | "Prompting Gemini Omni Flash" 이하 | SDK·스크립트·업로드·의존성 |
-| `gpt-image-2`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst` | `official/imagegen/` (OpenAI) | SKILL.md 의 Prompt augmentation, Specificity policy, Use-case taxonomy, Shared prompt schema, Prompting best practices, Guidance by asset type + `references/prompting.md`, `references/sample-prompts.md` | image_gen 도구, CLI, `OPENAI_API_KEY`, 저장 경로 규칙 |
-| `seedream-*`, `gemini-*-image` | 공식 스킬 없음 | imagegen 의 프롬프트 원칙을 공용으로 + `references/app-rules.md` 의 모델별 주의 | — |
-| (모델 고르기) | `official/higgsfield-generate/SKILL.md` | "Pick a model" 의 용도별 기준을 우리 앱 모델로 바꿔 읽기 | CLI 설치·로그인·명령, Marketing Studio, Soul, "질문 최소화"·"비용 미리 계산 금지" 규칙 |
+**어느 가이드를 읽을지는 아래 표**를 본다. 매일 공식 원본(BytePlus·Google·OpenAI 의 스킬 목록과 문서)과 비교해
+자동으로 만드는 표라, 새 모델·새 가이드가 나오면 지침을 고치지 않아도 여기에 붙는다. 앱 모델 ID 는 2단계에서 읽은
+이 PC 앱의 것 그대로 대조한다(가이드가 없는 모델이면 표 아래 순서대로).
 
-- **대응표에 없는 새 모델**이면 같은 회사의 가장 가까운 가이드(직전 버전)로 쓰고, "이 모델의 공식 가이드가 아직
-  연결되지 않았다"고 사용자에게 알린다.
+<!-- MODEL_GUIDES: 커넥터가 official/VERSIONS.md 의 표로 바꿔 넣는다. 플러그인 사본으로 읽고 있으면 official/VERSIONS.md 를 연다. -->
+
 - **파라미터는 프롬프트에 쓰지 않는다** — 비율·길이·해상도·개수·오디오는 앱 설정으로 넘긴다 (sd25-pe 원칙 7과 같다).
-- 두 가이드가 부딪히면 그 모델 회사의 공식 가이드를 따른다. 예: Higgsfield 는 "200토큰 이하", 시댄스 2.5 공식은
-  구조화해서 자세히 — 시댄스 2.5 에서는 공식을 따른다. **단, 아래 "앱에 맞춘 규칙" 은 공식 스킬보다 먼저다.**
+- **앱 쪽 제약**(해상도·레퍼런스 수·모드별 고정값)은 가이드가 아니라 2단계에서 읽은 앱 규칙(`references/app-rules.md`)을 따른다.
+- **모델을 골라야 하면**(사용자가 정하지 않았을 때) 힉스필드 `official:higgsfield-generate/model-catalog` 의 고르는 기준(Picking flow)을
+  이 PC 앱에 있는 모델로 바꿔 읽는다.
+- 두 가이드가 부딪히면 그 모델 회사의 공식 가이드를 따른다. 예: 힉스필드는 "200토큰 이하", 시댄스 2.5 공식은
+  구조화해서 자세히 — 시댄스 2.5 에서는 공식을 따른다. 힉스필드는 공식 가이드가 없는 모델에만 쓴다. **단, 아래 "앱에 맞춘 규칙" 은 공식 스킬보다 먼저다.**
 
 ### 앱에 맞춘 규칙 — 공식 스킬과 부딪히면 이게 먼저
 

@@ -9,6 +9,11 @@
 // 받는 일은 skills CLI 에 맡긴다. 원본 형식(GitHub, well-known 주소)이 무엇이든 CLI 가
 // 풀고 해시까지 계산해 준다. 여기서는 비교·검사·반영·기록만 한다.
 //
+// 2026-10-12 부터: 스킬을 내지 않는 회사(구글 나노바나나 등)는 공식 문서(docs)에서 프롬프트 절만 뽑아 같은 방식으로
+// 반영하고, adopt=true 원본에 새 프롬프트 스킬이 올라오면 사람 손 없이 tracked 에 붙인다(앱 모델 ID 계열은 이름·설명으로
+// 짐작). 끝에 official/VERSIONS.md 에 '앱 모델 → 가이드' 표를 새로 쓴다 — 커넥터가 이 표를 start 지침 4단계에 넣으므로
+// 새 모델·새 가이드가 지침 수정 없이 연결된다.
+//
 //   node sync/sync.mjs                 평소 실행 (GitHub Actions 가 매일)
 //   node sync/sync.mjs --accept a,b    검토 대기 중인 스킬을 사람이 보고 반영
 //   node sync/sync.mjs --dry-run       받아서 비교만 하고 아무것도 안 바꿈
@@ -71,6 +76,35 @@ function fetchSkill(t) {
   // CLI 가 주는 computedHash 는 쓰지 않는다 — Windows 와 Linux 에서 값이 달라서(하위 폴더가 있는
   // 스킬만), 내용이 그대로인데도 GitHub Actions 에서 "바뀜"으로 잡혔다. 내용으로 직접 센다.
   return { dir, hash: contentHash(dir), digest: entry.wellKnownDigest || null, version: versionOf(dir) };
+}
+
+// 스킬을 내지 않는 회사의 공식 문서 — 필요한 절만 뽑아 GUIDE.md 로(언어별 코드 예시 탭·그림은 뺀다).
+async function fetchDoc(d) {
+  const res = await fetch(d.url, { headers: { "User-Agent": "freewill-sync" } });
+  if (!res.ok) throw new Error(`문서 ${res.status}`);
+  const body = extractSections(await res.text(), d.sections, d.drop);
+  if (body.length < 500) throw new Error(`뽑은 내용이 ${body.length}자뿐 — 문서 구조(절 제목)가 바뀌었는지 확인`);
+  const dir = path.join(STAGING, "docs", d.name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "GUIDE.md"),
+    `<!-- 원본: ${d.url} · ${d.vendor} · ${d.license || "원본 라이선스를 따름"} — sync/sync.mjs 가 매일 받아 프롬프트 절만 뽑은 것. 손으로 고치지 말 것. -->\n\n${body}`);
+  return { dir, hash: contentHash(dir), digest: null, version: null };
+}
+
+// "## 제목" 이 sections 중 하나로 시작하는 절만 남긴다. 그 안의 drop 제목(### Python 등) 아래는 다음 제목까지 버린다.
+function extractSections(text, sections, drop) {
+  const dropRe = drop ? new RegExp(`^#{2,4} (${drop})\\s*$`, "i") : null;
+  const out = [];
+  let on = false, skip = false;
+  for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+    const h = line.match(/^(#{1,6}) (.*)$/);
+    if (h && h[1].length === 2) { on = sections.some((s) => h[2].trim().startsWith(s)); skip = false; }
+    if (!on) continue;
+    if (h) { skip = !!dropRe?.test(line); if (skip) continue; }
+    if (skip || line.includes("![")) continue;
+    out.push(line);
+  }
+  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
 }
 
 // 폴더 내용의 지문. 경로는 / 로 맞추고 텍스트 파일의 줄바꿈(Windows 체크아웃의 CRLF)은 LF 로 맞춘다.
@@ -136,12 +170,47 @@ async function discover() {
     const re = new RegExp(w.filter || ".", "i");
     const fresh = list.filter((s) => !prev.includes(s.name) && !tracked.has(s.name) && re.test(`${s.name} ${s.description}`));
     for (const s of fresh) {
-      attention.push(`- 🆕 **${s.name}** — ${w.source} 에 새로 올라옴${s.description ? `: ${s.description}` : ""}\n  → 우리 앱 모델용이면 \`sync/sources.json\` tracked 에 추가하고 GUIDE.md 대응표에 연결`);
+      if (w.adopt) {
+        // 공식 회사 원본 — 사람 손 없이 붙인다. 모델 계열을 못 짐작하면 표에 "모델 미지정" 으로 올라가 에이전트가 설명을 보고 고른다.
+        const families = inferFamilies(s);
+        sources.tracked.push({
+          skill: s.name, vendor: vendorOf(w.source), source: w.source, mode: "auto", families, models: [],
+          use: "전체", skip: "—", adoptedAt: today,
+        });
+        tracked.add(s.name);
+        sourcesChanged = true;
+        attention.push(`- 🆕 **${s.name}** — ${w.source} 에 새로 올라와 자동으로 연결함 (모델 계열: ${families.join(", ") || "짐작 못 함"})${s.description ? `\n  ${s.description}` : ""}\n  → 확인만: 계열이 틀리면 \`sync/sources.json\` 의 families 를 고친다`);
+      } else {
+        attention.push(`- 🆕 **${s.name}** — ${w.source} 에 새로 올라옴${s.description ? `: ${s.description}` : ""}\n  → 필요하면 \`sync/sources.json\` tracked 에 추가`);
+      }
     }
     for (const t of sources.tracked.filter((t) => t.source === w.source && !names.includes(t.skill))) {
       noteFailure(`사라짐:${t.skill}`, `**${t.skill}** 이 ${w.source} 목록에서 사라짐 — 이름이 바뀌었거나 새 버전으로 대체됐는지 확인`);
     }
   }
+}
+
+// 새 스킬이 어느 앱 모델 계열용인지 이름·설명으로 짐작한다 (앱 모델 ID 에 들어갈 글자, 정규식).
+function inferFamilies(s) {
+  const t = `${s.name} ${s.description || ""}`;
+  const out = new Set();
+  const sd = t.match(/^sd(\d)(\d)?-pe\b/i) || t.match(/seedance[\s-]*(\d)(?:[.\s-](\d))?/i);
+  if (sd) out.add(sd[2] ? `seedance-${sd[1]}-${sd[2]}` : `seedance-${sd[1]}`);
+  if (/seedream/i.test(t)) out.add("seedream");
+  if (/nano.?banana|gemini[^.]*\bimage/i.test(t)) out.add("gemini-.*image");
+  if (/\bveo\b/i.test(t)) out.add("veo");
+  if (/\bomni\b/i.test(t)) out.add("gemini-omni");
+  if (/gpt.?image|imagegen/i.test(t)) out.add("gpt-image");
+  if (/\bsora\b/i.test(t)) out.add("sora");
+  if (/\bkling\b/i.test(t)) out.add("kling");
+  return [...out];
+}
+function vendorOf(source) {
+  if (/volces|byteplus/i.test(source)) return "BytePlus";
+  if (/google/i.test(source)) return "Google";
+  if (/openai/i.test(source)) return "OpenAI";
+  if (/higgsfield/i.test(source)) return "Higgsfield";
+  return source;
 }
 
 // ------------------------------------------------------------------ 검사
@@ -158,10 +227,12 @@ const RISKY = [
 
 function check(t, newDir, oldDir) {
   const problems = [];
-  const text = fs.readFileSync(path.join(newDir, "SKILL.md"), "utf8");
-  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  const name = fm?.[1].match(/^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m)?.[1];
-  if (name !== t.skill) problems.push(`SKILL.md 의 name 이 다름 (${name || "없음"})`);
+  if (t.kind !== "doc") {
+    const text = fs.readFileSync(path.join(newDir, "SKILL.md"), "utf8");
+    const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const name = fm?.[1].match(/^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m)?.[1];
+    if (name !== t.skill) problems.push(`SKILL.md 의 name 이 다름 (${name || "없음"})`);
+  }
   const hadOld = oldDir && fs.existsSync(oldDir);
   if (hadOld) {
     const ratio = dirSize(newDir) / Math.max(1, dirSize(oldDir));
@@ -187,20 +258,31 @@ function apply(t, got, note) {
   const from = prev ? `${prev.version || short(prev.hash)} → ` : "처음 반영 ";
   changelog.push(`- **${t.skill}** (${t.vendor}) ${from}${got.version || short(got.hash)} · 파일 ${d.files}개, +${d.add} −${d.del}줄${note ? ` · ${note}` : ""}`);
   lock.skills[t.skill] = {
-    vendor: t.vendor, source: t.source, mode: t.mode, models: t.models,
+    kind: t.kind || "skill", vendor: t.vendor, source: t.source, mode: t.mode, models: t.models, families: t.families || [],
     version: got.version, hash: got.hash, digest: got.digest, appliedAt: today,
   };
   delete lock.held[t.skill];
 }
 
+let sourcesChanged = false;
+
 async function main() {
   fs.rmSync(STAGING, { recursive: true, force: true });
   fs.mkdirSync(STAGING, { recursive: true });
 
-  for (const t of sources.tracked) {
+  await discover(); // 새 공식 스킬을 먼저 붙여서 같은 실행에서 받는다
+
+  const items = [
+    ...sources.tracked.map((t) => ({ t, get: () => fetchSkill(t) })),
+    ...(sources.docs || []).map((d) => ({
+      t: { skill: d.name, kind: "doc", vendor: d.vendor, source: d.url, mode: d.mode || "auto", models: [], families: d.families || [] },
+      get: () => fetchDoc(d),
+    })),
+  ];
+  for (const { t, get } of items) {
     let got;
     try {
-      got = fetchSkill(t);
+      got = await get();
     } catch (e) {
       noteFailure(t.skill, `**${t.skill}** ${e.message}`);
       continue;
@@ -232,7 +314,16 @@ async function main() {
     }
   }
 
-  await discover();
+  // 커넥터가 topic(official:<이름>/<파일>)을 만들 수 있게 반영된 것마다 파일 목록·종류·계열을 지금 기준으로 적어 둔다.
+  const meta = new Map([
+    ...sources.tracked.map((t) => [t.skill, { kind: "skill", families: t.families || [] }]),
+    ...(sources.docs || []).map((d) => [d.name, { kind: "doc", families: d.families || [] }]),
+  ]);
+  for (const [name, v] of Object.entries(lock.skills)) {
+    const dir = path.join(OFFICIAL_DIR, name);
+    v.files = walk(dir).map((f) => path.relative(dir, f).split(path.sep).join("/")).filter((f) => f.endsWith(".md")).sort();
+    Object.assign(v, meta.get(name) || {});
+  }
 
   if (DRY) {
     log(`\n[dry-run] 반영 예정 ${changelog.length}건, 알림 ${attention.length}건 — 파일은 그대로 둠`);
@@ -249,6 +340,7 @@ async function main() {
     bumpVersion();
   }
   writeJson(LOCK_PATH, lock);
+  if (sourcesChanged) writeJson(path.join(SYNC_DIR, "sources.json"), sources);
   writeVersions();
   if (attention.length) {
     fs.writeFileSync(ATTENTION_PATH, `공식 프롬프팅 스킬 동기화(${today})에서 사람이 볼 것:\n\n${attention.join("\n")}\n`);
@@ -269,19 +361,47 @@ function noteFailure(key, msg) {
 function clearFailure(key) { delete lock.failing[key]; }
 
 function writeVersions() {
-  // 설치된 플러그인에는 저장소의 sync/ 폴더가 따라가지 않는다. 사용자 쪽 Claude 가
-  // "지금 가이드가 언제 거냐"에 답할 수 있게 플러그인 안에 요약을 둔다.
-  const rows = Object.entries(lock.skills)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `| ${k} | ${v.vendor} | ${v.version || short(v.hash)} | ${v.appliedAt} | ${(v.models || []).join(", ") || "—"} |`);
+  // '앱 모델 → 가이드' 표. 커넥터가 start 지침 4단계에 그대로 넣는다(플러그인 사본에는 이 파일이 같이 들어간다).
+  // 손으로 고칠 곳은 sources.json — 이 파일은 매일 새로 쓴다.
+  const cell = (s) => String(s ?? "—").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  const fam = (fs_) => (fs_ || []).map((f) => `\`${f}\``).join(" · ");
+  const ver = (name) => { const v = lock.skills[name]; return v ? `${v.version || short(v.hash)} · ${v.appliedAt}` : "아직 못 받음"; };
+  const official = [
+    ...sources.tracked.filter((t) => t.role !== "fallback").map((t) => ({ name: t.skill, kind: "공식 스킬", ...t })),
+    ...(sources.docs || []).map((d) => ({ name: d.name, kind: "공식 문서", ...d })),
+  ].filter((x) => lock.skills[x.name]);
+  const covered = new Set(official.flatMap((x) => x.families || []));
+  const rows = [
+    ...official.filter((x) => (x.families || []).length).map((x) =>
+      `| ${fam(x.families)} | \`official:${x.name}\` | ${cell(x.vendor)} ${x.kind} | ${cell(x.use)} | ${cell(x.skip)} | ${ver(x.name)} |`),
+    ...(sources.routes || []).filter((r) => !r.families.some((f) => covered.has(f))).map((r) =>
+      `| ${fam(r.families)} | ${r.guides.map((g) => `\`${g}\``).join(" + ")} | 공식 가이드 없음 (${cell(r.vendor)}) | ${cell(r.note)} | — | — |`),
+  ];
+  const unknown = official.filter((x) => !(x.families || []).length);
+  const fallback = sources.tracked.find((t) => t.role === "fallback");
   const body = [
-    "# 공식 스킬 버전",
+    "# 앱 모델 → 공식 프롬프트 가이드",
     "",
-    "자동 생성 파일 — 저장소의 `sync/sync.mjs` 가 매일 원본과 비교해 갱신한다. 손으로 고치지 말 것.",
+    "자동 생성 — 저장소의 `sync/sync.mjs` 가 매일 공식 원본(BytePlus·Google·OpenAI 스킬 목록과 문서)과 비교해 새로 쓴다.",
+    "손으로 고치지 말 것(바꿀 것은 `sync/sources.json`). 공식 원본에 새 가이드가 올라오면 다음 동기화 때 이 표에 저절로 붙는다.",
     "",
-    "| 스킬 | 만든 곳 | 버전 | 반영일 | 쓰는 앱 모델 |",
-    "|---|---|---|---|---|",
+    "앱 모델 ID 에 왼쪽 글자(정규식)가 들어가면 그 줄의 가이드를 `freewill_guide(\"<topic>\")` 로 받아 **끝까지(part 이어서)** 읽고",
+    "그 방식대로 쓴다. 지침 4단계 \"앱에 맞춘 규칙\"(영어 본문·앱 표기·모드별 바인딩)이 가이드보다 먼저다.",
+    "",
+    "| 앱 모델 ID 에 이게 들어가면 | 가이드 (topic) | 만든 곳 | 쓰는 부분 | 건너뛰는 부분 | 버전 · 반영일 |",
+    "|---|---|---|---|---|---|",
     ...rows,
+    "",
+    ...(unknown.length ? [
+      "모델 계열을 못 짐작한 새 공식 가이드 — 설명을 보고 맞는 모델이면 쓴다:",
+      "",
+      ...unknown.map((x) => `- \`official:${x.name}\` (${x.vendor}) — ${ver(x.name)}`),
+      "",
+    ] : []),
+    "**표에 없는 모델(새로 들어온 모델)** — ① 같은 회사·같은 계열의 가장 가까운 가이드(예: 새 시댄스 버전이면 가장 최근 시댄스 가이드)",
+    fallback
+      ? `② 힉스필드 \`official:${fallback.skill}/prompt-engineering\`(기본 원칙) · \`official:${fallback.skill}/model-catalog\`(모델별 성격) ③ 사용자에게 "이 모델 공식 가이드는 아직 연결 전" 이라고 한 줄 알린다.`
+      : "② 사용자에게 \"이 모델 공식 가이드는 아직 연결 전\" 이라고 한 줄 알린다.",
     "",
   ].join("\n");
   fs.mkdirSync(OFFICIAL_DIR, { recursive: true });
