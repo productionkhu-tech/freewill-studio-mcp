@@ -75,6 +75,78 @@ function normMedia(m, label) {
   };
 }
 
+// 레퍼런스 가리키기: "이름" 또는 { "name": "이름", "as": "[Image 2]" }
+function refItem(x) {
+  if (!x) return null;
+  if (typeof x === "string") return S(x) ? { name: S(x), as: "" } : null;
+  const name = S(x.name || x.ref || x.id);
+  return name ? { name, as: S(x.as) } : null;
+}
+
+// I2V 의 프레임(첫·끝 프레임 그림) — 그 그림을 만든 이미지 프롬프트·설정·테이크·채택
+function normFrame(f) {
+  if (!f) return null;
+  return {
+    role: S(f.role) || "프레임",
+    title: S(f.title),
+    prompt: S(f.prompt),
+    prompt_ko: S(f.prompt_ko),
+    settings: f.settings || null,
+    refs: A(f.refs).map(refItem).filter(Boolean),
+    results: A(f.results !== undefined ? f.results : f.images !== undefined ? f.images : f.image).map((r) => normMedia(r)).filter(Boolean),
+    note: S(f.note),
+    auto: !!f.auto,
+  };
+}
+
+// 나노바나나가 저장한 PNG 에는 프롬프트(Prompt)·모델(Model)이 글자 청크로 들어 있다 — 압축 안 된 tEXt·iTXt 만 읽는다.
+function pngText(file) {
+  if (!/\.png$/i.test(file)) return {};
+  let fd;
+  try {
+    fd = fs.openSync(file, "r");
+    const size = fs.fstatSync(fd).size;
+    const hdr = Buffer.alloc(8);
+    fs.readSync(fd, hdr, 0, 8, 0);
+    if (hdr.toString("latin1", 1, 4) !== "PNG") return {};
+    const outp = {};
+    let pos = 8;
+    while (pos + 8 <= size) {
+      fs.readSync(fd, hdr, 0, 8, pos);
+      const len = hdr.readUInt32BE(0);
+      const type = hdr.toString("latin1", 4, 8);
+      if ((type === "tEXt" || type === "iTXt") && len < 4 * 1024 * 1024) {
+        const d = Buffer.alloc(len);
+        fs.readSync(fd, d, 0, len, pos + 8);
+        const z = d.indexOf(0);
+        const key = d.toString("latin1", 0, z);
+        let val = "";
+        if (type === "tEXt") val = d.toString("utf8", z + 1);
+        else if (d[z + 1] === 0) {
+          const l1 = d.indexOf(0, z + 3);
+          const l2 = d.indexOf(0, l1 + 1);
+          if (l1 >= 0 && l2 >= 0) val = d.toString("utf8", l2 + 1);
+        }
+        if (val && !(key in outp)) outp[key] = val;
+      }
+      if (type === "IEND") break;
+      pos += 12 + len;
+    }
+    return outp;
+  } catch {
+    return {};
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* 이미 닫힘 */ }
+  }
+}
+const MODEL_NAME = [
+  [/gpt-image-2\.5-sunburst/i, "GPT Image 2.5 선버스트"], [/gpt-image-2\.5-flare/i, "GPT Image 2.5 플레어"], [/gpt-image/i, "GPT Image"],
+  [/gemini-3-pro-image/i, "Nano Banana Pro"], [/nano-banana-2\.1/i, "Nano Banana 2.1"], [/nano-banana|gemini.*image/i, "Nano Banana"],
+  [/seedream-?5/i, "Seedream 5.0"], [/seedream/i, "Seedream"],
+  [/seedance-2-5|seedance-2\.5/i, "Seedance 2.5"], [/seedance-2-0|seedance-2\.0/i, "Seedance 2.0"],
+];
+const prettyModel = (m) => { for (const [re, n] of MODEL_NAME) if (re.test(m)) return n; return m; };
+
 function normStyle(s) {
   if (!s) return null;
   if (typeof s === "string") return { title: "공통 스타일", en: S(s), ko: "" };
@@ -111,11 +183,14 @@ function normBook(src) {
         key: S(r.id || name),
         name,
         category: S(r.category),
+        element: !!r.element,
+        model: S(r.model),
         role: S(r.role),
         note: S(r.note),
         prompt: S(r.prompt),
         prompt_ko: S(r.prompt_ko),
         images: A(r.images || r.image).map((x) => normMedia(x)).filter(Boolean),
+        auto: !!r.auto,
       });
     }
     const cutIds = new Set();
@@ -130,9 +205,12 @@ function normBook(src) {
         group: S(c.group),
         settings: c.settings || null,
         duration: num(c.duration !== undefined ? c.duration : c.settings && c.settings.duration),
-        refs: A(c.refs).map(S).filter(Boolean),
+        flow: S(c.flow).toLowerCase(),
+        refs: A(c.refs).map(refItem).filter(Boolean),
+        frames: A(c.frames).map(normFrame).filter(Boolean),
         prompt: S(c.prompt),
         prompt_ko: S(c.prompt_ko),
+        auto: !!c.auto,
         results: A(c.results).map((r) => normMedia(r)).filter(Boolean),
         finals: A(c.finals !== undefined ? c.finals : c.final).map((r) => normMedia(r, "본편")).filter(Boolean),
         notes: A(c.notes).map(S).filter(Boolean),
@@ -142,6 +220,35 @@ function normBook(src) {
     book.tabs.push(tab);
   }
   return book;
+}
+
+// 프롬프트가 비어 있으면 그림 파일(PNG)에 들어 있는 것으로 채운다 — 이미지 한 장씩 만든 작업에서 기록이 없을 때.
+const IMG_EXT = /\.(png|jpe?g|webp|gif|avif|bmp)$/i;
+const VIDEO_EXT = /\.(mp4|mov|webm|m4v)$/i;
+const absOf = (file) => (path.isAbsolute(file) ? file : path.resolve(inDir, file));
+function fromPng(target, media, withSettings) {
+  if (target.prompt) return;
+  const pick = media.find((m) => m.adopted) || media[0];
+  if (!pick) return;
+  const meta = pngText(absOf(pick.file));
+  const comment = S(meta.Comment);
+  const p = S(meta.Prompt || meta.prompt || (comment.startsWith("Prompt: ") ? comment.slice(8) : ""));
+  if (p) { target.prompt = p; target.auto = true; }
+  if (meta.Model) {
+    if (!withSettings) { if (!target.model) target.model = S(meta.Model); }
+    else if (!target.settings) target.settings = { model: S(meta.Model) };
+    else if (typeof target.settings === "object" && !Array.isArray(target.settings) && !target.settings.model) target.settings = { model: S(meta.Model), ...target.settings };
+  }
+}
+function autofill(book) {
+  for (const t of book.tabs) {
+    for (const r of t.refs) fromPng(r, r.images, false);
+    for (const c of t.cuts) {
+      for (const f of c.frames) fromPng(f, f.results, true);
+      const media = [...c.results, ...c.finals];
+      if (media.length && media.every((m) => IMG_EXT.test(m.file))) fromPng(c, media, true);
+    }
+  }
 }
 
 // ---------- 그림·영상 ----------
@@ -216,6 +323,7 @@ function settingChips(s) {
     else if (v === false) { if (label === "초안") continue; t = label + " 끔"; }
     else {
       t = S(v);
+      if (k === "model") t = prettyModel(t);
       if (k === "duration" && /^\d+(\.\d+)?$/.test(t)) t += "초";
       if ((k === "count" || k === "output_count") && /^\d+$/.test(t)) t += "개";
     }
@@ -223,7 +331,9 @@ function settingChips(s) {
   }
   return outc;
 }
-const CAT_KO = { character: "인물", person: "인물", location: "장소", place: "장소", prop: "소품", object: "소품", style: "스타일", product: "제품" };
+const CAT_KO = { character: "인물", person: "인물", location: "장소", place: "장소", prop: "소품", object: "소품", style: "스타일", product: "제품",
+  video: "영상", palette: "팔레트", image: "그림", reference: "참고", sheet: "시트", frame: "프레임" };
+const FLOW_KO = { r2v: "레퍼런스→영상", i2v: "이미지→영상", t2v: "글→영상", v2v: "영상→영상", image: "이미지" };
 const fmtSec = (s) => {
   if (s === null) return "";
   const r = Math.round(s * 10) / 10;
@@ -274,11 +384,35 @@ function renderTab(book, tab, multi) {
     refByKey.set(r.key.replace(/^@/, "").toLowerCase(), r);
     refByKey.set(r.name.replace(/^@/, "").toLowerCase(), r);
   }
+  const refFor = (name) => refByKey.get(S(name).replace(/^@/, "").toLowerCase());
   const usedIn = new Map();
-  for (const c of tab.cuts) for (const k of c.refs) {
-    const r = refByKey.get(k.replace(/^@/, "").toLowerCase());
-    if (r) { if (!usedIn.has(r.id)) usedIn.set(r.id, []); usedIn.get(r.id).push(c); }
+  for (const c of tab.cuts) {
+    const rs = new Set([...c.refs, ...c.frames.flatMap((f) => f.refs)].map((x) => refFor(x.name)).filter(Boolean));
+    for (const r of rs) { if (!usedIn.has(r.id)) usedIn.set(r.id, []); usedIn.get(r.id).push(c); }
   }
+  // 엘리먼트(어셋 라이브러리)만 @이름, 그냥 파일 레퍼런스는 이름만 — as 가 있으면 앞에 [Image N] 같은 표기
+  const refChip = (x) => {
+    const r = refFor(x.name);
+    const label = (x.as ? x.as + " " : "") + ((r ? r.element : x.name.startsWith("@")) ? "@" : "") + (r ? r.name : x.name).replace(/^@/, "");
+    return r ? `<button type="button" class="chip ref" data-go="${T}-r-${r.id}">${h(label)}</button>` : `<span class="chip ref">${h(label)}</span>`;
+  };
+  const chipHtml = (x) => `<span class="chip"${x.k ? ` title="${h(x.k)}"` : ""}>${h(x.t)}</span>`;
+  // 작업 흐름: 에셋→영상(R2V) · 이미지 한 장씩→영상(I2V) · 글→영상(T2V) · 영상 편집(V2V) · 이미지만
+  const flowOf = (c) => {
+    const media = [...c.results, ...c.finals];
+    const hasVideo = media.some((m) => m.kind === "video" || VIDEO_EXT.test(m.file));
+    const rs = c.refs.map((x) => refFor(x.name)).filter(Boolean);
+    const main = FLOW_KO[c.flow] ? c.flow : c.frames.length ? "i2v" : media.length && !hasVideo ? "image" : c.refs.length ? "r2v" : hasVideo ? "t2v" : "";
+    const tags = main ? [FLOW_KO[main]] : [];
+    if (c.frames.length) tags.push(c.frames.map((f) => f.role).join(" · "));
+    const els = rs.filter((r) => r.element).length;
+    if (els) tags.push(`@엘리먼트 ${els}`);
+    if (rs.some((r) => r.images.some((m) => VIDEO_EXT.test(m.file)) || /video|영상/i.test(r.category))) tags.push("영상 레퍼런스");
+    return { main, tags };
+  };
+  const flowCount = {};
+  for (const c of tab.cuts) { const f = flowOf(c).main; if (f) flowCount[f] = (flowCount[f] || 0) + 1; }
+  const flowLine = Object.entries(flowCount).map(([k, n]) => `${FLOW_KO[k]} ${n}컷`).join(" · ");
   const toc = [];
   const body = [];
   const strip = [];
@@ -303,6 +437,7 @@ function renderTab(book, tab, multi) {
   }
   body.push(`<section class="sec" id="${T}-overview" data-spy><h2>개요</h2>` +
     `<p class="stats">${stats.map(h).join(" · ")}</p>` +
+    (flowLine ? `<p class="flowline"><span>작업 흐름</span>${h(flowLine)}</p>` : "") +
     (notes.length ? `<ul class="notes">${notes.map((n) => `<li>${h(n)}</li>`).join("")}</ul>` : "") + tl +
     `<p class="howto">컷 스트립을 누르면 그 컷으로, 끌면 훑어보기 · ←/→ 이전·다음 컷 · / 찾기 · 그림·영상을 누르면 크게 보기</p></section>`);
   toc.push(`<a href="#${T}-overview">개요</a>`);
@@ -319,11 +454,12 @@ function renderTab(book, tab, multi) {
       const imgs = r.images.map((m, i) => mediaTile(m, i ? "sub" : "main", "", r.name)).join("");
       const cat = CAT_KO[r.category.toLowerCase()] || r.category;
       return `<article class="ref" id="${T}-r-${r.id}"><div class="ref-imgs">${imgs || `<div class="m missing main"><span>그림 없음</span></div>`}</div>` +
-        `<div class="ref-b"><div class="ref-n"><span class="at">${h(r.name.startsWith("@") ? r.name : "@" + r.name)}</span>${cat ? `<span class="cat">${h(cat)}</span>` : ""}</div>` +
+        `<div class="ref-b"><div class="ref-n"><span class="at">${h((r.element || r.name.startsWith("@") ? "@" : "") + r.name.replace(/^@/, ""))}</span>` +
+        `${cat ? `<span class="cat">${h(cat)}</span>` : ""}${r.model ? `<span class="cat">${h(prettyModel(r.model))}</span>` : ""}</div>` +
         (r.role ? `<p class="ref-role">${h(r.role)}</p>` : "") +
         (used ? `<div class="ref-used"><span>쓰는 컷</span>${used}</div>` : "") +
         (r.note ? `<details class="memo"><summary>메모</summary><p>${h(r.note)}</p></details>` : "") +
-        promptBlock(`${T}-r-${r.id}-p`, r.prompt, r.prompt_ko, "만든 프롬프트") + `</div></article>`;
+        promptBlock(`${T}-r-${r.id}-p`, r.prompt, r.prompt_ko, r.auto ? "만든 프롬프트 · 그림 파일에서 읽음" : "만든 프롬프트") + `</div></article>`;
     }).join("");
     body.push(`<section class="sec" id="${T}-refs" data-spy><h2>레퍼런스 <span class="cnt">${tab.refs.length}</span></h2><div class="refs">${cards}</div></section>`);
     toc.push(`<a href="#${T}-refs">레퍼런스 <span class="cnt">${tab.refs.length}</span></a>`);
@@ -341,21 +477,30 @@ function renderTab(book, tab, multi) {
         toc.push(`<a class="g" href="#${T}-g-${gi}">${h(group)}</a>`);
       }
       const cid = `${T}-c-${c.id}`;
-      const chips = settingChips(c.settings).map((x) => `<span class="chip"${x.k ? ` title="${h(x.k)}"` : ""}>${h(x.t)}</span>`).join("");
-      const refs = c.refs.map((k) => {
-        const r = refByKey.get(k.replace(/^@/, "").toLowerCase());
-        const nm = k.startsWith("@") ? k : "@" + k;
-        return r ? `<button type="button" class="chip ref" data-go="${T}-r-${r.id}">${h(nm)}</button>` : `<span class="chip ref">${h(nm)}</span>`;
-      }).join("");
+      const fl = flowOf(c);
+      const chips = fl.tags.map((t) => `<span class="chip flow">${h(t)}</span>`).join("") + settingChips(c.settings).map(chipHtml).join("");
+      const refs = c.refs.map(refChip).join("");
       const capBase = [c.label, c.title].filter(Boolean).join(" ");
+      // I2V: 영상 앞 단계 — 첫·끝 프레임 그림과 그걸 만든 이미지 프롬프트
+      const frames = c.frames.length ? `<div class="frames">` + c.frames.map((f, fi) => {
+        const fchips = settingChips(f.settings).map(chipHtml).join("") + f.refs.map(refChip).join("");
+        const tiles = f.results.map((m) => mediaTile(m, m.adopted ? "pick" : "", "", `${capBase} · ${f.role}`)).join("");
+        return `<div class="frame"><div class="fr-h"><span class="fr-role">${h(f.role)}</span>${f.title ? `<span class="fr-t">${h(f.title)}</span>` : ""}</div>` +
+          (fchips ? `<div class="chips">${fchips}</div>` : "") + (tiles ? `<div class="media">${tiles}</div>` : "") +
+          promptBlock(`${cid}-f${fi}`, f.prompt, f.prompt_ko, f.auto ? "이미지 프롬프트 · 그림 파일에서 읽음" : "이미지 프롬프트") +
+          (f.note ? `<p class="fr-note">${h(f.note)}</p>` : "") + `</div>`;
+      }).join("") + `</div>` : "";
       const media = [...c.finals.map((m) => mediaTile(m, "final", "", capBase)), ...c.results.map((m) => mediaTile(m, m.adopted ? "pick" : "", "", capBase))].join("");
-      const text = [c.label, c.title, c.summary, c.group, c.prompt, c.prompt_ko, ...c.notes, ...c.refs].join(" ").toLowerCase();
+      const stage = c.frames.length && (media || c.prompt) ? `<div class="stage-h">영상</div>` : "";
+      const text = [c.label, c.title, c.summary, c.group, c.prompt, c.prompt_ko, ...c.notes, ...c.refs.map((x) => x.name),
+        ...c.frames.flatMap((f) => [f.role, f.title, f.prompt, f.prompt_ko])].join(" ").toLowerCase();
       parts.push(`<article class="cut" id="${cid}" data-spy data-text="${h(text)}">` +
         `<div class="cut-h"><input type="checkbox" class="done-cb" aria-label="${h(c.label)} 완료 표시" title="완료 표시 — 이 브라우저에 남음">` +
         `<span class="cid">${h(c.label)}</span><div class="cut-t"><h4>${h(c.title || c.label)}</h4>${c.summary ? `<p class="sum">${h(c.summary)}</p>` : ""}</div></div>` +
         (chips || refs ? `<div class="chips">${chips}${refs}</div>` : "") +
+        frames + stage +
         (media ? `<div class="media">${media}</div>` : "") +
-        promptBlock(`${cid}-p`, c.prompt, c.prompt_ko, "프롬프트") +
+        promptBlock(`${cid}-p`, c.prompt, c.prompt_ko, c.frames.length ? "영상 프롬프트" : c.auto ? "프롬프트 · 그림 파일에서 읽음" : "프롬프트") +
         (c.notes.length ? `<ul class="cnotes">${c.notes.map((n) => `<li>${h(n)}</li>`).join("")}</ul>` : "") +
         (c.memo.length ? `<details class="memo"><summary>메모 ${c.memo.length}</summary>${c.memo.map((n) => `<p>${h(n)}</p>`).join("")}</details>` : "") +
         `</article>`);
@@ -368,6 +513,11 @@ function renderTab(book, tab, multi) {
         const src = pp && !pp.missing ? pp.href : p && !p.missing && p.kind === "image" ? p.href : "";
         if (src) img = `<img src="${src}" alt="" loading="lazy" draggable="false">`;
         else if (p && !p.missing && p.kind === "video") img = `<video src="${p.href}#t=0.1" preload="metadata" muted playsinline tabindex="-1"></video>`;
+      }
+      if (!img) {
+        const fr = c.frames.map((f) => f.results.find((m) => m.adopted) || f.results[0]).find(Boolean);
+        const p = fr ? publish(fr) : null;
+        if (p && !p.missing && p.kind === "image") img = `<img src="${p.href}" alt="" loading="lazy" draggable="false">`;
       }
       strip.push(`<button type="button" class="st${img ? "" : " ph"}" data-go="${cid}" title="${h(capBase)}">${img}<span class="n">${h(c.label)}</span><span class="t">${h(c.title)}</span></button>`);
     }
@@ -390,6 +540,7 @@ const CSS = `
 :root[data-theme=light]{--bg:#f5f5f2;--panel:#ffffff;--panel2:#f2f2ee;--panel3:#e9e9e4;--line:#d9d9d2;--text:#1b1c1f;--dim:#585b63;--faint:#878a92;
 --accent:#9a5b08;--accent-ink:#ffffff;--accent-soft:rgba(154,91,8,.11);--ok:#137a45;--ok-ink:#ffffff;--ok-soft:rgba(19,122,69,.11);--blue:#2453e6;color-scheme:light}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{scroll-behavior:auto}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.6;word-break:keep-all;overflow-wrap:break-word;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit}
@@ -478,6 +629,21 @@ h2{font-size:14px;letter-spacing:.06em;color:var(--accent);margin:34px 0 14px;pa
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0 31px}
 .chip{font-size:11.5px;color:var(--dim);background:var(--panel3);border:1px solid var(--line);border-radius:6px;padding:2px 8px;white-space:nowrap}
 .chip.ref{color:var(--accent);background:transparent}
+.chip.flow{color:var(--blue);background:transparent;border-color:var(--blue);font-weight:700}
+.flowline{margin:-4px 0 12px;color:var(--text);font-size:14px}
+.flowline span{color:var(--faint);margin-right:8px}
+.frames{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin:14px 0 0 31px}
+.frame{border:1px solid var(--line);border-radius:10px;padding:10px 12px 12px;background:var(--panel2);min-width:0}
+.fr-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.fr-role{font-weight:800;color:var(--blue);font-size:13px;letter-spacing:.04em}
+.fr-t{color:var(--dim);font-size:13px}
+.frame .chips,.frame .media,.frame .pr{margin-left:0}
+.frame .media{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.frame .pr{background:var(--panel)}
+.fr-note{margin:8px 0 0;font-size:12.5px;color:var(--faint)}
+.stage-h{display:flex;align-items:center;gap:10px;margin:18px 0 0 31px;font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--faint)}
+.stage-h::before{content:"↓";color:var(--blue);font-size:14px}
+.stage-h::after{content:"";flex:1;height:1px;background:var(--line)}
 button.chip{cursor:pointer}
 button.chip:hover{border-color:var(--accent);color:var(--text)}
 .media{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin:14px 0 0 31px}
@@ -559,7 +725,8 @@ footer{max-width:1440px;margin:0 auto;padding:0 24px 40px;color:var(--faint);fon
   .st .t{display:none}
   .pr.both .panes{grid-template-columns:1fr}
   .pr.both .pane+.pane{border-left:0;border-top:1px solid var(--line)}
-  .chips,.media,.pr,.cnotes,.memo{margin-left:0}
+  .chips,.media,.pr,.cnotes,.memo,.frames,.stage-h{margin-left:0}
+  .frames{grid-template-columns:1fr}
   .lb-stage{padding:0 8px 16px}
   .lb-nav{display:none}
 }
@@ -810,9 +977,11 @@ function dataForRebuild(book) {
     id: book.id, title: book.title, subtitle: book.subtitle, notes: book.notes, style: book.style,
     tabs: book.tabs.map((t) => ({
       id: t.id, title: t.title, sub: t.sub, notes: t.notes, style: t.style,
-      refs: t.refs.map((r) => ({ id: r.key, name: r.name, category: r.category, role: r.role, note: r.note, prompt: r.prompt, prompt_ko: r.prompt_ko, images: r.images.map(m) })),
-      cuts: t.cuts.map((c) => ({ id: c.label, title: c.title, summary: c.summary, group: c.group, settings: c.settings, duration: c.duration, refs: c.refs,
-        prompt: c.prompt, prompt_ko: c.prompt_ko, results: c.results.map(m), finals: c.finals.map(m), notes: c.notes, memo: c.memo })),
+      refs: t.refs.map((r) => ({ id: r.key, name: r.name, category: r.category, element: r.element, model: r.model, role: r.role, note: r.note,
+        prompt: r.prompt, prompt_ko: r.prompt_ko, auto: r.auto, images: r.images.map(m) })),
+      cuts: t.cuts.map((c) => ({ id: c.label, title: c.title, summary: c.summary, group: c.group, flow: c.flow, settings: c.settings, duration: c.duration, refs: c.refs,
+        frames: c.frames.map((f) => ({ role: f.role, title: f.title, prompt: f.prompt, prompt_ko: f.prompt_ko, settings: f.settings, refs: f.refs, results: f.results.map(m), note: f.note, auto: f.auto })),
+        prompt: c.prompt, prompt_ko: c.prompt_ko, auto: c.auto, results: c.results.map(m), finals: c.finals.map(m), notes: c.notes, memo: c.memo })),
     })),
   };
 }
@@ -821,6 +990,7 @@ function dataForRebuild(book) {
 let src;
 try { src = readInput(inAbs); } catch (e) { console.error(`읽지 못함: ${inAbs} — ${e.message}`); process.exit(1); }
 const book = normBook(src);
+autofill(book);
 if (!book.tabs.some((t) => t.cuts.length || t.refs.length)) { console.error("컷도 레퍼런스도 없다 — book.json 의 cuts(또는 tabs[].cuts)를 채울 것"); process.exit(1); }
 fs.mkdirSync(outDir, { recursive: true });
 const html = render(book);
