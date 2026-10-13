@@ -245,15 +245,17 @@ async function main() {
   const owner = ticketOwner();
   let quota = "로그인 표 없음 — 보낼 때는 커넥터에서 다시 받은 스크립트로";
   if (owner) {
-    const me = await usageApi("GET", "/usage/me");
+    // 하루 한도는 PC(PC 이름 + 윈도 사용자) 기준 — 관리자가 계정 전체 상한을 걸어 두면 더 빡빡한 쪽이 온다(scope)
+    const host = os.hostname();
+    const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}`);
     if (me.http === 401) fail(me.error || NO_TICKET);
     const q = me.apps?.nanobanana;
     if (!q) fail(`사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
     if (q.used + total > q.limit) {
-      fail(`오늘 ${owner.e} 계정이 MCP 로 보낸 이미지 ${q.used}장 — 하루 ${q.limit}장 한도라 이번 ${total}장은 보내지 않는다. ` +
-        "장수를 줄이거나 내일 보내고, 급하면 앱에서 직접 만들게 할 것");
+      fail(`오늘 ${q.scope === "account" ? `${owner.e} 계정(모든 PC 합계)이` : `이 PC(${host})가`} MCP 로 보낸 이미지 ${q.used}장 — ` +
+        `하루 ${q.limit}장 한도라 이번 ${total}장은 보내지 않는다. 장수를 줄이거나 내일 보내고, 급하면 앱에서 직접 만들게 할 것`);
     }
-    quota = `${owner.e} · 오늘 남은 한도 ${q.limit - q.used}장`;
+    quota = `${owner.e} · ${host} · 오늘 남은 한도 ${q.limit - q.used}장`;
   } else if (!DRY) {
     fail(NO_TICKET);
   }
