@@ -31,6 +31,8 @@ const amountTo = (app, daily, until) => {
   const a = amount(app, daily);
   return `${a}${until ? `(${until}까지)` : ""}${/[장)]$/.test(a) ? "으로" : "로"}`;
 };
+// 한국 날짜 범위 → ts 범위(기록 탭 · CSV 가 시간 색인을 쓴다)
+const tsRange = (from, to) => [Date.parse(`${from}T00:00:00+09:00`), Date.parse(`${to}T00:00:00+09:00`) + 864e5];
 const devName = (d) => (d ? `${d.pc || "(PC 이름 없음)"}${d.win_user ? ` · ${d.win_user}` : ""}` : "(모르는 장치)");
 
 // ---------------------------------------------------------------- 입구
@@ -196,8 +198,8 @@ function filtersOf(sp) {
   };
 }
 function whereOf(ctx, f) {
-  const where = ["day BETWEEN ? AND ?"];
-  const binds = [ctx.from, ctx.to];
+  const where = ["ts >= ? AND ts < ?"];
+  const binds = tsRange(ctx.from, ctx.to);
   if (f.who.startsWith("d:")) { where.push("device = ?"); binds.push(f.who.slice(2)); }
   if (f.who.startsWith("p:")) { where.push("device IN (SELECT id FROM devices WHERE label = ?)"); binds.push(f.who.slice(2)); }
   if (f.app) { where.push("app = ?"); binds.push(f.app); }
@@ -284,12 +286,12 @@ function meter(used, limit, app) {
 async function overview(ctx) {
   const { all, from, to, today } = ctx;
   const rows = await all(
-    `SELECT day, device, app, SUM(n) AS n, COUNT(*) AS sends FROM usage
-      WHERE day BETWEEN ? AND ? AND status = 'sent' GROUP BY day, device, app`, from, to);
-  const todayRows = await all("SELECT device, app, SUM(n) AS n FROM usage WHERE day = ? AND status = 'sent' GROUP BY device, app", today);
+    `SELECT day, device, app, SUM(n) AS n, SUM(sends) AS sends FROM usage_daily
+      WHERE day BETWEEN ? AND ? GROUP BY day, device, app HAVING SUM(sends) > 0`, from, to);
+  const todayRows = await all("SELECT device, app, SUM(n) AS n FROM usage_daily WHERE day = ? GROUP BY device, app HAVING SUM(sends) > 0", today);
   const modelRows = await all(
-    `SELECT app, COALESCE(model, '') AS model, SUM(n) AS n FROM usage
-      WHERE day BETWEEN ? AND ? AND status = 'sent' GROUP BY app, COALESCE(model, '') ORDER BY n DESC`, from, to);
+    `SELECT app, model, SUM(n) AS n FROM usage_daily
+      WHERE day BETWEEN ? AND ? GROUP BY app, model HAVING SUM(sends) > 0 ORDER BY n DESC`, from, to);
   const devLimits = await all("SELECT * FROM device_limits");
 
   const sumApp = (list, app) => list.filter((r) => r.app === app).reduce((a, r) => a + r.n, 0);
@@ -360,7 +362,7 @@ async function watchList(ctx) {
   const startTs = Date.parse(`${from}T00:00:00+09:00`);
   const endTs = Date.parse(`${to}T00:00:00+09:00`) + 864e5;
   const events = await all("SELECT * FROM events WHERE ts >= ? AND ts < ? AND kind NOT LIKE 'admin.%' ORDER BY ts DESC LIMIT 100", startTs, endTs);
-  const cancels = await all("SELECT device, SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS c, COUNT(*) AS t FROM usage WHERE day BETWEEN ? AND ? GROUP BY device", from, to);
+  const cancels = await all("SELECT device, SUM(cancels) AS c, SUM(sends) + SUM(cancels) AS t FROM usage_daily WHERE day BETWEEN ? AND ? GROUP BY device", from, to);
   const who = (device, email) => (device ? `${ctx.person(device)}${ctx.dev.get(device)?.label ? ` · ${devName(ctx.dev.get(device))}` : ""}` : email || "");
   const items = events.map((e) => ({ ts: e.ts, kind: KIND[e.kind] || e.kind, who: who(e.device, e.email), detail: [e.detail, e.device ? e.email : ""].filter(Boolean).join(" · ") }));
   for (const d of ctx.devices) {
@@ -387,17 +389,17 @@ async function accountsTab(ctx) {
   const { all, from, to, env } = ctx;
   const accts = await all("SELECT * FROM accounts");
   const used = await all(
-    `SELECT email, MAX(name) AS name, COUNT(DISTINCT device) AS devices,
-            SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END) AS img,
-            SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END) AS vid, MAX(ts) AS last_use
-       FROM usage WHERE day BETWEEN ? AND ? GROUP BY email`, from, to);
+    `SELECT email, COUNT(DISTINCT device) AS devices,
+            SUM(CASE WHEN app = 'nanobanana' THEN n ELSE 0 END) AS img,
+            SUM(CASE WHEN app = 'seedance' THEN n ELSE 0 END) AS vid
+       FROM usage_daily WHERE day BETWEEN ? AND ? GROUP BY email HAVING SUM(sends) + SUM(cancels) > 0`, from, to);
   const caps = await all("SELECT * FROM limits");
   const A = new Map(accts.map((a) => [a.email, a]));
   const U = new Map(used.map((u) => [u.email, u]));
   const emails = [...new Set([...accts.map((a) => a.email), ...used.map((u) => u.email), ...caps.map((c) => c.email)])];
   const capText = (e) => caps.filter((c) => c.email === e && inForce(c) !== null).map((c) => `${WHAT[c.app]} ${c.daily === 0 ? "막음" : `${num(c.daily)}${UNIT[c.app]}`}`).join(" · ") || "—";
   const order = emails.map((e) => ({ e, a: A.get(e) || {}, u: U.get(e) || {} }))
-    .sort((x, y) => (y.a.blocked || 0) - (x.a.blocked || 0) || Math.max(y.u.last_use || 0, y.a.last_login || 0) - Math.max(x.u.last_use || 0, x.a.last_login || 0));
+    .sort((x, y) => (y.a.blocked || 0) - (x.a.blocked || 0) || Math.max(y.a.last_use || 0, y.a.last_login || 0) - Math.max(x.a.last_use || 0, x.a.last_login || 0));
   const confirmText = (m) => ` onsubmit="return confirm('${esc(m)}')"`;
   const rows = order.map(({ e, a, u }) => {
     const actions = [
@@ -406,10 +408,10 @@ async function accountsTab(ctx) {
         ? `<form class="inline" method="post" action="/admin/account"><input type="hidden" name="email" value="${esc(e)}"><button class="link ok" name="action" value="unblock">풀기</button></form>`
         : `<form class="inline" method="post" action="/admin/account"${confirmText(`${e} 을 막을까요? 연결이 모두 끊기고, 다시 연결하거나 보내지 못해요.`)}><input type="hidden" name="email" value="${esc(e)}"><button class="link" name="action" value="block">막기</button></form>`,
     ].filter(Boolean).join(" · ");
-    return `<tr><td class="rn"></td><td data-v="${esc(a.name || u.name || e)}">${esc(a.name || u.name || e.split("@")[0])}<small>${esc(e)}</small></td>
+    return `<tr><td class="rn"></td><td data-v="${esc(a.name || e)}">${esc(a.name || e.split("@")[0])}<small>${esc(e)}</small></td>
 <td data-v="${a.last_login || 0}">${a.last_login ? esc(kstTime(a.last_login)) : "—"}<small>${a.logins ? `${num(a.logins)}번 연결` : ""}</small></td>
 <td>${esc(a.clients || "—")}</td><td class="n" data-v="${u.img || 0}">${num(u.img)}</td><td class="n" data-v="${u.vid || 0}">${num(u.vid)}</td><td class="n" data-v="${u.devices || 0}">${num(u.devices)}</td>
-<td data-v="${u.last_use || 0}">${u.last_use ? esc(kstTime(u.last_use)) : "—"}</td><td>${esc(capText(e))}</td>
+<td data-v="${a.last_use || 0}">${a.last_use ? esc(kstTime(a.last_use)) : "—"}</td><td>${esc(capText(e))}</td>
 <td data-v="${a.blocked ? 1 : 0}">${a.blocked ? `<span class="warn">막힘</span><small>${esc(a.blocked_by || "")} ${a.blocked_at ? esc(kstTime(a.blocked_at)) : ""}</small>` : "쓰는 중"}</td><td>${actions}</td></tr>`;
   });
   return `<section><h2>계정 (${num(emails.length)})</h2>
@@ -424,14 +426,15 @@ async function devicesTab(ctx) {
   const { all, from, to, today } = ctx;
   const stats = await all(
     `SELECT device,
-            SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END) AS img,
-            SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END) AS vid,
-            SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sends,
-            GROUP_CONCAT(DISTINCT email) AS emails, GROUP_CONCAT(DISTINCT ip) AS ips
-       FROM usage WHERE day BETWEEN ? AND ? GROUP BY device`, from, to);
+            SUM(CASE WHEN app = 'nanobanana' THEN n ELSE 0 END) AS img,
+            SUM(CASE WHEN app = 'seedance' THEN n ELSE 0 END) AS vid,
+            SUM(sends) AS sends, GROUP_CONCAT(DISTINCT email) AS emails
+       FROM usage_daily WHERE day BETWEEN ? AND ? GROUP BY device`, from, to);
   const todays = await all(
     `SELECT device, SUM(CASE WHEN app = 'nanobanana' THEN n ELSE 0 END) AS img_today, SUM(CASE WHEN app = 'seedance' THEN n ELSE 0 END) AS vid_today
-       FROM usage WHERE day = ? AND status = 'sent' GROUP BY device`, today);
+       FROM usage_daily WHERE day = ? GROUP BY device`, today);
+  const ipRows = await all("SELECT device, GROUP_CONCAT(ip, ', ') AS ips, COUNT(*) AS c FROM device_ips GROUP BY device");
+  const ipsOf = new Map(ipRows.map((r) => [r.device, String(r.ips || "").split(", ").filter(Boolean)]));
   const devLimits = await all("SELECT * FROM device_limits");
   const st = new Map(stats.map((s) => [s.device, s]));
   for (const x of todays) st.set(x.device, { ...(st.get(x.device) || {}), ...x });
@@ -440,13 +443,13 @@ async function devicesTab(ctx) {
   const rows = ctx.devices.map((d) => {
     const s = st.get(d.id) || {};
     const emails = String(s.emails || "").split(",").filter(Boolean).join(", ");
-    const ips = String(s.ips || "").split(",").filter(Boolean);
+    const ips = ipsOf.get(d.id) || [];
     const li = limitOf(d.id, "nanobanana");
     const lv = limitOf(d.id, "seedance");
     return `<tr><td class="rn"></td>
 <td data-v="${esc(d.label || "")}"><form class="nform" method="post" action="/admin/device"><input type="hidden" name="tab" value="devices"><input type="hidden" name="device" value="${esc(d.id)}"><input name="label" maxlength="40" value="${esc(d.label || "")}" placeholder="사람 이름" aria-label="${esc(devName(d))} 사람 이름"><button class="small" name="action" value="name">저장</button></form></td>
 <td data-v="${esc(d.pc || "")}"><a href="${qs({ tab: "records", from, to, who: `d:${d.id}` })}" title="이 PC 기록 보기">${esc(d.pc || "(PC 이름 없음)")}</a><small>${esc([d.win_user, d.pc_names ? `전 이름: ${d.pc_names}` : ""].filter(Boolean).join(" · "))}</small></td>
-<td>${esc(emails)}</td><td>${esc(d.ip || "")}${ips.length > 1 ? `<small title="${esc(ips.join(", "))}">이 기간 IP ${ips.length}개</small>` : ""}</td>
+<td>${esc(emails)}</td><td>${esc(d.ip || "")}${ips.length > 1 ? `<small title="${esc(ips.join(", "))}">쓴 IP ${ips.length}개</small>` : ""}</td>
 <td data-v="${Number(s.img_today || 0) / (li || 1)}">${meter(Number(s.img_today || 0), li, "nanobanana")}</td>
 <td data-v="${Number(s.vid_today || 0) / (lv || 1)}">${meter(Number(s.vid_today || 0), lv, "seedance")}</td>
 <td class="n" data-v="${Number(s.img || 0)}">${num(s.img)}</td><td class="n" data-v="${Number(s.vid || 0)}">${num(s.vid)}</td>
@@ -465,18 +468,40 @@ async function devicesTab(ctx) {
 
 // ---------------------------------------------------------------- 탭: 기록
 
+// 기록 탭 맨 위 합계 — 검색어가 없으면 하루 요약 표로(몇 줄), 있으면 원본을 2만 건까지만 센다.
+async function recordTotals(ctx, f, where, binds) {
+  if (f.q) {
+    const r = await ctx.db.prepare(`SELECT COUNT(*) AS c,
+        COALESCE(SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END), 0) AS img,
+        COALESCE(SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END), 0) AS vid
+        FROM (SELECT status, app, n FROM usage WHERE ${where} LIMIT 20001)`).bind(...binds).first();
+    return { ...r, capped: Number(r?.c || 0) > 20000 };
+  }
+  const w = ["day BETWEEN ? AND ?"];
+  const b = [ctx.from, ctx.to];
+  if (f.who.startsWith("d:")) { w.push("device = ?"); b.push(f.who.slice(2)); }
+  if (f.who.startsWith("p:")) { w.push("device IN (SELECT id FROM devices WHERE label = ?)"); b.push(f.who.slice(2)); }
+  if (f.app) { w.push("app = ?"); b.push(f.app); }
+  if (f.model === "~") w.push("model = ''");
+  else if (f.model) { w.push("model = ?"); b.push(f.model); }
+  const count = f.status === "sent" ? "sends" : f.status === "cancelled" ? "cancels" : "sends + cancels";
+  const none = f.status === "cancelled";
+  const r = await ctx.db.prepare(`SELECT COALESCE(SUM(${count}), 0) AS c,
+      COALESCE(SUM(CASE WHEN app = 'nanobanana' THEN n ELSE 0 END), 0) AS img,
+      COALESCE(SUM(CASE WHEN app = 'seedance' THEN n ELSE 0 END), 0) AS vid FROM usage_daily WHERE ${w.join(" AND ")}`).bind(...b).first();
+  return { c: r?.c, img: none ? 0 : r?.img, vid: none ? 0 : r?.vid, capped: false };
+}
+
 async function records(ctx) {
   const { db, all, from, to } = ctx;
   const f = filtersOf(ctx.sp);
   const { where, binds } = whereOf(ctx, f);
-  const total = await db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(CASE WHEN status = 'sent' THEN n ELSE 0 END), 0) AS n,
-      COALESCE(SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END), 0) AS img,
-      COALESCE(SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END), 0) AS vid FROM usage WHERE ${where}`).bind(...binds).first();
+  const total = await recordTotals(ctx, f, where, binds);
   const pages = Math.max(1, Math.ceil(Number(total?.c || 0) / f.size));
   const pageNo = Math.min(f.page, pages);
   const list = await all(`SELECT * FROM usage WHERE ${where} ORDER BY ${SORTS[f.sort]} ${f.dir === "asc" ? "ASC" : "DESC"}, ts DESC LIMIT ? OFFSET ?`,
     ...binds, f.size, (pageNo - 1) * f.size);
-  const models = await all("SELECT DISTINCT app, COALESCE(model, '') AS model FROM usage WHERE day BETWEEN ? AND ? ORDER BY app, model", from, to);
+  const models = await all("SELECT DISTINCT app, model FROM usage_daily WHERE day BETWEEN ? AND ? ORDER BY app, model", from, to);
   const keep = { tab: "records", from, to, who: f.who, app: f.app, model: f.model, status: f.status, q: f.q, size: f.size === 50 ? "" : f.size };
   const labels = [...new Set(ctx.devices.map((d) => d.label).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
   const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(label)}</option>`;
@@ -498,7 +523,7 @@ async function records(ctx) {
 <label>정렬<select name="order">${[["ts:desc", "최근 순"], ["ts:asc", "오래된 순"], ["n:desc", "개수 많은 순"], ["pc:asc", "PC 이름순"], ["email:asc", "계정순"], ["model:asc", "모델순"], ["job:asc", "작업 이름순"]].map(([v, l]) => opt(v, l, `${f.sort}:${f.dir}`)).join("")}</select></label>
 <label>보기<select name="size">${PAGE_SIZES.map((n) => opt(String(n), `${n}개씩`, String(f.size))).join("")}</select></label>
 <button>거르기</button>${f.who || f.model || f.status || f.q || f.app ? `<a class="btn ghost" href="${qs({ tab: "records", from, to })}">모두 지우기</a>` : ""}</form>
-<div class="chips">${chip("", "전체")}${chip("nanobanana", "이미지")}${chip("seedance", "영상")}<span class="sum">${num(total?.c)}건 · 이미지 ${num(total?.img)}장 · 영상 ${num(total?.vid)}개</span>
+<div class="chips">${chip("", "전체")}${chip("nanobanana", "이미지")}${chip("seedance", "영상")}<span class="sum">${num(total?.c)}건${total?.capped ? " 이상" : ""} · 이미지 ${num(total?.img)}장 · 영상 ${num(total?.vid)}개</span>
 <a class="btn ghost" href="/admin/csv${qs({ from, to, who: f.who, app: f.app, model: f.model, status: f.status, q: f.q })}">이 조건으로 CSV</a></div>
 ${list.length ? `<div class="scroll"><table><thead><tr><th class="rn">#</th>${sortLink("ts", "시간")}<th>사람</th>${sortLink("pc", "PC")}${sortLink("email", "연결 계정")}${sortLink("ip", "IP")}${sortLink("app", "앱")}${sortLink("model", "모델")}<th>해상도</th>${sortLink("n", "개수", "n")}<th>과금</th><th>프로젝트</th>${sortLink("job", "작업")}</tr></thead><tbody>
 ${list.map((r, i) => `<tr class="${r.status === "cancelled" ? "cancel" : ""}"><td class="rn">${(pageNo - 1) * f.size + i + 1}</td><td>${esc(kstTime(r.ts))}</td><td>${esc(ctx.person(r.device))}</td><td>${esc(r.pc || "")}<small>${esc(r.win_user || "")}</small></td><td>${esc(r.email)}</td><td>${esc(r.ip || "")}</td><td>${esc(WHAT[r.app] || r.app)}</td><td>${esc(modelName(r.model))}</td><td>${esc(r.resolution || "")}</td><td class="n">${num(r.n)}</td><td>${esc(r.billing || "")}</td><td>${esc(r.project || "")}</td><td>${esc(r.job || "")}</td></tr>`).join("")}
@@ -510,8 +535,8 @@ ${list.map((r, i) => `<tr class="${r.status === "cancelled" ? "cancel" : ""}"><t
 async function models(ctx) {
   const { all, from, to } = ctx;
   const rows = await all(
-    `SELECT device, app, COALESCE(model, '') AS model, SUM(n) AS n FROM usage
-      WHERE day BETWEEN ? AND ? AND status = 'sent' GROUP BY device, app, COALESCE(model, '')`, from, to);
+    `SELECT device, app, model, SUM(n) AS n FROM usage_daily
+      WHERE day BETWEEN ? AND ? GROUP BY device, app, model HAVING SUM(n) > 0`, from, to);
   const block = (app) => {
     const list = rows.filter((r) => r.app === app);
     if (!list.length) return `<section><h2>${WHAT[app]}</h2><p class="empty">이 기간에는 기록이 없다.</p></section>`;

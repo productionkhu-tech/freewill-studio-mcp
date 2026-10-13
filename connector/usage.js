@@ -27,11 +27,13 @@ const DEVICE_ID = /^[A-Za-z0-9-]{8,64}$/;
 // 관리자가 정한 한도 — 기간 안이면 그 값, 아니면 null.
 export const inForce = (r) => (r && (!r.until || r.until >= kstDay()) ? Number(r.daily) : null);
 
-const TODAY = "day = ? AND app = ? AND status = 'sent'";
+// 오늘 보낸 양은 하루 요약 표(usage_daily — 트리거가 맞춤)에서 — 기록이 하루 수만 건이어도 몇 줄만 읽는다. col = device | email.
+const SUM_TODAY = (col) => `COALESCE((SELECT SUM(n) FROM usage_daily WHERE day = ? AND ${col} = ? AND app = ?), 0)`;
 async function usedToday(env, col, key, app) {
-  const r = await env.USAGE_DB.prepare(`SELECT COALESCE(SUM(n), 0) AS n FROM usage WHERE ${col} = ? AND ${TODAY}`).bind(key, kstDay(), app).first();
+  const r = await env.USAGE_DB.prepare(`SELECT ${SUM_TODAY(col)} AS n`).bind(kstDay(), key, app).first();
   return Number(r?.n || 0);
 }
+const QUIET_MS = 10 * 60e3;   // 장치 · 계정의 '마지막 사용'은 바뀐 게 없으면 10분에 한 번만 쓴다(무료 D1 쓰기 아끼기)
 // 이 장치의 오늘 한도: 관리자 화면에서 정한 것, 없으면 기본.
 async function deviceLimit(env, device, app) {
   const r = await env.USAGE_DB.prepare("SELECT daily, until FROM device_limits WHERE device = ? AND app = ?").bind(device, app).first();
@@ -88,16 +90,20 @@ async function blocked(env, email, where) {
 const settleMs = (env) => Number(env.SETTLE_MINUTES || 30) * 60e3;
 
 // 장치 목록을 갱신한다 — 처음 보는 장치면 만들고, 같은 PC 이름·사용자로 센 옛 기록(pc:…)이 있으면 이 장치로 합친다
-// (붙인 이름·한도도 옮긴다). PC 이름이 바뀌면 이전 이름을 남긴다.
+// (붙인 이름·한도·IP 도 옮긴다). PC 이름이 바뀌면 이전 이름을 남긴다. 바뀐 게 없으면 10분에 한 번만 쓴다.
 async function touchDevice(env, d, ip) {
   const db = env.USAGE_DB;
   const now = Date.now();
-  const cur = await db.prepare("SELECT pc, pc_names FROM devices WHERE id = ?").bind(d.id).first();
+  const seenIp = ip ? [db.prepare("INSERT INTO device_ips (device, ip, first_ts, last_ts) VALUES (?, ?, ?, ?) ON CONFLICT (device, ip) DO UPDATE SET last_ts = excluded.last_ts").bind(d.id, ip, now, now)] : [];
+  const cur = await db.prepare("SELECT pc, win_user, pc_names, ip, last_ts FROM devices WHERE id = ?").bind(d.id).first();
   if (cur) {
     const old = cur.pc && cur.pc !== d.pc ? cur.pc : null;
+    if (!old && cur.win_user === d.user && (!ip || cur.ip === ip) && now - Number(cur.last_ts || 0) < QUIET_MS) return;
     const names = [...new Set([...String(cur.pc_names || "").split(", ").filter(Boolean), ...(old ? [old] : [])])].slice(-10).join(", ") || null;
-    await db.prepare("UPDATE devices SET pc = ?, win_user = ?, pc_names = ?, ip = COALESCE(?, ip), last_ts = ? WHERE id = ?")
-      .bind(d.pc, d.user, names, ip, now, d.id).run();
+    await db.batch([
+      db.prepare("UPDATE devices SET pc = ?, win_user = ?, pc_names = ?, ip = COALESCE(?, ip), last_ts = ? WHERE id = ?").bind(d.pc, d.user, names, ip, now, d.id),
+      ...seenIp,
+    ]);
     return;
   }
   const stmts = [db.prepare("INSERT OR IGNORE INTO devices (id, pc, win_user, ip, first_ts, last_ts) VALUES (?, ?, ?, ?, ?, ?)").bind(d.id, d.pc, d.user, ip, now, now)];
@@ -105,6 +111,8 @@ async function touchDevice(env, d, ip) {
   if (d.real) {
     stmts.push(
       db.prepare("UPDATE usage SET device = ? WHERE device = ?").bind(d.id, old),
+      db.prepare("INSERT OR IGNORE INTO device_ips (device, ip, first_ts, last_ts) SELECT ?, ip, first_ts, last_ts FROM device_ips WHERE device = ?").bind(d.id, old),
+      db.prepare("DELETE FROM device_ips WHERE device = ?").bind(old),
       db.prepare(
         `UPDATE devices SET label = COALESCE((SELECT label FROM devices WHERE id = ?), label),
                             label_by = COALESCE((SELECT label_by FROM devices WHERE id = ?), label_by),
@@ -116,7 +124,16 @@ async function touchDevice(env, d, ip) {
       db.prepare("DELETE FROM devices WHERE id = ?").bind(old),
     );
   }
-  await db.batch(stmts);
+  await db.batch([...stmts, ...seenIp]);
+}
+
+// 계정의 '마지막 사용' — 10분에 한 번만(연결 기록이 없던 계정이면 이때 만든다)
+function touchAccount(env, t) {
+  const now = Date.now();
+  return env.USAGE_DB.prepare(
+    `INSERT INTO accounts (email, name, last_use) VALUES (?, ?, ?)
+     ON CONFLICT (email) DO UPDATE SET last_use = excluded.last_use WHERE accounts.last_use IS NULL OR accounts.last_use < ?`,
+  ).bind(t.e, text(t.n), now, now - QUIET_MS).run();
 }
 
 export async function usage(request, env) {
@@ -166,6 +183,7 @@ export async function usage(request, env) {
   const ip = text(request.headers.get("CF-Connecting-IP"));
   const d = await resolveDevice(env, b, t.e);
   await touchDevice(env, d, ip);
+  await touchAccount(env, t);
   // 한도 확인과 기록을 한 문장으로 — 같은 PC 의 Claude·Codex 가 동시에 보내도, 계정 상한이 있어도 넘지 않는다.
   const limit = await deviceLimit(env, d.id, app);
   const cap = await accountCap(env, t.e, app);
@@ -174,13 +192,13 @@ export async function usage(request, env) {
   const res = await env.USAGE_DB.prepare(
     `INSERT INTO usage (id, ts, day, email, name, pc, win_user, device, ip, app, kind, model, resolution, n, billing, project, job, status)
      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent'
-      WHERE (SELECT COALESCE(SUM(n), 0) FROM usage WHERE device = ? AND ${TODAY}) + ? <= ?
-        AND (? IS NULL OR (SELECT COALESCE(SUM(n), 0) FROM usage WHERE email = ? AND ${TODAY}) + ? <= ?)`,
+      WHERE ${SUM_TODAY("device")} + ? <= ?
+        AND (? IS NULL OR ${SUM_TODAY("email")} + ? <= ?)`,
   ).bind(
     id, Date.now(), day, t.e, text(t.n), text(b.pc), text(b.user), d.id, ip,
     app, text(b.kind) || "generate", text(b.model), text(b.resolution), n, text(b.billing), text(b.project), text(b.job),
-    d.id, day, app, n, limit,
-    cap, t.e, day, app, n, cap ?? 0,
+    day, d.id, app, n, limit,
+    cap, day, t.e, app, n, cap ?? 0,
   ).run();
   if (!res.meta?.changes) {
     const deviceUsed = await usedToday(env, "device", d.id, app);
