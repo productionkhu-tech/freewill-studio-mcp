@@ -7,6 +7,7 @@
 
 import { AuthorizationError } from "@cloudflare/workers-oauth-provider";
 import { fromB64urlText, seal, unseal } from "./seal.js";
+import { logEvent } from "./events.js";
 
 const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
@@ -92,6 +93,22 @@ export async function callback(request, env) {
       },
     });
   }
+
+  // 관리자가 막은 계정은 연결하지 못한다. 연결할 때마다 계정 목록(관리 화면 '계정' 탭)에 남긴다.
+  // 기록 DB 가 잠깐 안 되더라도 로그인은 막지 않는다(막힌 계정은 보내기 쪽 /usage 에서 다시 막힌다).
+  try {
+    const db = env.USAGE_DB;
+    const acct = await db.prepare("SELECT blocked, clients FROM accounts WHERE email = ?").bind(user.email).first();
+    if (acct?.blocked) {
+      await logEvent(env, "blocked_login", { email: user.email, detail: flow.clientName || "" });
+      return page(403, "막힌 계정입니다", `${user.email} 은 관리자가 프리윌 스튜디오 MCP 사용을 막아 두었습니다. 관리자에게 물어 주세요.`);
+    }
+    const clients = [...new Set([...String(acct?.clients || "").split(", ").filter(Boolean), flow.clientName || "(이름 없는 앱)"])].slice(-10).join(", ");
+    await db.prepare(
+      `INSERT INTO accounts (email, name, first_login, last_login, logins, clients) VALUES (?, ?, ?, ?, 1, ?)
+       ON CONFLICT (email) DO UPDATE SET name = excluded.name, last_login = excluded.last_login, logins = accounts.logins + 1, clients = excluded.clients`,
+    ).bind(user.email, user.name, Date.now(), Date.now(), clients).run();
+  } catch {}
 
   const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
     request: flow.req,

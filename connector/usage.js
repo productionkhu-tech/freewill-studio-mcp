@@ -9,6 +9,7 @@
 // 관리자가 계정에 상한을 정해 두면(limits) 그 계정으로 보낸 모든 장치의 합계도 그 안이어야 한다.
 
 import { readTicket } from "./auth.js";
+import { logEvent } from "./events.js";
 
 export const LIMITS = { nanobanana: 1000, seedance: 200 };   // 장치 한 대의 하루 기본 한도
 export const UNIT = { nanobanana: "장", seedance: "개" };
@@ -50,14 +51,39 @@ async function quota(env, email, device, app) {
 }
 
 // 이 요청의 장치. 장치 ID 가 없으면 같은 PC 이름·윈도 사용자로 마지막에 본 장치, 그것도 없으면 이름으로 만든 ID.
-async function resolveDevice(env, b) {
+async function resolveDevice(env, b, email) {
+  const db = env.USAGE_DB;
   const pc = pcOf(b.pc);
   const user = pcOf(b.user);
-  if (DEVICE_ID.test(String(b.device || ""))) return { id: String(b.device), pc, user, real: true };
-  const r = await env.USAGE_DB.prepare("SELECT id FROM devices WHERE pc = ? AND win_user = ? AND id NOT LIKE 'pc:%' ORDER BY last_ts DESC LIMIT 1")
-    .bind(pc, user).first();
-  return { id: r?.id || legacyId(pc, user), pc, user, real: false };
+  const sameName = () => db.prepare("SELECT id FROM devices WHERE pc = ? AND win_user = ? AND id NOT LIKE 'pc:%' ORDER BY last_ts DESC LIMIT 1").bind(pc, user).first();
+  const sent = String(b.device || "");
+  if (DEVICE_ID.test(sent)) {
+    const alias = await db.prepare("SELECT device FROM device_alias WHERE alias = ?").bind(sent).first();
+    if (alias) return { id: alias.device, pc, user, real: true };
+    // device.json 을 지워 ID 를 새로 만들어도 같은 PC 이름·윈도 사용자의 장치가 있으면 그 장치로 센다(하루 한도 초기화 막기)
+    if (pc && !(await db.prepare("SELECT 1 AS k FROM devices WHERE id = ?").bind(sent).first())) {
+      const same = await sameName();
+      if (same) {
+        await db.prepare("INSERT OR IGNORE INTO device_alias (alias, device, ts) VALUES (?, ?, ?)").bind(sent, same.id, Date.now()).run();
+        await logEvent(env, "device_reset", { email, device: same.id, detail: `${pc} · ${user} 가 새 장치 ID 로 보냄 — 원래 장치로 묶음` });
+        return { id: same.id, pc, user, real: true };
+      }
+    }
+    return { id: sent, pc, user, real: true };
+  }
+  return { id: (await sameName())?.id || legacyId(pc, user), pc, user, real: false };
 }
+
+// 관리자가 막은 계정이면 그 사유 응답, 아니면 null
+async function blocked(env, email, where) {
+  const a = await env.USAGE_DB.prepare("SELECT blocked FROM accounts WHERE email = ?").bind(email).first();
+  if (!a?.blocked) return null;
+  await logEvent(env, "blocked_usage", { email, detail: where });
+  return json({ ok: false, error: `${email} 계정은 관리자가 프리윌 스튜디오 MCP 사용을 막아 두었다 — 관리자에게 물을 것` }, 403);
+}
+
+// 무르기·줄이기는 앱이 요청을 받는 동안만(시댄스는 받기까지 최대 10분) — 그 뒤에는 '만들고 나서 무르기'라 받지 않는다
+const settleMs = (env) => Number(env.SETTLE_MINUTES || 30) * 60e3;
 
 // 장치 목록을 갱신한다 — 처음 보는 장치면 만들고, 같은 PC 이름·사용자로 센 옛 기록(pc:…)이 있으면 이 장치로 합친다
 // (붙인 이름·한도도 옮긴다). PC 이름이 바뀌면 이전 이름을 남긴다.
@@ -96,9 +122,12 @@ export async function usage(request, env) {
   const t = await readTicket(env, request);
   if (!t) return json({ ok: false, error: "로그인 표가 없거나 만료됐습니다 — 스크립트를 커넥터(freewill_script)에서 다시 받을 것" }, 401);
 
+  const stop = await blocked(env, t.e, url.pathname);
+  if (stop) return stop;
+
   if (url.pathname === "/usage/me") {
     const q = url.searchParams;
-    const d = await resolveDevice(env, { pc: q.get("pc"), user: q.get("user"), device: q.get("device") });
+    const d = await resolveDevice(env, { pc: q.get("pc"), user: q.get("user"), device: q.get("device") }, t.e);
     // 처음 보는 장치면 아직 합치기 전이라 이름으로 센 옛 기록을 본다
     const known = await env.USAGE_DB.prepare("SELECT 1 AS k FROM devices WHERE id = ?").bind(d.id).first();
     const id = d.real && !known ? legacyId(d.pc, d.user) : d.id;
@@ -111,9 +140,20 @@ export async function usage(request, env) {
 
   // 앱이 받은 실제 개수로 맞추거나(n), 앱이 거절했으면 무른다(n = 0).
   if (url.pathname === "/usage/settle") {
+    const db = env.USAGE_DB;
     const n = Math.round(Number(b.n));
-    if (n >= 1) await env.USAGE_DB.prepare("UPDATE usage SET n = ? WHERE id = ? AND email = ? AND n >= ?").bind(n, text(b.id), t.e, n).run();
-    else await env.USAGE_DB.prepare("UPDATE usage SET status = 'cancelled' WHERE id = ? AND email = ?").bind(text(b.id), t.e).run();
+    const rid = text(b.id);
+    const since = Date.now() - settleMs(env);
+    const res = n >= 1
+      ? await db.prepare("UPDATE usage SET n = ? WHERE id = ? AND email = ? AND n >= ? AND ts >= ?").bind(n, rid, t.e, n, since).run()
+      : await db.prepare("UPDATE usage SET status = 'cancelled' WHERE id = ? AND email = ? AND ts >= ?").bind(rid, t.e, since).run();
+    if (!res.meta?.changes) {
+      const row = await db.prepare("SELECT ts, device FROM usage WHERE id = ? AND email = ?").bind(rid, t.e).first();
+      if (row && row.ts < since) {
+        await logEvent(env, "late_settle", { email: t.e, device: row.device, detail: `${Math.round((Date.now() - row.ts) / 60e3)}분 지난 기록을 ${n >= 1 ? `${n}개로 줄이려` : "무르려"} 함` });
+        return json({ ok: false, error: `${Math.round(settleMs(env) / 60e3)}분이 지난 기록은 무르거나 줄일 수 없다` }, 409);
+      }
+    }
     return json({ ok: true });
   }
   if (url.pathname !== "/usage") return json({ ok: false, error: "모르는 주소" }, 404);
@@ -122,7 +162,7 @@ export async function usage(request, env) {
   const n = Math.round(Number(b.n));
   if (!LIMITS[app] || !(n >= 1 && n <= 10)) return json({ ok: false, error: "app 이나 n 이 올바르지 않음" }, 400);
   const ip = text(request.headers.get("CF-Connecting-IP"));
-  const d = await resolveDevice(env, b);
+  const d = await resolveDevice(env, b, t.e);
   await touchDevice(env, d, ip);
   // 한도 확인과 기록을 한 문장으로 — 같은 PC 의 Claude·Codex 가 동시에 보내도, 계정 상한이 있어도 넘지 않는다.
   const limit = await deviceLimit(env, d.id, app);

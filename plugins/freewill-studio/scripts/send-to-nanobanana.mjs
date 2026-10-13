@@ -271,7 +271,7 @@ async function main() {
     // 하루 한도는 PC(PC 이름 + 윈도 사용자) 기준 — 관리자가 계정 전체 상한을 걸어 두면 더 빡빡한 쪽이 온다(scope)
     const host = os.hostname();
     const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}&device=${encodeURIComponent(device())}`);
-    if (me.http === 401) fail(me.error || NO_TICKET);
+    if (me.http === 401 || me.http === 403) fail(me.error || NO_TICKET);   // 403 = 관리자가 막은 계정
     const q = me.apps?.nanobanana;
     if (!q) fail(`사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
     if (q.used + total > q.limit) {

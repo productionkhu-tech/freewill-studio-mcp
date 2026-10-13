@@ -6,8 +6,10 @@
 
 import { page } from "./auth.js";
 import { LIMITS, UNIT, WHAT, inForce, kstDay, text } from "./usage.js";
+import { logEvent } from "./events.js";
 
-const TABS = [["overview", "개요"], ["devices", "사람 · PC"], ["records", "기록"], ["models", "모델"], ["limits", "한도"]];
+const TABS = [["overview", "개요"], ["devices", "사람 · PC"], ["accounts", "계정"], ["records", "기록"], ["models", "모델"], ["limits", "한도"]];
+const KIND = { late_settle: "늦게 무르기 시도", device_reset: "장치 ID 를 새로 만듦", blocked_login: "막힌 계정이 연결 시도", blocked_usage: "막힌 계정이 보내기 시도" };
 const APPS = ["nanobanana", "seedance"];
 const PAGE_SIZE = 50;
 const PALETTE = ["#2453e6", "#0f9d8a", "#e0892b", "#9b51e0", "#d64545", "#3a8fd6"];
@@ -37,6 +39,7 @@ export async function admin(request, env, viewer) {
   const url = new URL(request.url);
   if (url.pathname === "/admin/device" && request.method === "POST") return setDevice(request, env, viewer);
   if (url.pathname === "/admin/limits" && request.method === "POST") return setAccountCap(request, env, viewer);
+  if (url.pathname === "/admin/account" && request.method === "POST") return setAccount(request, env, viewer);
 
   const sp = url.searchParams;
   const today = kstDay();
@@ -53,13 +56,14 @@ export async function admin(request, env, viewer) {
   if (url.pathname === "/admin/csv") return csv(ctx);
   if (url.pathname !== "/admin") return page(404, "없는 화면", "관리자 화면은 /admin 입니다.");
   const tab = TABS.some(([k]) => k === sp.get("tab")) ? sp.get("tab") : "overview";
-  const body = await { overview, devices: devicesTab, records, models, limits: limitsTab }[tab](ctx);
+  const body = await { overview, devices: devicesTab, accounts: accountsTab, records, models, limits: limitsTab }[tab](ctx);
   return new Response(shell(ctx, tab, body), { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 }
 
 // ---------------------------------------------------------------- 폼 (관리자 화면에서만)
 
 const back = (m, tab) => new Response(null, { status: 303, headers: { Location: `/admin${qs({ tab, msg: m })}` } });
+const done = async (env, viewer, kind, m, tab) => { await logEvent(env, `admin.${kind}`, { email: viewer, detail: m }); return back(m, tab); };
 const tabOf = (f, fallback) => (TABS.some(([k]) => k === f.get("tab")) ? String(f.get("tab")) : fallback);
 function fromAdminPage(request, env) {
   const origin = request.headers.get("Origin");
@@ -84,13 +88,13 @@ async function setDevice(request, env, viewer) {
   if (action === "name") {
     const label = String(f.get("label") || "").trim().slice(0, 40);
     await db.prepare("UPDATE devices SET label = ?, label_by = ?, label_at = ? WHERE id = ?").bind(label || null, viewer, Date.now(), d.id).run();
-    return back(label ? `${who} 에 '${label}' 이름을 붙였다.` : `${who} 의 이름을 지웠다.`, tab);
+    return done(env, viewer, "name", label ? `${who} 에 '${label}' 이름을 붙였다.` : `${who} 의 이름을 지웠다.`, tab);
   }
   const app = String(f.get("app") || "");
   if (!LIMITS[app]) return back("앱을 골라 주세요.", tab);
   if (action === "clear") {
     await db.prepare("DELETE FROM device_limits WHERE device = ? AND app = ?").bind(d.id, app).run();
-    return back(`${who} 의 ${WHAT[app]} 한도를 기본(${LIMITS[app]}${UNIT[app]})으로 되돌렸다.`, tab);
+    return done(env, viewer, "device_limit", `${who} 의 ${WHAT[app]} 한도를 기본(${LIMITS[app]}${UNIT[app]})으로 되돌렸다.`, tab);
   }
   const l = limitFields(f);
   if (!l) return back("하루 한도는 0 ~ 100,000 사이 숫자로 적어 주세요.", tab);
@@ -99,7 +103,7 @@ async function setDevice(request, env, viewer) {
      ON CONFLICT (device, app) DO UPDATE SET daily = excluded.daily, until = excluded.until, note = excluded.note,
        set_by = excluded.set_by, set_at = excluded.set_at`,
   ).bind(d.id, app, l.daily, l.until, l.note, viewer, Date.now()).run();
-  return back(`${who} 의 ${WHAT[app]} 하루 한도를 ${amountTo(app, l.daily, l.until)} 정했다.`, tab);
+  return done(env, viewer, "device_limit", `${who} 의 ${WHAT[app]} 하루 한도를 ${amountTo(app, l.daily, l.until)} 정했다.`, tab);
 }
 
 // 계정 전체 상한 저장·없애기
@@ -114,7 +118,7 @@ async function setAccountCap(request, env, viewer) {
   if (!/^[^@\s]+@[^@\s]+$/.test(email) || !email.endsWith(`@${domain}`)) return back(`회사 이메일(@${domain})을 적어 주세요.`, tab);
   if (f.get("action") === "clear") {
     await env.USAGE_DB.prepare("DELETE FROM limits WHERE email = ? AND app = ?").bind(email, app).run();
-    return back(`${email} 계정 전체 ${WHAT[app]} 상한을 없앴다 — PC별 한도만 센다.`, tab);
+    return done(env, viewer, "account_cap", `${email} 계정 전체 ${WHAT[app]} 상한을 없앴다 — PC별 한도만 센다.`, tab);
   }
   const l = limitFields(f);
   if (!l) return back("하루 한도는 0 ~ 100,000 사이 숫자로 적어 주세요.", tab);
@@ -123,7 +127,42 @@ async function setAccountCap(request, env, viewer) {
      ON CONFLICT (email, app) DO UPDATE SET daily = excluded.daily, until = excluded.until, note = excluded.note,
        set_by = excluded.set_by, set_at = excluded.set_at`,
   ).bind(email, app, l.daily, l.until, l.note, viewer, Date.now()).run();
-  return back(`${email} 계정 전체 ${WHAT[app]} 하루 상한을 ${amountTo(app, l.daily, l.until)} 정했다.`, tab);
+  return done(env, viewer, "account_cap", `${email} 계정 전체 ${WHAT[app]} 하루 상한을 ${amountTo(app, l.daily, l.until)} 정했다.`, tab);
+}
+
+// 계정: 커넥터 연결 끊기(다시 로그인하면 또 씀) · 막기(연결을 끊고 다시 연결·보내기도 못 함) · 풀기
+async function setAccount(request, env, viewer) {
+  if (!fromAdminPage(request, env)) return page(403, "다른 곳에서 온 요청", "관리자 화면에서 다시 해 주세요.");
+  const f = await request.formData();
+  const email = String(f.get("email") || "").trim().toLowerCase();
+  const domain = String(env.ALLOWED_DOMAIN || "").toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+$/.test(email) || !email.endsWith(`@${domain}`)) return back(`회사 이메일(@${domain})을 적어 주세요.`, "accounts");
+  const revokeAll = async () => {
+    let n = 0;
+    try {
+      const r = await env.OAUTH_PROVIDER.listUserGrants(email, { limit: 100 });
+      for (const g of r.items || []) { await env.OAUTH_PROVIDER.revokeGrant(g.id, email); n++; }
+    } catch {}
+    return n;
+  };
+  const action = String(f.get("action") || "");
+  if (action === "revoke") {
+    const n = await revokeAll();
+    return done(env, viewer, "revoke", `${email} 의 커넥터 연결 ${n}개를 끊었다 — 다시 로그인하면 또 쓸 수 있다.`, "accounts");
+  }
+  if (action === "block") {
+    await env.USAGE_DB.prepare(
+      `INSERT INTO accounts (email, blocked, blocked_by, blocked_at) VALUES (?, 1, ?, ?)
+       ON CONFLICT (email) DO UPDATE SET blocked = 1, blocked_by = excluded.blocked_by, blocked_at = excluded.blocked_at`,
+    ).bind(email, viewer, Date.now()).run();
+    const n = await revokeAll();
+    return done(env, viewer, "block", `${email} 을 막았다 — 연결 ${n}개를 끊었고, 다시 연결하거나 보내지 못한다.`, "accounts");
+  }
+  if (action === "unblock") {
+    await env.USAGE_DB.prepare("UPDATE accounts SET blocked = 0, blocked_by = ?, blocked_at = ? WHERE email = ?").bind(viewer, Date.now(), email).run();
+    return done(env, viewer, "unblock", `${email} 을 풀었다 — 다시 연결해서 쓸 수 있다.`, "accounts");
+  }
+  return back("할 일을 골라 주세요.", "accounts");
 }
 
 // ---------------------------------------------------------------- 기록 거르기 (기록 탭 · CSV 공통)
@@ -297,7 +336,78 @@ async function overview(ctx) {
 </div>
 <section><h2>오늘 한도에 가까운 PC</h2>${near.length ? `<div class="scroll"><table><thead><tr><th>사람</th><th>PC</th><th>앱</th><th>오늘 / 한도</th></tr></thead><tbody>
 ${near.map((r) => `<tr><td>${esc(ctx.person(r.device))}</td><td>${esc(devName(ctx.dev.get(r.device)))}</td><td>${esc(WHAT[r.app])}</td><td>${meter(r.n, r.limit, r.app)}</td></tr>`).join("")}
-</tbody></table></div>` : `<p class="empty">오늘 한도의 80% 를 넘긴 PC 가 없다.</p>`}</section>`;
+</tbody></table></div>` : `<p class="empty">오늘 한도의 80% 를 넘긴 PC 가 없다.</p>`}</section>
+${await watchList(ctx)}`;
+}
+
+// 살펴볼 것 — 한도를 피하려는 움직임일 수 있는 것들(이 기간). 사건 기록(events) + 기록에서 바로 보이는 것.
+async function watchList(ctx) {
+  const { all, from, to } = ctx;
+  const startTs = Date.parse(`${from}T00:00:00+09:00`);
+  const endTs = Date.parse(`${to}T00:00:00+09:00`) + 864e5;
+  const events = await all("SELECT * FROM events WHERE ts >= ? AND ts < ? AND kind NOT LIKE 'admin.%' ORDER BY ts DESC LIMIT 100", startTs, endTs);
+  const cancels = await all("SELECT device, SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS c, COUNT(*) AS t FROM usage WHERE day BETWEEN ? AND ? GROUP BY device", from, to);
+  const who = (device, email) => (device ? `${ctx.person(device)}${ctx.dev.get(device)?.label ? ` · ${devName(ctx.dev.get(device))}` : ""}` : email || "");
+  const items = events.map((e) => ({ ts: e.ts, kind: KIND[e.kind] || e.kind, who: who(e.device, e.email), detail: [e.detail, e.device ? e.email : ""].filter(Boolean).join(" · ") }));
+  for (const d of ctx.devices) {
+    if (d.first_ts >= startTs && d.first_ts < endTs && !String(d.id).startsWith("pc:")) items.push({ ts: d.first_ts, kind: "새 PC", who: who(d.id), detail: devName(d) });
+    if (d.pc_names) items.push({ ts: null, kind: "PC 이름이 바뀐 적 있음", who: who(d.id), detail: `전 이름: ${d.pc_names}` });
+  }
+  for (const c of cancels) if (c.c >= 3 && c.c * 5 >= c.t) items.push({ ts: null, kind: "무른 기록이 많음", who: who(c.device), detail: `${c.t}건 중 ${c.c}건 무름` });
+  const byPc = new Map();
+  for (const d of ctx.devices) if (d.pc) byPc.set(d.pc, [...(byPc.get(d.pc) || []), d]);
+  for (const [pc, list] of byPc) {
+    const users = [...new Set(list.map((d) => d.win_user))];
+    if (users.length > 1) items.push({ ts: null, kind: "같은 PC 이름에 윈도 사용자 여럿", who: pc, detail: users.join(", ") });
+  }
+  return `<section><h2>살펴볼 것 (${num(items.length)})</h2>
+<p class="hint">한도를 피하려는 움직임일 수 있는 것들 — 늦게 무르기(만들고 나서 무르기), 장치 ID 새로 만들기, 새 PC · 새 윈도 사용자, 막힌 계정의 시도. 대부분은 평범한 일이라 사람을 보고 판단한다.</p>
+${items.length ? `<div class="scroll"><table><thead><tr><th>언제</th><th>무엇</th><th>누구 · PC</th><th>내용</th></tr></thead><tbody>
+${items.slice(0, 60).map((i) => `<tr><td>${i.ts ? esc(kstTime(i.ts)) : "—"}</td><td>${esc(i.kind)}</td><td>${esc(i.who)}</td><td>${esc(i.detail || "")}</td></tr>`).join("")}
+</tbody></table></div>` : `<p class="empty">살펴볼 것이 없다.</p>`}</section>`;
+}
+
+// ---------------------------------------------------------------- 탭: 계정
+
+async function accountsTab(ctx) {
+  const { all, from, to, env } = ctx;
+  const accts = await all("SELECT * FROM accounts");
+  const used = await all(
+    `SELECT email, MAX(name) AS name, COUNT(DISTINCT device) AS devices,
+            SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END) AS img,
+            SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END) AS vid, MAX(ts) AS last_use
+       FROM usage WHERE day BETWEEN ? AND ? GROUP BY email`, from, to);
+  const caps = await all("SELECT * FROM limits");
+  const A = new Map(accts.map((a) => [a.email, a]));
+  const U = new Map(used.map((u) => [u.email, u]));
+  const emails = [...new Set([...accts.map((a) => a.email), ...used.map((u) => u.email), ...caps.map((c) => c.email)])];
+  // 지금 이어진 연결(OAuth 공급자의 grant). 계정이 많지 않아 화면을 열 때마다 묻는다.
+  const grants = new Map();
+  await Promise.all(emails.map(async (e) => {
+    try { grants.set(e, (await env.OAUTH_PROVIDER.listUserGrants(e, { limit: 100 })).items || []); } catch { grants.set(e, null); }
+  }));
+  const capText = (e) => caps.filter((c) => c.email === e && inForce(c) !== null).map((c) => `${WHAT[c.app]} ${c.daily === 0 ? "막음" : `${num(c.daily)}${UNIT[c.app]}`}`).join(" · ") || "—";
+  const order = emails.map((e) => ({ e, a: A.get(e) || {}, u: U.get(e) || {}, g: grants.get(e) }))
+    .sort((x, y) => (y.a.blocked || 0) - (x.a.blocked || 0) || Math.max(y.u.last_use || 0, y.a.last_login || 0) - Math.max(x.u.last_use || 0, x.a.last_login || 0));
+  const confirmText = (m) => ` onsubmit="return confirm('${esc(m)}')"`;
+  const rows = order.map(({ e, a, u, g }) => {
+    const apps = g === null ? "—" : g.length ? `${esc([...new Set(g.map((x) => x.metadata?.clientName || "이름 없는 앱"))].join(", "))} <small>${g.length}개</small>` : "없음";
+    const actions = [
+      g && g.length ? `<form class="inline" method="post" action="/admin/account"${confirmText(`${e} 의 커넥터 연결을 모두 끊을까요? 다시 로그인하면 또 쓸 수 있어요.`)}><input type="hidden" name="email" value="${esc(e)}"><button class="link" name="action" value="revoke">연결 끊기</button></form>` : "",
+      a.blocked
+        ? `<form class="inline" method="post" action="/admin/account"><input type="hidden" name="email" value="${esc(e)}"><button class="link ok" name="action" value="unblock">풀기</button></form>`
+        : `<form class="inline" method="post" action="/admin/account"${confirmText(`${e} 을 막을까요? 연결이 모두 끊기고, 다시 연결하거나 보내지 못해요.`)}><input type="hidden" name="email" value="${esc(e)}"><button class="link" name="action" value="block">막기</button></form>`,
+    ].filter(Boolean).join(" · ");
+    return `<tr><td data-v="${esc(e)}">${esc(a.name || u.name || e.split("@")[0])}<small>${esc(e)}</small></td>
+<td data-v="${a.last_login || 0}">${a.last_login ? esc(kstTime(a.last_login)) : "—"}<small>${a.logins ? `${num(a.logins)}번 연결` : ""}</small></td>
+<td>${apps}</td><td class="n" data-v="${u.img || 0}">${num(u.img)}</td><td class="n" data-v="${u.vid || 0}">${num(u.vid)}</td><td class="n" data-v="${u.devices || 0}">${num(u.devices)}</td>
+<td data-v="${u.last_use || 0}">${u.last_use ? esc(kstTime(u.last_use)) : "—"}</td><td>${esc(capText(e))}</td>
+<td data-v="${a.blocked ? 1 : 0}">${a.blocked ? `<span class="warn">막힘</span><small>${esc(a.blocked_by || "")} ${a.blocked_at ? esc(kstTime(a.blocked_at)) : ""}</small>` : "쓰는 중"}</td><td>${actions}</td></tr>`;
+  });
+  return `<section><h2>계정 (${num(emails.length)})</h2>
+<p class="hint">커넥터에 로그인한 회사 구글 계정. '연결된 앱'은 지금 이어진 연결(Claude · ChatGPT · Codex 등, 로그인은 7일). <b>연결 끊기</b>는 지금 연결만 끊고 다시 로그인하면 또 쓴다. <b>막기</b>는 연결을 끊고 다시 연결도, 이미 받은 스크립트로 보내기도 못 하게 한다(퇴사 · 계정 유출 때). 기간 이미지 · 영상 · PC 는 위 기간 기준.</p>
+<form class="lform acc" method="post" action="/admin/account"${confirmText("이 계정을 막을까요?")}><input name="email" type="email" required placeholder="미리 막을 계정 — 이름@${esc(env.ALLOWED_DOMAIN)}" aria-label="막을 회사 이메일"><button name="action" value="block">막기</button></form>
+${rows.length ? `<div class="scroll"><table class="sortable"><thead><tr><th data-k="t">계정</th><th data-k="n">마지막 연결</th><th>연결된 앱</th><th data-k="n" class="n">기간 이미지</th><th data-k="n" class="n">기간 영상</th><th data-k="n" class="n">PC</th><th data-k="n">마지막 사용</th><th>계정 상한</th><th data-k="n">상태</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="empty">아직 연결한 계정이 없다.</p>`}</section>`;
 }
 
 // ---------------------------------------------------------------- 탭: 사람 · PC
@@ -417,6 +527,7 @@ async function limitsTab(ctx) {
   const { all, today } = ctx;
   const devLimits = await all("SELECT * FROM device_limits ORDER BY set_at DESC");
   const caps = await all("SELECT * FROM limits ORDER BY email, app");
+  const adminLog = await all("SELECT * FROM events WHERE kind LIKE 'admin.%' ORDER BY ts DESC LIMIT 50");
   const appSelect = `<select name="app" aria-label="앱"><option value="nanobanana">이미지 (나노바나나)</option><option value="seedance">영상 (시댄스)</option></select>`;
   const limitInputs = `<input name="daily" type="number" min="0" max="100000" required placeholder="하루 한도" aria-label="하루 한도">
 <input name="until" type="date" aria-label="이 날까지 (비우면 계속)" title="이 날까지 (비우면 계속)">
@@ -439,7 +550,10 @@ ${devLimits.map((l) => `<tr${l.until && l.until < today ? ' class="cancel"' : ""
 ${caps.length ? `<div class="scroll"><table><thead><tr><th>계정</th><th>앱</th><th class="n">하루 상한</th><th>기간</th><th>메모</th><th>정한 사람 · 시각</th><th></th></tr></thead><tbody>
 ${caps.map((l) => `<tr${l.until && l.until < today ? ' class="cancel"' : ""}><td>${esc(l.email)}</td><td>${esc(WHAT[l.app] || l.app)}</td><td class="n">${limitCell(l)}</td><td>${l.until ? `${esc(l.until)}까지` : "계속"}</td><td>${esc(l.note || "")}</td><td>${setBy(l)}</td>
 <td><form class="inline" method="post" action="/admin/limits"><input type="hidden" name="tab" value="limits"><input type="hidden" name="email" value="${esc(l.email)}"><input type="hidden" name="app" value="${esc(l.app)}"><button class="link" name="action" value="clear">없애기</button></form></td></tr>`).join("")}
-</tbody></table></div>` : `<p class="empty">상한을 정한 계정이 없다.</p>`}</section>`;
+</tbody></table></div>` : `<p class="empty">상한을 정한 계정이 없다.</p>`}</section>
+<section><h2>관리 기록 (최근 50)</h2>${adminLog.length ? `<div class="scroll"><table><thead><tr><th>시각</th><th>관리자</th><th>한 일</th></tr></thead><tbody>
+${adminLog.map((e) => `<tr><td>${esc(kstTime(e.ts))}</td><td>${esc(e.email || "")}</td><td>${esc(e.detail || "")}</td></tr>`).join("")}
+</tbody></table></div>` : `<p class="empty">아직 바꾼 것이 없다.</p>`}</section>`;
 }
 
 // ---------------------------------------------------------------- 틀
@@ -479,7 +593,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line)}tbody tr:hover{backgro
 .toolbar{margin-bottom:12px}.toolbar input{width:min(100%,320px)}.filters{margin-bottom:12px;align-items:end}.filters label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate)}.filters select{max-width:260px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}.chip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink);background:var(--bg)}.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}.chips .sum{color:var(--slate);margin-left:4px;flex:1}
 .pager{display:flex;gap:4px;justify-content:center;margin-top:14px;flex-wrap:wrap}.pager a,.pager span{padding:6px 11px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--ink);min-width:36px;text-align:center}.pager span.on{background:var(--accent);color:#fff;border-color:var(--accent)}.pager em{padding:6px 4px;color:var(--slate);font-style:normal}
-.lform{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 2fr auto;gap:8px;margin-bottom:16px}.lform input,.lform select{min-width:0}.inline{display:inline}.link{background:none;border:0;color:var(--warn);font:inherit;font-weight:700;cursor:pointer;padding:0;min-height:0}
+.lform{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 2fr auto;gap:8px;margin-bottom:16px}.lform.acc{grid-template-columns:minmax(0,420px) auto;justify-content:start}.link.ok{color:var(--accent)}.lform input,.lform select{min-width:0}.inline{display:inline}.link{background:none;border:0;color:var(--warn);font:inherit;font-weight:700;cursor:pointer;padding:0;min-height:0}
 #devtable th,#devtable td{padding:8px 7px}.nform{flex-wrap:nowrap;gap:6px}.nform input{width:104px;padding:5px 8px;font-size:13px;min-height:32px}button.small{padding:5px 10px;font-size:12px;min-height:32px}
 @media (max-width:760px){.lform{grid-template-columns:1fr 1fr}.range{align-items:stretch}.bars li{grid-template-columns:minmax(90px,38%) 1fr auto}}
 </style></head><body><div class="wrap">

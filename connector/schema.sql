@@ -67,3 +67,33 @@ CREATE TABLE IF NOT EXISTS limits (
   set_at INTEGER,
   PRIMARY KEY (email, app)
 );
+
+-- 장치 ID 를 새로 만들어 보낸 것(device.json 을 지움 등) → 같은 PC 이름·윈도 사용자의 원래 장치로 묶어 둔 표
+CREATE TABLE IF NOT EXISTS device_alias (
+  alias TEXT PRIMARY KEY,
+  device TEXT NOT NULL,
+  ts INTEGER
+);
+
+-- 커넥터에 연결한 계정 (연결할 때마다 남김) — 관리 화면 '계정' 탭. blocked = 1 이면 연결도 보내기도 못 한다.
+CREATE TABLE IF NOT EXISTS accounts (
+  email TEXT PRIMARY KEY,
+  name TEXT,
+  first_login INTEGER,
+  last_login INTEGER,
+  logins INTEGER DEFAULT 0,
+  clients TEXT,       -- 연결한 앱 이름들 (", " 로 이음)
+  blocked INTEGER DEFAULT 0,
+  blocked_by TEXT,
+  blocked_at INTEGER
+);
+
+-- 살펴볼 일 · 관리 기록 (events.js)
+CREATE TABLE IF NOT EXISTS events (
+  ts INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  email TEXT,
+  device TEXT,
+  detail TEXT
+);
+CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
