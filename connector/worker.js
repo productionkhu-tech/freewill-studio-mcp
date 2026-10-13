@@ -7,7 +7,7 @@
 //   /mcp            로그인한 사람만 (MCP 본체, mcp.js — 선택 창 freewill_ask 는 ask.js, 답 기다리는 자리는 Durable Object AskRoom)
 //   /authorize · /callback   구글 로그인 (auth.js)
 //   /usage …        스크립트가 남기는 사용 기록·하루 한도 (usage.js, 스크립트의 로그인 표로 확인)
-//   /admin …        관리자 화면 (ADMIN_EMAILS 만, 구글 로그인)
+//   /admin …        관리자 화면 (admin.js — ADMIN_EMAILS 만, 구글 로그인)
 //   /token · /register · /.well-known/…   OAuth 공급자가 맡는다
 //
 // 비밀값: GOOGLE_CLIENT_SECRET · ADMIN_EMAILS (wrangler secret). 나머지는 wrangler.toml 의 vars.
@@ -15,7 +15,8 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp.js";
 import { adminLogin, adminUser, authorize, callback, originOf, page } from "./auth.js";
-import { admin, usage } from "./usage.js";
+import { usage } from "./usage.js";
+import { admin } from "./admin.js";
 
 export { AskRoom } from "./ask.js";
 

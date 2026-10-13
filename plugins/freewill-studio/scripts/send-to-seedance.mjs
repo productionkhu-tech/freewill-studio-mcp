@@ -54,6 +54,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 
 const SD = process.env.FREEWILL_SD_URL || "http://127.0.0.1:3000";
 const args = process.argv.slice(2);
@@ -202,6 +203,28 @@ const NO_TICKET = !FREEWILL_TICKET
     "나노바나나·시댄스 앱에는 로그인할 곳이 없으니 앱 안의 버튼·키를 지어내 안내하지 말 것"
   : "받은 지 12시간이 지난 스크립트다 — freewill_script(\"send-to-seedance\") 로 다시 받아 실행할 것(사용자가 할 일은 없다)";
 
+// 이 PC(이 윈도 사용자)의 장치 ID — PC 이름을 바꿔도 하루 한도·기록이 이어지게 사용자 폴더에 한 번 만들어 둔다. 못 쓰면 "".
+let deviceCache;
+function device() {
+  if (deviceCache !== undefined) return deviceCache;
+  const file = path.join(os.homedir(), ".freewill-studio", "device.json");
+  const read = () => {
+    try {
+      const id = JSON.parse(fs.readFileSync(file, "utf8").replace(/^[^{]*/, "")).id;   // PowerShell 이 쓴 BOM 은 버린다
+      return /^[A-Za-z0-9-]{8,64}$/.test(id) ? id : "";
+    } catch {
+      return "";
+    }
+  };
+  deviceCache = read();
+  if (deviceCache) return deviceCache;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ id: crypto.randomUUID(), created: new Date().toISOString() }), { flag: "wx" });
+  } catch {}   // 같이 돈 다른 실행이 먼저 만들었거나 쓸 수 없는 곳 — 다시 읽는다
+  return (deviceCache = read());
+}
+
 async function usageApi(method, p, body) {
   let r;
   try {
@@ -219,7 +242,7 @@ async function usageApi(method, p, body) {
 // 앱에 넣기 전에 기록을 남기고 한도를 묻는다. 거절이면 멈춘다. 돌려주는 settle(n) 로 실제 개수를 맞추거나(0 이면 무름).
 async function reserve(n, meta) {
   if (!ticketOwner()) fail(NO_TICKET);
-  const r = await usageApi("POST", "/usage", { app: "seedance", n, pc: os.hostname(), user: os.userInfo().username, ...meta });
+  const r = await usageApi("POST", "/usage", { app: "seedance", n, pc: os.hostname(), user: os.userInfo().username, device: device(), ...meta });
   if (!r.ok) fail(r.error || `사용 기록을 남기지 못함 (${r.http})`);
   return { ...r, settle: (actual) => (actual === n ? Promise.resolve() : usageApi("POST", "/usage/settle", { id: r.id, n: actual }).catch(() => {})) };
 }
@@ -336,7 +359,7 @@ async function quota(n, what) {
   }
   // 하루 한도는 PC(PC 이름 + 윈도 사용자) 기준 — 관리자가 계정 전체 상한을 걸어 두면 더 빡빡한 쪽이 온다(scope)
   const host = os.hostname();
-  const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}`);
+  const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}&device=${encodeURIComponent(device())}`);
   if (me.http === 401) fail(me.error || NO_TICKET);
   const q = me.apps?.seedance;
   if (!q) fail(`사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);

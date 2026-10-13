@@ -41,6 +41,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 
 const NB = process.env.FREEWILL_NB_URL || "http://127.0.0.1:5656";
 const args = process.argv.slice(2);
@@ -117,6 +118,28 @@ const NO_TICKET = !FREEWILL_TICKET
     "(사람은 브라우저에서 회사 구글 계정만 고른다, 사용자에게 터미널 명령을 시키지 않는다). " +
     "나노바나나·시댄스 앱에는 로그인할 곳이 없으니 앱 안의 버튼·키를 지어내 안내하지 말 것"
   : "받은 지 12시간이 지난 스크립트다 — freewill_script(\"send-to-nanobanana\") 로 다시 받아 실행할 것(사용자가 할 일은 없다)";
+
+// 이 PC(이 윈도 사용자)의 장치 ID — PC 이름을 바꿔도 하루 한도·기록이 이어지게 사용자 폴더에 한 번 만들어 둔다. 못 쓰면 "".
+let deviceCache;
+function device() {
+  if (deviceCache !== undefined) return deviceCache;
+  const file = path.join(os.homedir(), ".freewill-studio", "device.json");
+  const read = () => {
+    try {
+      const id = JSON.parse(fs.readFileSync(file, "utf8").replace(/^[^{]*/, "")).id;   // PowerShell 이 쓴 BOM 은 버린다
+      return /^[A-Za-z0-9-]{8,64}$/.test(id) ? id : "";
+    } catch {
+      return "";
+    }
+  };
+  deviceCache = read();
+  if (deviceCache) return deviceCache;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ id: crypto.randomUUID(), created: new Date().toISOString() }), { flag: "wx" });
+  } catch {}   // 같이 돈 다른 실행이 먼저 만들었거나 쓸 수 없는 곳 — 다시 읽는다
+  return (deviceCache = read());
+}
 
 async function usageApi(method, p, body) {
   let r;
@@ -247,7 +270,7 @@ async function main() {
   if (owner) {
     // 하루 한도는 PC(PC 이름 + 윈도 사용자) 기준 — 관리자가 계정 전체 상한을 걸어 두면 더 빡빡한 쪽이 온다(scope)
     const host = os.hostname();
-    const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}`);
+    const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}&device=${encodeURIComponent(device())}`);
     if (me.http === 401) fail(me.error || NO_TICKET);
     const q = me.apps?.nanobanana;
     if (!q) fail(`사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
@@ -299,7 +322,7 @@ async function main() {
     // 사용 기록 + 하루 한도 — 앱에 넣기 전에. 앱이 안 받으면 아래에서 무른다.
     const rsv = await usageApi("POST", "/usage", {
       app: "nanobanana", n: need, model, resolution, job: j.name || `job_${i + 1}`,
-      billing: `${billing.team_id} / ${billing.project_id}`, project: tab.name, pc: os.hostname(), user: os.userInfo().username,
+      billing: `${billing.team_id} / ${billing.project_id}`, project: tab.name, pc: os.hostname(), user: os.userInfo().username, device: device(),
     });
     if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
     const refs = j.refs || [];

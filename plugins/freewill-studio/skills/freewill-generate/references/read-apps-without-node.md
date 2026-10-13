@@ -55,6 +55,14 @@ Mac: `defaults read "/Applications/Freewill Seedance 2.0.app/Contents/Info" CFBu
 ```powershell
 $fw = "https://freewill-mcp.production-khu.workers.dev"
 $ticket = "<freewill_script 로 받은 원문의 FREEWILL_TICKET 값>"
+# 이 PC 의 장치 ID — 스크립트와 같은 파일(사용자 폴더 .freewill-studio\device.json). PC 이름을 바꿔도 한도·기록이 이어진다.
+$devFile = Join-Path $HOME ".freewill-studio\device.json"
+$device = if (Test-Path $devFile) { (Get-Content $devFile -Raw | ConvertFrom-Json).id } else { $null }
+if (-not $device) {
+  $device = [guid]::NewGuid().ToString()
+  New-Item -ItemType Directory -Force (Split-Path $devFile) | Out-Null
+  [IO.File]::WriteAllText($devFile, (@{ id = $device } | ConvertTo-Json -Compress))
+}
 function Use-FW($path, $obj) {
   $bytes = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Compress))
   try {
@@ -65,7 +73,7 @@ function Use-FW($path, $obj) {
   }
 }
 $u = Use-FW "/usage" @{ app = "nanobanana"; n = 2; model = "gemini-nano-banana-2.1"; resolution = "2K"; job = "cut_01"
-                        billing = "팀 / 프로젝트"; project = "탭 이름"; pc = $env:COMPUTERNAME; user = $env:USERNAME }
+                        billing = "팀 / 프로젝트"; project = "탭 이름"; pc = $env:COMPUTERNAME; user = $env:USERNAME; device = $device }
 if (-not $u.ok) { $u.error }   # 하루 한도 초과·표 만료 — 이 작업은 보내지 않는다
 ```
 
