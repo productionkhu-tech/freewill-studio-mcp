@@ -11,7 +11,7 @@ import { logEvent } from "./events.js";
 const TABS = [["overview", "개요"], ["devices", "사람 · PC"], ["accounts", "계정"], ["records", "기록"], ["models", "모델"], ["limits", "한도"]];
 const KIND = { late_settle: "늦게 무르기 시도", device_reset: "장치 ID 를 새로 만듦", blocked_login: "막힌 계정이 연결 시도", blocked_usage: "막힌 계정이 보내기 시도" };
 const APPS = ["nanobanana", "seedance"];
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [20, 50, 100, 200];   // 기록 탭 N개씩
 const PALETTE = ["#2453e6", "#0f9d8a", "#e0892b", "#9b51e0", "#d64545", "#3a8fd6"];
 const OTHER = "#b8bfca";
 const SORTS = { ts: "ts", n: "n", app: "app", model: "model", email: "email", ip: "ip", pc: "pc", job: "job" };
@@ -175,8 +175,14 @@ function filtersOf(sp) {
     model: String(sp.get("model") || "").slice(0, 120),
     status: ["sent", "cancelled"].includes(sp.get("status")) ? sp.get("status") : "",
     q: String(sp.get("q") || "").trim().slice(0, 80),
-    sort: SORTS[sp.get("sort")] ? sp.get("sort") : "ts",
-    dir: sp.get("dir") === "asc" ? "asc" : "desc",
+    // '정렬' 고르기(order = "n:desc")가 있으면 그것, 아니면 표 머리 링크의 sort · dir
+    ...(() => {
+      const [os, od] = String(sp.get("order") || "").split(":");
+      const sort = SORTS[os] ? os : SORTS[sp.get("sort")] ? sp.get("sort") : "ts";
+      const dir = (SORTS[os] ? od : sp.get("dir")) === "asc" ? "asc" : "desc";
+      return { sort, dir };
+    })(),
+    size: PAGE_SIZES.includes(Number(sp.get("size"))) ? Number(sp.get("size")) : 50,
     page: Math.max(1, Math.min(100000, Math.round(Number(sp.get("page")) || 1))),
   };
 }
@@ -251,10 +257,10 @@ function columnChart(buckets, series, unit, labelOf, title) {
 }
 
 // 가로 막대 순위 — 값 큰 순, 값은 막대 옆에 글로.
-function barList(items, unit, more = "", cls = "") {
+function barList(items, unit, more = "", cls = "", step = 0) {
   if (!items.length) return `<p class="empty">이 기간에는 기록이 없다.</p>`;
   const max = Math.max(...items.map((i) => i.n), 1);
-  return `<ol class="bars ${cls}">${items.map((i) => `<li><span class="bl" title="${esc(i.name)}">${esc(i.name)}${i.sub ? `<small>${esc(i.sub)}</small>` : ""}</span><span class="bt"><span class="bf" style="width:${((i.n / max) * 100).toFixed(1)}%;background:${i.color || "var(--accent)"}"></span></span><span class="bv">${num(i.n)}${unit}</span></li>`).join("")}</ol>${more || ""}`;
+  return `<ol class="bars ${cls}"${step ? ` data-step="${step}"` : ""}>${items.map((i, k) => `<li><span class="no">${k + 1}</span><span class="bl" title="${esc(i.name)}">${esc(i.name)}${i.sub ? `<small>${esc(i.sub)}</small>` : ""}</span><span class="bt"><span class="bf" style="width:${((i.n / max) * 100).toFixed(1)}%;background:${i.color || "var(--accent)"}"></span></span><span class="bv">${num(i.n)}${unit}</span></li>`).join("")}</ol>${more || ""}`;
 }
 
 // 오늘 쓴 양 / 한도 — 숫자와 막대(80% 넘으면 주황, 다 차면 빨강)
@@ -309,8 +315,7 @@ async function overview(ctx) {
   const rank = (key, unit) => {
     const items = ranked.filter(([, o]) => o[key]).sort((a, b) => b[1][key] - a[1][key])
       .map(([p, o]) => ({ name: p, sub: o.devices.size > 1 ? `PC ${o.devices.size}대` : "", n: o[key], color: color.get(p) || OTHER }));
-    const more = items.length > 10 ? `<a class="more" href="${qs({ tab: "devices", from, to })}">전체 ${items.length}명 보기 →</a>` : "";
-    return barList(items.slice(0, 10), unit, more);
+    return barList(items.slice(0, 100), unit, "", "", 5);
   };
   const limitOf = (device, app) => inForce(devLimits.find((l) => l.device === device && l.app === app)) ?? LIMITS[app];
   const near = todayRows.map((r) => ({ ...r, limit: limitOf(r.device, r.app) }))
@@ -319,7 +324,7 @@ async function overview(ctx) {
   const vid = sumApp(rows, "seedance");
   const sends = rows.reduce((a, r) => a + r.sends, 0);
   const usedDevices = new Set(rows.map((r) => r.device)).size;
-  const modelBars = (app) => barList(modelRows.filter((r) => r.app === app).map((r) => ({ name: modelName(r.model), n: r.n })), UNIT[app], "", "wide");
+  const modelBars = (app) => barList(modelRows.filter((r) => r.app === app).map((r) => ({ name: modelName(r.model), n: r.n })), UNIT[app], "", "wide", 5);
 
   return `<div class="kpis">
 <div class="kpi"><span>나노바나나 이미지</span><b>${num(img)}장</b><em>오늘 ${num(sumApp(todayRows, "nanobanana"))}장</em></div>
@@ -334,8 +339,8 @@ async function overview(ctx) {
 <section><h2>모델별 이미지</h2>${modelBars("nanobanana")}</section>
 <section><h2>모델별 영상</h2>${modelBars("seedance")}</section>
 </div>
-<section><h2>오늘 한도에 가까운 PC</h2>${near.length ? `<div class="scroll"><table><thead><tr><th>사람</th><th>PC</th><th>앱</th><th>오늘 / 한도</th></tr></thead><tbody>
-${near.map((r) => `<tr><td>${esc(ctx.person(r.device))}</td><td>${esc(devName(ctx.dev.get(r.device)))}</td><td>${esc(WHAT[r.app])}</td><td>${meter(r.n, r.limit, r.app)}</td></tr>`).join("")}
+<section><h2>오늘 한도에 가까운 PC</h2>${near.length ? `<div class="scroll"><table class="sortable" id="neartable" data-size="10"><thead><tr><th class="rn">#</th><th>사람</th><th>PC</th><th>앱</th><th>오늘 / 한도</th></tr></thead><tbody>
+${near.map((r) => `<tr><td class="rn"></td><td>${esc(ctx.person(r.device))}</td><td>${esc(devName(ctx.dev.get(r.device)))}</td><td>${esc(WHAT[r.app])}</td><td>${meter(r.n, r.limit, r.app)}</td></tr>`).join("")}
 </tbody></table></div>` : `<p class="empty">오늘 한도의 80% 를 넘긴 PC 가 없다.</p>`}</section>
 ${await watchList(ctx)}`;
 }
@@ -362,8 +367,8 @@ async function watchList(ctx) {
   }
   return `<section><h2>살펴볼 것 (${num(items.length)})</h2>
 <p class="hint">한도를 피하려는 움직임일 수 있는 것들 — 늦게 무르기(만들고 나서 무르기), 장치 ID 새로 만들기, 새 PC · 새 윈도 사용자, 막힌 계정의 시도. 대부분은 평범한 일이라 사람을 보고 판단한다.</p>
-${items.length ? `<div class="scroll"><table><thead><tr><th>언제</th><th>무엇</th><th>누구 · PC</th><th>내용</th></tr></thead><tbody>
-${items.slice(0, 60).map((i) => `<tr><td>${i.ts ? esc(kstTime(i.ts)) : "—"}</td><td>${esc(i.kind)}</td><td>${esc(i.who)}</td><td>${esc(i.detail || "")}</td></tr>`).join("")}
+${items.length ? `<div class="scroll"><table class="sortable" id="watchtable" data-size="10" data-search="무엇 · 누구 · 내용 검색"><thead><tr><th class="rn">#</th><th data-k="n" data-pick data-desc="최근 순" data-asc="오래된 순">언제</th><th data-k="t" data-pick>무엇</th><th data-k="t" data-pick>누구 · PC</th><th>내용</th></tr></thead><tbody>
+${items.slice(0, 300).map((i) => `<tr><td class="rn"></td><td data-v="${i.ts || 0}">${i.ts ? esc(kstTime(i.ts)) : "—"}</td><td>${esc(i.kind)}</td><td>${esc(i.who)}</td><td>${esc(i.detail || "")}</td></tr>`).join("")}
 </tbody></table></div>` : `<p class="empty">살펴볼 것이 없다.</p>`}</section>`;
 }
 
@@ -381,51 +386,46 @@ async function accountsTab(ctx) {
   const A = new Map(accts.map((a) => [a.email, a]));
   const U = new Map(used.map((u) => [u.email, u]));
   const emails = [...new Set([...accts.map((a) => a.email), ...used.map((u) => u.email), ...caps.map((c) => c.email)])];
-  // 지금 이어진 연결(OAuth 공급자의 grant). 계정이 많지 않아 화면을 열 때마다 묻는다.
-  const grants = new Map();
-  await Promise.all(emails.map(async (e) => {
-    try { grants.set(e, (await env.OAUTH_PROVIDER.listUserGrants(e, { limit: 100 })).items || []); } catch { grants.set(e, null); }
-  }));
   const capText = (e) => caps.filter((c) => c.email === e && inForce(c) !== null).map((c) => `${WHAT[c.app]} ${c.daily === 0 ? "막음" : `${num(c.daily)}${UNIT[c.app]}`}`).join(" · ") || "—";
-  const order = emails.map((e) => ({ e, a: A.get(e) || {}, u: U.get(e) || {}, g: grants.get(e) }))
+  const order = emails.map((e) => ({ e, a: A.get(e) || {}, u: U.get(e) || {} }))
     .sort((x, y) => (y.a.blocked || 0) - (x.a.blocked || 0) || Math.max(y.u.last_use || 0, y.a.last_login || 0) - Math.max(x.u.last_use || 0, x.a.last_login || 0));
   const confirmText = (m) => ` onsubmit="return confirm('${esc(m)}')"`;
-  const rows = order.map(({ e, a, u, g }) => {
-    const apps = g === null ? "—" : g.length ? `${esc([...new Set(g.map((x) => x.metadata?.clientName || "이름 없는 앱"))].join(", "))} <small>${g.length}개</small>` : "없음";
+  const rows = order.map(({ e, a, u }) => {
     const actions = [
-      g && g.length ? `<form class="inline" method="post" action="/admin/account"${confirmText(`${e} 의 커넥터 연결을 모두 끊을까요? 다시 로그인하면 또 쓸 수 있어요.`)}><input type="hidden" name="email" value="${esc(e)}"><button class="link" name="action" value="revoke">연결 끊기</button></form>` : "",
+      a.last_login && !a.blocked ? `<form class="inline" method="post" action="/admin/account"${confirmText(`${e} 의 커넥터 연결을 모두 끊을까요? 다시 로그인하면 또 쓸 수 있어요.`)}><input type="hidden" name="email" value="${esc(e)}"><button class="link" name="action" value="revoke">연결 끊기</button></form>` : "",
       a.blocked
         ? `<form class="inline" method="post" action="/admin/account"><input type="hidden" name="email" value="${esc(e)}"><button class="link ok" name="action" value="unblock">풀기</button></form>`
         : `<form class="inline" method="post" action="/admin/account"${confirmText(`${e} 을 막을까요? 연결이 모두 끊기고, 다시 연결하거나 보내지 못해요.`)}><input type="hidden" name="email" value="${esc(e)}"><button class="link" name="action" value="block">막기</button></form>`,
     ].filter(Boolean).join(" · ");
-    return `<tr><td data-v="${esc(e)}">${esc(a.name || u.name || e.split("@")[0])}<small>${esc(e)}</small></td>
+    return `<tr><td class="rn"></td><td data-v="${esc(a.name || u.name || e)}">${esc(a.name || u.name || e.split("@")[0])}<small>${esc(e)}</small></td>
 <td data-v="${a.last_login || 0}">${a.last_login ? esc(kstTime(a.last_login)) : "—"}<small>${a.logins ? `${num(a.logins)}번 연결` : ""}</small></td>
-<td>${apps}</td><td class="n" data-v="${u.img || 0}">${num(u.img)}</td><td class="n" data-v="${u.vid || 0}">${num(u.vid)}</td><td class="n" data-v="${u.devices || 0}">${num(u.devices)}</td>
+<td>${esc(a.clients || "—")}</td><td class="n" data-v="${u.img || 0}">${num(u.img)}</td><td class="n" data-v="${u.vid || 0}">${num(u.vid)}</td><td class="n" data-v="${u.devices || 0}">${num(u.devices)}</td>
 <td data-v="${u.last_use || 0}">${u.last_use ? esc(kstTime(u.last_use)) : "—"}</td><td>${esc(capText(e))}</td>
 <td data-v="${a.blocked ? 1 : 0}">${a.blocked ? `<span class="warn">막힘</span><small>${esc(a.blocked_by || "")} ${a.blocked_at ? esc(kstTime(a.blocked_at)) : ""}</small>` : "쓰는 중"}</td><td>${actions}</td></tr>`;
   });
   return `<section><h2>계정 (${num(emails.length)})</h2>
-<p class="hint">커넥터에 로그인한 회사 구글 계정. '연결된 앱'은 지금 이어진 연결(Claude · ChatGPT · Codex 등, 로그인은 7일). <b>연결 끊기</b>는 지금 연결만 끊고 다시 로그인하면 또 쓴다. <b>막기</b>는 연결을 끊고 다시 연결도, 이미 받은 스크립트로 보내기도 못 하게 한다(퇴사 · 계정 유출 때). 기간 이미지 · 영상 · PC 는 위 기간 기준.</p>
+<p class="hint">커넥터에 로그인한 회사 구글 계정. '연결한 앱'은 로그인에 쓴 앱(Claude · ChatGPT · Codex 등, 로그인은 7일 유지). <b>연결 끊기</b>는 지금 연결만 끊고 다시 로그인하면 또 쓴다. <b>막기</b>는 연결을 끊고 다시 연결도, 이미 받은 스크립트로 보내기도 못 하게 한다(퇴사 · 계정 유출 때). 기간 이미지 · 영상 · PC 는 위 기간 기준.</p>
 <form class="lform acc" method="post" action="/admin/account"${confirmText("이 계정을 막을까요?")}><input name="email" type="email" required placeholder="미리 막을 계정 — 이름@${esc(env.ALLOWED_DOMAIN)}" aria-label="막을 회사 이메일"><button name="action" value="block">막기</button></form>
-${rows.length ? `<div class="scroll"><table class="sortable"><thead><tr><th data-k="t">계정</th><th data-k="n">마지막 연결</th><th>연결된 앱</th><th data-k="n" class="n">기간 이미지</th><th data-k="n" class="n">기간 영상</th><th data-k="n" class="n">PC</th><th data-k="n">마지막 사용</th><th>계정 상한</th><th data-k="n">상태</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="empty">아직 연결한 계정이 없다.</p>`}</section>`;
+${rows.length ? `<div class="scroll"><table class="sortable" id="accttable" data-size="10" data-search="이름 · 이메일 · 앱 검색"><thead><tr><th class="rn">#</th><th data-k="t" data-pick>계정</th><th data-k="n" data-pick data-desc="최근 연결 순" data-asc="오래된 연결 순">마지막 연결</th><th>연결한 앱</th><th data-k="n" class="n" data-pick>기간 이미지</th><th data-k="n" class="n" data-pick>기간 영상</th><th data-k="n" class="n">PC</th><th data-k="n" data-pick data-desc="최근 사용 순" data-asc="오래된 사용 순">마지막 사용</th><th>계정 상한</th><th data-k="n">상태</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="empty">아직 연결한 계정이 없다.</p>`}</section>`;
 }
 
 // ---------------------------------------------------------------- 탭: 사람 · PC
 
 async function devicesTab(ctx) {
   const { all, from, to, today } = ctx;
-  const since = [from, addDays(today, -89)].sort()[0];
   const stats = await all(
     `SELECT device,
-            SUM(CASE WHEN day BETWEEN ? AND ? AND status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END) AS img,
-            SUM(CASE WHEN day BETWEEN ? AND ? AND status = 'sent' AND app = 'seedance' THEN n ELSE 0 END) AS vid,
-            SUM(CASE WHEN day BETWEEN ? AND ? AND status = 'sent' THEN 1 ELSE 0 END) AS sends,
-            SUM(CASE WHEN day = ? AND status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END) AS img_today,
-            SUM(CASE WHEN day = ? AND status = 'sent' AND app = 'seedance' THEN n ELSE 0 END) AS vid_today,
+            SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END) AS img,
+            SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END) AS vid,
+            SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sends,
             GROUP_CONCAT(DISTINCT email) AS emails
-       FROM usage WHERE day >= ? GROUP BY device`, from, to, from, to, from, to, today, today, since);
+       FROM usage WHERE day BETWEEN ? AND ? GROUP BY device`, from, to);
+  const todays = await all(
+    `SELECT device, SUM(CASE WHEN app = 'nanobanana' THEN n ELSE 0 END) AS img_today, SUM(CASE WHEN app = 'seedance' THEN n ELSE 0 END) AS vid_today
+       FROM usage WHERE day = ? AND status = 'sent' GROUP BY device`, today);
   const devLimits = await all("SELECT * FROM device_limits");
   const st = new Map(stats.map((s) => [s.device, s]));
+  for (const x of todays) st.set(x.device, { ...(st.get(x.device) || {}), ...x });
   const limitOf = (device, app) => inForce(devLimits.find((l) => l.device === device && l.app === app)) ?? LIMITS[app];
   if (!ctx.devices.length) return `<section><p class="empty">아직 MCP 로 보낸 PC 가 없다.</p></section>`;
   const rows = ctx.devices.map((d) => {
@@ -433,7 +433,7 @@ async function devicesTab(ctx) {
     const emails = String(s.emails || "").split(",").filter(Boolean).join(", ");
     const li = limitOf(d.id, "nanobanana");
     const lv = limitOf(d.id, "seedance");
-    return `<tr>
+    return `<tr><td class="rn"></td>
 <td data-v="${esc(d.label || "")}"><form class="nform" method="post" action="/admin/device"><input type="hidden" name="tab" value="devices"><input type="hidden" name="device" value="${esc(d.id)}"><input name="label" maxlength="40" value="${esc(d.label || "")}" placeholder="사람 이름" aria-label="${esc(devName(d))} 사람 이름"><button class="small" name="action" value="name">저장</button></form></td>
 <td data-v="${esc(d.pc || "")}"><a href="${qs({ tab: "records", from, to, who: `d:${d.id}` })}" title="이 PC 기록 보기">${esc(d.pc || "(PC 이름 없음)")}</a><small>${esc([d.win_user, d.pc_names ? `전 이름: ${d.pc_names}` : ""].filter(Boolean).join(" · "))}</small></td>
 <td>${esc(emails)}</td><td>${esc(d.ip || "")}</td>
@@ -443,11 +443,10 @@ async function devicesTab(ctx) {
 <td data-v="${d.last_ts || 0}">${d.last_ts ? esc(kstTime(d.last_ts)) : "—"}</td></tr>`;
   });
   return `<section><h2>사람 · PC (${num(ctx.devices.length)}대)</h2>
-<p class="hint">한 줄 = PC 한 대의 윈도 사용자. 사람 이름을 붙이면 모든 탭에 그 이름으로 보이고, 같은 이름의 PC 는 개요·모델 탭에서 합쳐진다. 이름을 비우고 저장하면 지운다. PC 이름을 바꿔도 같은 줄로 이어지고 '전 이름'이 남는다. PC 이름을 누르면 그 PC 의 기록만 본다. IP 는 마지막으로 보낸 곳의 공인 IP(사무실은 모두 같을 수 있음). 표 머리를 누르면 정렬된다.</p>
-<div class="toolbar"><input type="search" data-filter="devtable" placeholder="이름 · PC · 계정 · IP 검색" aria-label="PC 검색"></div>
-<div class="scroll"><table class="sortable" id="devtable"><thead><tr>
-<th data-k="t">사람</th><th data-k="t">PC · 윈도 사용자</th><th data-k="t">연결 계정</th><th data-k="t">최근 IP</th>
-<th data-k="n">오늘 이미지</th><th data-k="n">오늘 영상</th><th data-k="n" class="n">기간 이미지</th><th data-k="n" class="n">기간 영상</th><th data-k="n" class="n">횟수</th><th data-k="n" aria-sort="descending">마지막 사용</th>
+<p class="hint">한 줄 = PC 한 대의 윈도 사용자. 사람 이름을 붙이면 모든 탭에 그 이름으로 보이고, 같은 이름의 PC 는 개요·모델 탭에서 합쳐진다. 이름을 비우고 저장하면 지운다. PC 이름을 바꿔도 같은 줄로 이어지고 '전 이름'이 남는다. PC 이름을 누르면 그 PC 의 기록만 본다. IP 는 마지막으로 보낸 곳의 공인 IP(사무실은 모두 같을 수 있음). 표 머리를 누르거나 '정렬'에서 고른다.</p>
+<div class="scroll"><table class="sortable" id="devtable" data-size="10" data-search="이름 · PC · 계정 · IP 검색"><thead><tr><th class="rn">#</th>
+<th data-k="t" data-pick>사람</th><th data-k="t" data-pick>PC · 윈도 사용자</th><th data-k="t">연결 계정</th><th data-k="t">최근 IP</th>
+<th data-k="n">오늘 이미지</th><th data-k="n">오늘 영상</th><th data-k="n" class="n" data-pick>기간 이미지</th><th data-k="n" class="n" data-pick>기간 영상</th><th data-k="n" class="n">횟수</th><th data-k="n" aria-sort="descending" data-pick data-desc="최근 사용 순" data-asc="오래된 사용 순">마지막 사용</th>
 </tr></thead><tbody>${rows.join("")}</tbody></table></div></section>`;
 }
 
@@ -460,12 +459,12 @@ async function records(ctx) {
   const total = await db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(CASE WHEN status = 'sent' THEN n ELSE 0 END), 0) AS n,
       COALESCE(SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END), 0) AS img,
       COALESCE(SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END), 0) AS vid FROM usage WHERE ${where}`).bind(...binds).first();
-  const pages = Math.max(1, Math.ceil(Number(total?.c || 0) / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(Number(total?.c || 0) / f.size));
   const pageNo = Math.min(f.page, pages);
   const list = await all(`SELECT * FROM usage WHERE ${where} ORDER BY ${SORTS[f.sort]} ${f.dir === "asc" ? "ASC" : "DESC"}, ts DESC LIMIT ? OFFSET ?`,
-    ...binds, PAGE_SIZE, (pageNo - 1) * PAGE_SIZE);
+    ...binds, f.size, (pageNo - 1) * f.size);
   const models = await all("SELECT DISTINCT app, COALESCE(model, '') AS model FROM usage WHERE day BETWEEN ? AND ? ORDER BY app, model", from, to);
-  const keep = { tab: "records", from, to, who: f.who, app: f.app, model: f.model, status: f.status, q: f.q };
+  const keep = { tab: "records", from, to, who: f.who, app: f.app, model: f.model, status: f.status, q: f.q, size: f.size === 50 ? "" : f.size };
   const labels = [...new Set(ctx.devices.map((d) => d.label).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
   const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(label)}</option>`;
   const sortLink = (key, label, cls = "") => {
@@ -483,11 +482,13 @@ async function records(ctx) {
 <label>모델<select name="model"><option value="">전체</option>${models.map((m) => opt(m.model || "~", `${WHAT[m.app] || m.app} · ${modelName(m.model)}`, f.model)).join("")}</select></label>
 <label>상태<select name="status">${opt("", "전체", f.status)}${opt("sent", "보냄", f.status)}${opt("cancelled", "무름(앱이 거절)", f.status)}</select></label>
 <label>검색<input type="search" name="q" value="${esc(f.q)}" placeholder="작업 · 프로젝트 · 과금 · IP · 계정"></label>
+<label>정렬<select name="order">${[["ts:desc", "최근 순"], ["ts:asc", "오래된 순"], ["n:desc", "개수 많은 순"], ["pc:asc", "PC 이름순"], ["email:asc", "계정순"], ["model:asc", "모델순"], ["job:asc", "작업 이름순"]].map(([v, l]) => opt(v, l, `${f.sort}:${f.dir}`)).join("")}</select></label>
+<label>보기<select name="size">${PAGE_SIZES.map((n) => opt(String(n), `${n}개씩`, String(f.size))).join("")}</select></label>
 <button>거르기</button>${f.who || f.model || f.status || f.q || f.app ? `<a class="btn ghost" href="${qs({ tab: "records", from, to })}">모두 지우기</a>` : ""}</form>
 <div class="chips">${chip("", "전체")}${chip("nanobanana", "이미지")}${chip("seedance", "영상")}<span class="sum">${num(total?.c)}건 · 이미지 ${num(total?.img)}장 · 영상 ${num(total?.vid)}개</span>
 <a class="btn ghost" href="/admin/csv${qs({ from, to, who: f.who, app: f.app, model: f.model, status: f.status, q: f.q })}">이 조건으로 CSV</a></div>
-${list.length ? `<div class="scroll"><table><thead><tr>${sortLink("ts", "시간")}<th>사람</th>${sortLink("pc", "PC")}${sortLink("email", "연결 계정")}${sortLink("ip", "IP")}${sortLink("app", "앱")}${sortLink("model", "모델")}<th>해상도</th>${sortLink("n", "개수", "n")}<th>과금</th><th>프로젝트</th>${sortLink("job", "작업")}</tr></thead><tbody>
-${list.map((r) => `<tr class="${r.status === "cancelled" ? "cancel" : ""}"><td>${esc(kstTime(r.ts))}</td><td>${esc(ctx.person(r.device))}</td><td>${esc(r.pc || "")}<small>${esc(r.win_user || "")}</small></td><td>${esc(r.email)}</td><td>${esc(r.ip || "")}</td><td>${esc(WHAT[r.app] || r.app)}</td><td>${esc(modelName(r.model))}</td><td>${esc(r.resolution || "")}</td><td class="n">${num(r.n)}</td><td>${esc(r.billing || "")}</td><td>${esc(r.project || "")}</td><td>${esc(r.job || "")}</td></tr>`).join("")}
+${list.length ? `<div class="scroll"><table><thead><tr><th class="rn">#</th>${sortLink("ts", "시간")}<th>사람</th>${sortLink("pc", "PC")}${sortLink("email", "연결 계정")}${sortLink("ip", "IP")}${sortLink("app", "앱")}${sortLink("model", "모델")}<th>해상도</th>${sortLink("n", "개수", "n")}<th>과금</th><th>프로젝트</th>${sortLink("job", "작업")}</tr></thead><tbody>
+${list.map((r, i) => `<tr class="${r.status === "cancelled" ? "cancel" : ""}"><td class="rn">${(pageNo - 1) * f.size + i + 1}</td><td>${esc(kstTime(r.ts))}</td><td>${esc(ctx.person(r.device))}</td><td>${esc(r.pc || "")}<small>${esc(r.win_user || "")}</small></td><td>${esc(r.email)}</td><td>${esc(r.ip || "")}</td><td>${esc(WHAT[r.app] || r.app)}</td><td>${esc(modelName(r.model))}</td><td>${esc(r.resolution || "")}</td><td class="n">${num(r.n)}</td><td>${esc(r.billing || "")}</td><td>${esc(r.project || "")}</td><td>${esc(r.job || "")}</td></tr>`).join("")}
 </tbody></table></div>${pager}` : `<p class="empty">조건에 맞는 기록이 없다.</p>`}</section>`;
 }
 
@@ -513,10 +514,10 @@ async function models(ctx) {
     const cols = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m);
     const sum = (m) => [...m.values()].reduce((a, v) => a + v, 0);
     const body = [...people.entries()].sort((a, b) => sum(b[1]) - sum(a[1])).map(([p, m]) =>
-      `<tr><td>${esc(p)}</td>${cols.map((c) => `<td class="n" data-v="${m.get(c) || 0}">${m.get(c) ? num(m.get(c)) : "<span class=\"dim\">·</span>"}</td>`).join("")}<td class="n" data-v="${sum(m)}"><b>${num(sum(m))}</b></td></tr>`).join("");
+      `<tr><td class="rn"></td><td>${esc(p)}</td>${cols.map((c) => `<td class="n" data-v="${m.get(c) || 0}">${m.get(c) ? num(m.get(c)) : "<span class=\"dim\">·</span>"}</td>`).join("")}<td class="n" data-v="${sum(m)}"><b>${num(sum(m))}</b></td></tr>`).join("");
     return `<section><h2>${WHAT[app]} — 모델별</h2>${barList(cols.map((c) => ({ name: modelName(c), n: totals.get(c) })), UNIT[app], "", "wide")}
-<h3>사람 × 모델 (${UNIT[app]})</h3><div class="scroll"><table class="sortable"><thead><tr><th data-k="t">사람</th>${cols.map((c) => `<th data-k="n" class="n">${esc(modelName(c))}</th>`).join("")}<th data-k="n" class="n" aria-sort="descending">합계</th></tr></thead>
-<tbody>${body}</tbody><tfoot><tr><td>합계</td>${cols.map((c) => `<td class="n">${num(totals.get(c))}</td>`).join("")}<td class="n"><b>${num([...totals.values()].reduce((a, v) => a + v, 0))}</b></td></tr></tfoot></table></div></section>`;
+<h3>사람 × 모델 (${UNIT[app]})</h3><div class="scroll"><table class="sortable" id="models-${app}" data-size="10" data-search="사람 검색"><thead><tr><th class="rn">#</th><th data-k="t" data-pick>사람</th>${cols.map((c) => `<th data-k="n" class="n">${esc(modelName(c))}</th>`).join("")}<th data-k="n" class="n" aria-sort="descending" data-pick>합계</th></tr></thead>
+<tbody>${body}</tbody><tfoot><tr><td></td><td>합계</td>${cols.map((c) => `<td class="n">${num(totals.get(c))}</td>`).join("")}<td class="n"><b>${num([...totals.values()].reduce((a, v) => a + v, 0))}</b></td></tr></tfoot></table></div></section>`;
   };
   return block("nanobanana") + block("seedance");
 }
@@ -527,7 +528,7 @@ async function limitsTab(ctx) {
   const { all, today } = ctx;
   const devLimits = await all("SELECT * FROM device_limits ORDER BY set_at DESC");
   const caps = await all("SELECT * FROM limits ORDER BY email, app");
-  const adminLog = await all("SELECT * FROM events WHERE kind LIKE 'admin.%' ORDER BY ts DESC LIMIT 50");
+  const adminLog = await all("SELECT * FROM events WHERE kind LIKE 'admin.%' ORDER BY ts DESC LIMIT 500");
   const appSelect = `<select name="app" aria-label="앱"><option value="nanobanana">이미지 (나노바나나)</option><option value="seedance">영상 (시댄스)</option></select>`;
   const limitInputs = `<input name="daily" type="number" min="0" max="100000" required placeholder="하루 한도" aria-label="하루 한도">
 <input name="until" type="date" aria-label="이 날까지 (비우면 계속)" title="이 날까지 (비우면 계속)">
@@ -539,20 +540,20 @@ async function limitsTab(ctx) {
 <p class="hint">기본은 PC 한 대 하루 이미지 ${num(LIMITS.nanobanana)}장 · 영상 ${num(LIMITS.seedance)}개. 여기 적은 PC 만 다르게 적용된다. 0 이면 그 PC 는 MCP 로 보내지 못한다. 기간을 비우면 계속, 날짜를 넣으면 그날까지(한국 날짜).</p>
 ${ctx.devices.length ? `<form class="lform" method="post" action="/admin/device"><input type="hidden" name="tab" value="limits">
 <select name="device" required aria-label="PC">${devOptions}</select>${appSelect}${limitInputs}<button name="action" value="set">저장</button></form>` : `<p class="empty">MCP 로 보낸 PC 가 생기면 여기서 고를 수 있다.</p>`}
-${devLimits.length ? `<div class="scroll"><table><thead><tr><th>사람</th><th>PC</th><th>앱</th><th class="n">하루 한도</th><th>기간</th><th>메모</th><th>정한 사람 · 시각</th><th></th></tr></thead><tbody>
-${devLimits.map((l) => `<tr${l.until && l.until < today ? ' class="cancel"' : ""}><td>${esc(ctx.person(l.device))}</td><td>${esc(devName(ctx.dev.get(l.device)))}</td><td>${esc(WHAT[l.app] || l.app)}</td><td class="n">${limitCell(l)}</td><td>${l.until ? `${esc(l.until)}까지` : "계속"}</td><td>${esc(l.note || "")}</td><td>${setBy(l)}</td>
+${devLimits.length ? `<div class="scroll"><table><thead><tr><th class="rn">#</th><th>사람</th><th>PC</th><th>앱</th><th class="n">하루 한도</th><th>기간</th><th>메모</th><th>정한 사람 · 시각</th><th></th></tr></thead><tbody>
+${devLimits.map((l, i) => `<tr${l.until && l.until < today ? ' class="cancel"' : ""}><td class="rn">${i + 1}</td><td>${esc(ctx.person(l.device))}</td><td>${esc(devName(ctx.dev.get(l.device)))}</td><td>${esc(WHAT[l.app] || l.app)}</td><td class="n">${limitCell(l)}</td><td>${l.until ? `${esc(l.until)}까지` : "계속"}</td><td>${esc(l.note || "")}</td><td>${setBy(l)}</td>
 <td><form class="inline" method="post" action="/admin/device"><input type="hidden" name="tab" value="limits"><input type="hidden" name="device" value="${esc(l.device)}"><input type="hidden" name="app" value="${esc(l.app)}"><button class="link" name="action" value="clear">기본으로</button></form></td></tr>`).join("")}
 </tbody></table></div>` : `<p class="empty">조정한 PC 가 없다 — 모두 기본 한도.</p>`}</section>
 <section><h2>계정 전체 상한 (선택)</h2>
 <p class="hint">기본은 상한 없음 — PC별 한도만 센다. 여기 적은 계정(커넥터에 로그인한 회사 구글 계정)은 그 계정으로 보낸 모든 PC 의 합계가 이 안이어야 한다. 0 이면 그 계정은 MCP 로 보내지 못한다.</p>
 <form class="lform" method="post" action="/admin/limits"><input type="hidden" name="tab" value="limits">
 <input name="email" type="email" required placeholder="이름@${esc(ctx.env.ALLOWED_DOMAIN)}" aria-label="회사 이메일">${appSelect}${limitInputs}<button name="action" value="set">저장</button></form>
-${caps.length ? `<div class="scroll"><table><thead><tr><th>계정</th><th>앱</th><th class="n">하루 상한</th><th>기간</th><th>메모</th><th>정한 사람 · 시각</th><th></th></tr></thead><tbody>
-${caps.map((l) => `<tr${l.until && l.until < today ? ' class="cancel"' : ""}><td>${esc(l.email)}</td><td>${esc(WHAT[l.app] || l.app)}</td><td class="n">${limitCell(l)}</td><td>${l.until ? `${esc(l.until)}까지` : "계속"}</td><td>${esc(l.note || "")}</td><td>${setBy(l)}</td>
+${caps.length ? `<div class="scroll"><table><thead><tr><th class="rn">#</th><th>계정</th><th>앱</th><th class="n">하루 상한</th><th>기간</th><th>메모</th><th>정한 사람 · 시각</th><th></th></tr></thead><tbody>
+${caps.map((l, i) => `<tr${l.until && l.until < today ? ' class="cancel"' : ""}><td class="rn">${i + 1}</td><td>${esc(l.email)}</td><td>${esc(WHAT[l.app] || l.app)}</td><td class="n">${limitCell(l)}</td><td>${l.until ? `${esc(l.until)}까지` : "계속"}</td><td>${esc(l.note || "")}</td><td>${setBy(l)}</td>
 <td><form class="inline" method="post" action="/admin/limits"><input type="hidden" name="tab" value="limits"><input type="hidden" name="email" value="${esc(l.email)}"><input type="hidden" name="app" value="${esc(l.app)}"><button class="link" name="action" value="clear">없애기</button></form></td></tr>`).join("")}
 </tbody></table></div>` : `<p class="empty">상한을 정한 계정이 없다.</p>`}</section>
-<section><h2>관리 기록 (최근 50)</h2>${adminLog.length ? `<div class="scroll"><table><thead><tr><th>시각</th><th>관리자</th><th>한 일</th></tr></thead><tbody>
-${adminLog.map((e) => `<tr><td>${esc(kstTime(e.ts))}</td><td>${esc(e.email || "")}</td><td>${esc(e.detail || "")}</td></tr>`).join("")}
+<section><h2>관리 기록 (최근 500)</h2>${adminLog.length ? `<div class="scroll"><table class="sortable" id="logtable" data-size="10" data-search="관리자 · 한 일 검색"><thead><tr><th class="rn">#</th><th data-k="n" data-pick data-desc="최근 순" data-asc="오래된 순">시각</th><th data-k="t" data-pick>관리자</th><th>한 일</th></tr></thead><tbody>
+${adminLog.map((e) => `<tr><td class="rn"></td><td data-v="${e.ts}">${esc(kstTime(e.ts))}</td><td>${esc(e.email || "")}</td><td>${esc(e.detail || "")}</td></tr>`).join("")}
 </tbody></table></div>` : `<p class="empty">아직 바꾼 것이 없다.</p>`}</section>`;
 }
 
@@ -587,15 +588,15 @@ tfoot td{font-weight:700;border-top:2px solid var(--line)}tbody tr:hover{backgro
 .empty{color:var(--slate)}.hint{color:var(--slate);font-size:13px;margin:-4px 0 12px;line-height:1.6}.notice{background:var(--accent-soft);border:1px solid #c9d4f7;border-radius:10px;padding:12px 16px}
 .chart{width:100%;height:auto;display:block}.chart .grid{stroke:var(--line)}.chart .ax{fill:var(--slate);font-size:11px}.chart .val{fill:var(--ink);font-size:10px;font-weight:600}
 .legend{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}.legend b{font-variant-numeric:tabular-nums}
-.bars{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}.bars li{display:grid;grid-template-columns:minmax(120px,32%) 1fr auto;gap:10px;align-items:center}.bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bl small{display:block;color:var(--slate);font-size:11px}.bars.wide li{grid-template-columns:minmax(140px,46%) 1fr auto}
+.bars{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}.bars li{display:grid;grid-template-columns:22px minmax(110px,30%) 1fr auto;gap:10px;align-items:center}.bars .no{color:var(--slate);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}.bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bl small{display:block;color:var(--slate);font-size:11px}.bars.wide li{grid-template-columns:22px minmax(140px,44%) 1fr auto}
 .bt{background:var(--surface);border-radius:4px;height:14px;overflow:hidden}.bf{display:block;height:100%;border-radius:4px}.bv{font-variant-numeric:tabular-nums;font-weight:600}.more{display:inline-block;margin-top:10px;font-size:13px}
 .meter{display:inline-flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}.mt{width:48px;height:6px;background:var(--surface);border-radius:3px;overflow:hidden}.mf{display:block;height:100%;background:var(--accent)}.mf.near{background:var(--near)}.mf.full{background:var(--full)}.warn{color:var(--warn);font-weight:700}
 .toolbar{margin-bottom:12px}.toolbar input{width:min(100%,320px)}.filters{margin-bottom:12px;align-items:end}.filters label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate)}.filters select{max-width:260px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}.chip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink);background:var(--bg)}.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}.chips .sum{color:var(--slate);margin-left:4px;flex:1}
 .pager{display:flex;gap:4px;justify-content:center;margin-top:14px;flex-wrap:wrap}.pager a,.pager span{padding:6px 11px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--ink);min-width:36px;text-align:center}.pager span.on{background:var(--accent);color:#fff;border-color:var(--accent)}.pager em{padding:6px 4px;color:var(--slate);font-style:normal}
 .lform{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 2fr auto;gap:8px;margin-bottom:16px}.lform.acc{grid-template-columns:minmax(0,420px) auto;justify-content:start}.link.ok{color:var(--accent)}.lform input,.lform select{min-width:0}.inline{display:inline}.link{background:none;border:0;color:var(--warn);font:inherit;font-weight:700;cursor:pointer;padding:0;min-height:0}
-#devtable th,#devtable td{padding:8px 7px}.nform{flex-wrap:nowrap;gap:6px}.nform input{width:104px;padding:5px 8px;font-size:13px;min-height:32px}button.small{padding:5px 10px;font-size:12px;min-height:32px}
-@media (max-width:760px){.lform{grid-template-columns:1fr 1fr}.range{align-items:stretch}.bars li{grid-template-columns:minmax(90px,38%) 1fr auto}}
+#devtable th,#devtable td{padding:8px 7px}th.rn,td.rn{width:1%;text-align:right;color:var(--slate);font-variant-numeric:tabular-nums;padding-right:4px}.tbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}.tbar input[type=search]{width:min(100%,260px)}.tbar .count{color:var(--slate);margin-left:auto;font-size:13px}.pager button{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:500;min-width:36px;min-height:32px;padding:5px 10px;justify-content:center}.pager button.on{background:var(--accent);color:#fff;border-color:var(--accent)}.morebtn{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:600;margin-top:10px;min-height:32px;padding:5px 12px}.nform{flex-wrap:nowrap;gap:6px}.nform input{width:104px;padding:5px 8px;font-size:13px;min-height:32px}button.small{padding:5px 10px;font-size:12px;min-height:32px}
+@media (max-width:760px){.lform{grid-template-columns:1fr 1fr}.range{align-items:stretch}.bars li,.bars.wide li{grid-template-columns:20px minmax(90px,38%) 1fr auto}}
 </style></head><body><div class="wrap">
 <header><div><h1>프리윌 스튜디오 MCP 사용 기록</h1><div class="sub">MCP 로 앱에 보낸 생성만 기록된다(앱에서 직접 만든 것은 각 앱의 집계). 한도는 PC 기준 · 날짜는 한국 시간 · 보는 사람 ${esc(ctx.viewer)}</div></div>
 <div class="range"><form method="get" action="/admin"><input type="hidden" name="tab" value="${tab}">${hidden}<input type="date" name="from" value="${from}" aria-label="시작 날짜"> ~ <input type="date" name="to" value="${to}" aria-label="끝 날짜"><button>보기</button></form>
@@ -605,27 +606,106 @@ ${msg ? `<div class="notice" role="status">${esc(msg)}</div>` : ""}
 ${body}
 </div>
 <script>
+const keep = { get: (k) => { try { return JSON.parse(localStorage.getItem("fw-admin:" + k) || "null"); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem("fw-admin:" + k, JSON.stringify(v)); } catch (e) {} } };
+const make = (tag, props) => Object.assign(document.createElement(tag), props || {});
 for (const t of document.querySelectorAll("table.sortable")) {
-  for (const th of t.querySelectorAll("th[data-k]")) {
-    th.tabIndex = 0;
-    const go = () => {
-      const i = [...th.parentNode.children].indexOf(th);
-      const cur = th.getAttribute("aria-sort");
-      const isNum = th.dataset.k === "n";
-      const dir = cur ? (cur === "descending" ? "ascending" : "descending") : isNum ? "descending" : "ascending";   // 숫자는 큰 것부터, 글자는 가나다부터
-      t.querySelectorAll("th").forEach((h) => h.removeAttribute("aria-sort"));
-      th.setAttribute("aria-sort", dir);
-      const val = (r) => { const c = r.cells[i]; const v = c.dataset.v ?? c.textContent.trim(); return isNum ? Number(v) || 0 : v; };
-      const rows = [...t.tBodies[0].rows].sort((a, b) => { const x = val(a), y = val(b); const c = isNum ? x - y : String(x).localeCompare(String(y), "ko"); return dir === "ascending" ? c : -c; });
-      for (const r of rows) t.tBodies[0].appendChild(r);
-    };
-    th.addEventListener("click", go);
-    th.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  const tbody = t.tBodies[0];
+  const heads = [...t.tHead.rows[0].cells];
+  const numbered = heads[0] && heads[0].classList.contains("rn");
+  let order = [...tbody.rows];
+  const saved = (t.id && keep.get(t.id)) || {};
+  let size = t.dataset.size ? Number(saved.size !== undefined ? saved.size : t.dataset.size) : 0;   // 0 = 전체
+  let page = 1;
+  let q = "";
+  const valueOf = (r, i, isNum) => { const c = r.cells[i]; const v = c.dataset.v !== undefined ? c.dataset.v : c.textContent.trim(); return isNum ? Number(v) || 0 : v; };
+  const bar = make("div", { className: "tbar" });
+  const count = make("span", { className: "count" });
+  const pager = make("nav", { className: "pager" });
+  pager.setAttribute("aria-label", "쪽");
+  const box = t.closest(".scroll") || t;
+  const sortBy = (i, dir, save) => {
+    const th = heads[i];
+    const isNum = th.dataset.k === "n";
+    heads.forEach((h) => h.removeAttribute("aria-sort"));
+    th.setAttribute("aria-sort", dir);
+    order.sort((a, b) => { const x = valueOf(a, i, isNum), y = valueOf(b, i, isNum); const c = isNum ? x - y : String(x).localeCompare(String(y), "ko"); return dir === "ascending" ? c : -c; });
+    for (const r of order) tbody.appendChild(r);
+    if (sel) sel.value = i + ":" + dir;
+    if (save && t.id) keep.set(t.id, Object.assign(keep.get(t.id) || {}, { sort: i, dir: dir }));
+    page = 1;
+    render();
+  };
+  // 정렬 고르기 — 자주 쓰는 열(data-pick)만
+  const picks = heads.map((h, i) => [h, i]).filter(([h]) => h.dataset.k && h.dataset.pick !== undefined);
+  let sel = null;
+  if (picks.length) {
+    sel = make("select");
+    sel.setAttribute("aria-label", "정렬");
+    sel.append(make("option", { value: "", textContent: "정렬 고르기" }));
+    for (const [h, i] of picks) {
+      const name = h.textContent.replace(/[▲▼]/g, "").trim();
+      const isNum = h.dataset.k === "n";
+      const opts = [[i + ":descending", h.dataset.desc || (isNum ? name + " 많은 순" : name + " 역순")], [i + ":ascending", h.dataset.asc || (isNum ? name + " 적은 순" : name + " 가나다순")]];
+      for (const [v, l] of isNum ? opts : opts.reverse()) sel.append(make("option", { value: v, textContent: l }));   // 글자 열은 가나다순이 먼저
+    }
+    sel.addEventListener("change", () => { if (sel.value) { const [i, d] = sel.value.split(":"); sortBy(Number(i), d, true); } });
   }
+  if (t.dataset.search) {
+    const s = make("input", { type: "search", placeholder: t.dataset.search });
+    s.setAttribute("aria-label", t.dataset.search);
+    s.addEventListener("input", () => { q = s.value.trim().toLowerCase(); page = 1; render(); });
+    bar.append(s);
+  }
+  if (sel) bar.append(sel);
+  if (t.dataset.size) {
+    const ss = make("select");
+    ss.setAttribute("aria-label", "한 쪽에 보일 개수");
+    for (const n of [5, 10, 20, 50, 0]) ss.append(make("option", { value: String(n), textContent: n ? n + "개씩" : "전체" }));
+    ss.value = String(size);
+    ss.addEventListener("change", () => { size = Number(ss.value); page = 1; if (t.id) keep.set(t.id, Object.assign(keep.get(t.id) || {}, { size: size })); render(); });
+    bar.append(ss);
+  }
+  bar.append(count);
+  if (bar.children.length > 1 || t.dataset.size) { box.before(bar); box.after(pager); }
+  const matches = (r) => !q || r.textContent.toLowerCase().includes(q) || ((r.querySelector("input[name=label]") || {}).value || "").toLowerCase().includes(q);
+  function render() {
+    const rows = order.filter(matches);
+    const per = size || rows.length || 1;
+    const pages = Math.max(1, Math.ceil(rows.length / per));
+    if (page > pages) page = pages;
+    const start = (page - 1) * per;
+    for (const r of order) r.hidden = true;
+    rows.slice(start, start + per).forEach((r, k) => { r.hidden = false; if (numbered) r.cells[0].textContent = String(start + k + 1); });
+    count.textContent = rows.length ? (start + 1) + "–" + Math.min(start + per, rows.length) + " / " + rows.length + "개" : "0개";
+    pager.replaceChildren();
+    if (pages > 1) {
+      const btn = (p, label) => { const b = make("button", { type: "button", textContent: label || String(p) }); if (p === page) b.className = "on"; b.addEventListener("click", () => { page = p; render(); }); return b; };
+      if (page > 1) pager.append(btn(page - 1, "‹ 이전"));
+      const near = [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, pages])].filter((p) => p >= 1 && p <= pages).sort((a, b) => a - b);
+      near.forEach((p, k) => { if (k && p - near[k - 1] > 1) pager.append(make("em", { textContent: "…" })); pager.append(btn(p)); });
+      if (page < pages) pager.append(btn(page + 1, "다음 ›"));
+    }
+  }
+  for (const [h, i] of heads.map((h, i) => [h, i]).filter(([h]) => h.dataset.k)) {
+    h.tabIndex = 0;
+    const go = () => { const cur = h.getAttribute("aria-sort"); const isNum = h.dataset.k === "n"; sortBy(i, cur ? (cur === "descending" ? "ascending" : "descending") : isNum ? "descending" : "ascending", true); };
+    h.addEventListener("click", go);
+    h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  }
+  if (saved.sort !== undefined && heads[saved.sort] && heads[saved.sort].dataset.k) sortBy(saved.sort, saved.dir, false); else render();
 }
-for (const inp of document.querySelectorAll("input[data-filter]")) {
-  const t = document.getElementById(inp.dataset.filter);
-  inp.addEventListener("input", () => { const q = inp.value.trim().toLowerCase(); for (const r of t.tBodies[0].rows) r.hidden = !!q && !r.textContent.toLowerCase().includes(q) && !(r.querySelector("input[name=label]")?.value || "").toLowerCase().includes(q); });
+// 순위 막대: 처음 N개, '더 보기'로 N개씩
+for (const ol of document.querySelectorAll("ol.bars[data-step]")) {
+  const step = Number(ol.dataset.step);
+  const items = [...ol.children];
+  if (items.length <= step) continue;
+  let shown = step;
+  const more = make("button", { type: "button", className: "morebtn" });
+  const show = () => { items.forEach((li, k) => { li.hidden = k >= shown; }); more.textContent = shown < items.length ? "더 보기 (" + Math.min(step, items.length - shown) + "개 · 전체 " + items.length + ")" : "접기"; };
+  more.addEventListener("click", () => { shown = shown < items.length ? shown + step : step; show(); });
+  ol.after(more);
+  show();
 }
 </script></body></html>`;
 }
