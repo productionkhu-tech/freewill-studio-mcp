@@ -13,6 +13,8 @@
 - **보내는 양에 한도가 있다** — 나노바나나는 동시 10장(그 PC 의 앱)·하루 1,000장, 시댄스는 동시 3개·하루 200개 — 하루 한도는 PC 한 대(PC 이름 + 윈도 사용자) 기준.
   넘으면 스크립트가 앞의 것이 끝나길 기다리거나(동시) 보내지 않는다(하루). 사람이 앱에서 직접 만드는 건 그대로다.
 - **회사 구글 계정으로 로그인하고, MCP 로 보낸 건 누가·어느 PC·어떤 모델·몇 개인지 기록된다**(프롬프트·그림은 안 남김) — 관리자 화면 `/admin`.
+- **결과가 확정되면 프롬프트 북으로 정리해 준다(권장, 강제 아님)** — 컷마다 프롬프트(복사)·설정·레퍼런스·결과(채택·본편)를
+  HTML 한 장에. 목차·컷 스트립(누르거나 끌어서 이동)·찾기·크게 보기, 저장 위치는 매번 묻는다(`scripts/make-prompt-book.mjs`).
 - **스크립트는 이 PC 의 앱과만 통신한다** — 커넥터가 내려주기 직전과 푸시마다 검사한다(`connector/script-check.mjs`).
 - 개인 스킬은 자유롭게 같이 쓴다.
 
@@ -149,6 +151,8 @@ plugins/freewill-studio/
   .claude-plugin/plugin.json           Claude 용 (version 없음 — 커밋마다 새 버전)
   .codex-plugin/plugin.json            GPT 용 (version 있음 — 자동으로 올라감)
   scripts/read-local-apps.mjs          이 PC 앱의 버전·모델 규칙·지금 설정 읽기
+  scripts/send-to-nanobanana.mjs · send-to-seedance.mjs   띄워 둔 앱으로 보내기
+  scripts/make-prompt-book.mjs         컨펌된 결과를 HTML 프롬프트 북으로(book.json → HTML 한 장)
   skills/freewill-generate/            ← 두 쪽이 같이 쓰는 스킬
     SKILL.md                           시작점 — 로그인, 그리고 "최신 지침은 커넥터에서"
     GUIDE.md                           전체 지침(질문 → 공식 가이드 → 확인 카드 → 앱) — 커넥터가 이걸 내려준다
@@ -157,6 +161,7 @@ plugins/freewill-studio/
       app-rules.md                     앱 규칙 스냅샷 (마지막 수단)
       interview.md                     질문 방식
       house-rules.md                   사내 규칙
+      prompt-book.md                   프롬프트 북 — 언제 권하나 · 저장 위치 묻기 · book.json 형식
     official/                          ← 자동 동기화 영역, 손대지 말 것
       VERSIONS.md                      지금 들어 있는 버전
       sd25-pe/ sd2-pe/ gemini-omni-flash-api/ imagegen/ higgsfield-generate/

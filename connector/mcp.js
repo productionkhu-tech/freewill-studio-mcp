@@ -27,6 +27,7 @@ const GUIDES = {
   "house-rules": `${SKILL}/references/house-rules.md`,
   "app-rules": `${SKILL}/references/app-rules.md`,
   "read-apps-without-node": `${SKILL}/references/read-apps-without-node.md`,
+  "prompt-book": `${SKILL}/references/prompt-book.md`,
   versions: `${SKILL}/official/VERSIONS.md`,
   "official:sd25-pe": `${SKILL}/official/sd25-pe/SKILL.md`,
   "official:sd2-pe": `${SKILL}/official/sd2-pe/SKILL.md`,
@@ -41,6 +42,7 @@ const SCRIPTS = {
   "read-local-apps": `${PLUGIN}/scripts/read-local-apps.mjs`,
   "send-to-nanobanana": `${PLUGIN}/scripts/send-to-nanobanana.mjs`,
   "send-to-seedance": `${PLUGIN}/scripts/send-to-seedance.mjs`,
+  "make-prompt-book": `${PLUGIN}/scripts/make-prompt-book.mjs`,
 };
 
 const INSTRUCTIONS = [
@@ -55,7 +57,7 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 > 지침 안의 파일 경로는 커넥터 도구로 받는다:
 > - \`references/interview.md\` → \`freewill_guide("interview")\` · \`references/house-rules.md\` → \`"house-rules"\` ·
 >   \`references/app-rules.md\` → \`"app-rules"\` · \`references/read-apps-without-node.md\` → \`"read-apps-without-node"\` ·
->   \`official/VERSIONS.md\` → \`"versions"\`
+>   \`references/prompt-book.md\` → \`"prompt-book"\` · \`official/VERSIONS.md\` → \`"versions"\`
 > - \`official/<이름>/SKILL.md\`·\`GUIDE.md\` → \`freewill_guide("official:<이름>")\` — 예: \`"official:sd25-pe"\`, \`"official:nano-banana"\`
 > - \`official/<이름>/references/<파일>.md\` → \`"official:<이름>/<파일>"\` — 예: \`"official:imagegen/prompting"\`, \`"official:higgsfield-generate/model-catalog"\`
 > - \`<플러그인 폴더>/scripts/<이름>.mjs\` → \`freewill_script("<이름>")\` 로 받아 **임시 폴더에 .mjs 로 저장한 뒤** \`node\` 로 실행한다.
@@ -89,7 +91,8 @@ const TOOLS = [
     title: "프리윌 스튜디오 앱 스크립트",
     description:
       "이 PC 의 나노바나나·시댄스를 다루는 스크립트 원문을 받는다 — read-local-apps(앱 버전·모델 규칙·지금 설정 읽기), " +
-      "send-to-nanobanana(띄워 둔 나노바나나로 생성 보내기), send-to-seedance(띄워 둔 시댄스로 영상 생성 보내기, 앱 26.10.304~). " +
+      "send-to-nanobanana(띄워 둔 나노바나나로 생성 보내기), send-to-seedance(띄워 둔 시댄스로 영상 생성 보내기, 앱 26.10.304~), " +
+      "make-prompt-book(컨펌된 결과를 HTML 프롬프트 북으로 정리 — 형식은 freewill_guide(\"prompt-book\")). " +
       "PC 에서 명령을 돌릴 수 있을 때만 쓸모 있다: 받은 원문을 임시 폴더에 " +
       ".mjs 로 저장해 node 로 실행. node 가 없으면 freewill_guide(\"read-apps-without-node\") 의 PowerShell 절차.",
     inputSchema: {
