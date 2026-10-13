@@ -1,9 +1,11 @@
 -- 프리윌 스튜디오 MCP 사용 기록 (Cloudflare D1 "freewill-usage")
 -- 새 DB: npx wrangler@4 d1 execute freewill-usage --remote --file schema.sql
--- 옛 DB 는 이 파일 전에 한 번씩(차례대로): migrate-2026-10-13-devices.sql(장치 칸) → migrate-2026-10-13-rollup.sql(하루 요약 표).
+-- 옛 DB 는 이 파일 전에 한 번씩(차례대로): migrate-2026-10-13-devices.sql(장치 칸) → migrate-2026-10-13-rollup.sql(하루 요약 표)
+--   → migrate-2026-10-13-lean.sql(원본 색인 없애기).
 -- 프롬프트·그림은 저장하지 않는다. day 는 한국 시간 날짜.
+-- 원본 — 색인 없이(보내기 1건 = 쓰기 2행: 이 줄 + 하루 요약 한 줄). id 는 넣은 순서 = 시간 순서.
 CREATE TABLE IF NOT EXISTS usage (
-  id TEXT PRIMARY KEY,
+  id INTEGER PRIMARY KEY,
   ts INTEGER NOT NULL,
   day TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -22,12 +24,10 @@ CREATE TABLE IF NOT EXISTS usage (
   job TEXT,
   status TEXT NOT NULL DEFAULT 'sent'
 );
--- 기록 탭 · CSV 는 시간 범위로(관리 화면의 합계 · 한도 확인은 아래 하루 요약 표로)
-CREATE INDEX IF NOT EXISTS usage_ts ON usage (ts);
-CREATE INDEX IF NOT EXISTS usage_device_ts ON usage (device, ts);
 
 -- 하루 요약 — usage 에 넣고 · 고치고 · 지울 때 트리거가 자동으로 맞춘다. 하루 한도 확인과 관리 화면 합계는 이 표만 읽어서
 -- 기록이 하루 수만 건이어도 가볍다(보낼 때마다 그날 기록을 다시 더하지 않는다). n · sends = 보낸 것, cancels = 무른 것.
+-- first_id · last_id = 그 줄에 든 원본의 첫 · 끝 id — 기록 탭 · CSV 가 기간을 원본 id 범위로 바꿔 찾는다.
 CREATE TABLE IF NOT EXISTS usage_daily (
   day TEXT NOT NULL,
   device TEXT NOT NULL,
@@ -37,24 +37,28 @@ CREATE TABLE IF NOT EXISTS usage_daily (
   n INTEGER NOT NULL DEFAULT 0,
   sends INTEGER NOT NULL DEFAULT 0,
   cancels INTEGER NOT NULL DEFAULT 0,
+  first_id INTEGER,
+  last_id INTEGER,
   PRIMARY KEY (day, device, email, app, model)
 );
 CREATE INDEX IF NOT EXISTS usage_daily_email ON usage_daily (day, email, app);
 CREATE TRIGGER IF NOT EXISTS usage_daily_ins AFTER INSERT ON usage BEGIN
-  INSERT INTO usage_daily (day, device, email, app, model, n, sends, cancels)
+  INSERT INTO usage_daily (day, device, email, app, model, n, sends, cancels, first_id, last_id)
   VALUES (NEW.day, COALESCE(NEW.device, ''), NEW.email, NEW.app, COALESCE(NEW.model, ''),
-          CASE WHEN NEW.status = 'sent' THEN NEW.n ELSE 0 END, CASE WHEN NEW.status = 'sent' THEN 1 ELSE 0 END, CASE WHEN NEW.status = 'cancelled' THEN 1 ELSE 0 END)
-  ON CONFLICT (day, device, email, app, model) DO UPDATE SET n = n + excluded.n, sends = sends + excluded.sends, cancels = cancels + excluded.cancels;
+          CASE WHEN NEW.status = 'sent' THEN NEW.n ELSE 0 END, CASE WHEN NEW.status = 'sent' THEN 1 ELSE 0 END, CASE WHEN NEW.status = 'cancelled' THEN 1 ELSE 0 END, NEW.id, NEW.id)
+  ON CONFLICT (day, device, email, app, model) DO UPDATE SET n = n + excluded.n, sends = sends + excluded.sends, cancels = cancels + excluded.cancels,
+    first_id = MIN(COALESCE(first_id, excluded.first_id), excluded.first_id), last_id = MAX(COALESCE(last_id, excluded.last_id), excluded.last_id);
 END;
 CREATE TRIGGER IF NOT EXISTS usage_daily_upd AFTER UPDATE OF n, status, device, model ON usage BEGIN
   UPDATE usage_daily SET n = n - CASE WHEN OLD.status = 'sent' THEN OLD.n ELSE 0 END,
                          sends = sends - CASE WHEN OLD.status = 'sent' THEN 1 ELSE 0 END,
                          cancels = cancels - CASE WHEN OLD.status = 'cancelled' THEN 1 ELSE 0 END
    WHERE day = OLD.day AND device = COALESCE(OLD.device, '') AND email = OLD.email AND app = OLD.app AND model = COALESCE(OLD.model, '');
-  INSERT INTO usage_daily (day, device, email, app, model, n, sends, cancels)
+  INSERT INTO usage_daily (day, device, email, app, model, n, sends, cancels, first_id, last_id)
   VALUES (NEW.day, COALESCE(NEW.device, ''), NEW.email, NEW.app, COALESCE(NEW.model, ''),
-          CASE WHEN NEW.status = 'sent' THEN NEW.n ELSE 0 END, CASE WHEN NEW.status = 'sent' THEN 1 ELSE 0 END, CASE WHEN NEW.status = 'cancelled' THEN 1 ELSE 0 END)
-  ON CONFLICT (day, device, email, app, model) DO UPDATE SET n = n + excluded.n, sends = sends + excluded.sends, cancels = cancels + excluded.cancels;
+          CASE WHEN NEW.status = 'sent' THEN NEW.n ELSE 0 END, CASE WHEN NEW.status = 'sent' THEN 1 ELSE 0 END, CASE WHEN NEW.status = 'cancelled' THEN 1 ELSE 0 END, NEW.id, NEW.id)
+  ON CONFLICT (day, device, email, app, model) DO UPDATE SET n = n + excluded.n, sends = sends + excluded.sends, cancels = cancels + excluded.cancels,
+    first_id = MIN(COALESCE(first_id, excluded.first_id), excluded.first_id), last_id = MAX(COALESCE(last_id, excluded.last_id), excluded.last_id);
 END;
 CREATE TRIGGER IF NOT EXISTS usage_daily_del AFTER DELETE ON usage BEGIN
   UPDATE usage_daily SET n = n - CASE WHEN OLD.status = 'sent' THEN OLD.n ELSE 0 END,

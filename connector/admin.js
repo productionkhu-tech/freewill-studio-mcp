@@ -14,7 +14,7 @@ const APPS = ["nanobanana", "seedance"];
 const PAGE_SIZES = [20, 50, 100, 200];   // 기록 탭 N개씩
 const PALETTE = ["#2453e6", "#0f9d8a", "#e0892b", "#9b51e0", "#d64545", "#3a8fd6"];
 const OTHER = "#b8bfca";
-const SORTS = { ts: "ts", n: "n", app: "app", model: "model", email: "email", ip: "ip", pc: "pc", job: "job" };
+const SORTS = { ts: "id", n: "n", app: "app", model: "model", email: "email", ip: "ip", pc: "pc", job: "job" };
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const isDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
@@ -197,9 +197,14 @@ function filtersOf(sp) {
     page: Math.max(1, Math.min(100000, Math.round(Number(sp.get("page")) || 1))),
   };
 }
-function whereOf(ctx, f) {
-  const where = ["ts >= ? AND ts < ?"];
-  const binds = tsRange(ctx.from, ctx.to);
+// 기간 → 원본 id 범위 — 원본에는 색인이 없어서(쓰기를 아끼려고) 하루 요약 표가 기억하는 그날의 첫 · 끝 id 로 범위를 잡는다.
+async function idRangeOf(ctx) {
+  const r = await ctx.db.prepare("SELECT MIN(first_id) AS a, MAX(last_id) AS b FROM usage_daily WHERE day BETWEEN ? AND ?").bind(ctx.from, ctx.to).first();
+  return r && r.a !== null && r.a !== undefined ? [Number(r.a), Number(r.b)] : [0, -1];
+}
+function whereOf(ctx, f, range) {
+  const where = ["id BETWEEN ? AND ?", "ts >= ? AND ts < ?"];
+  const binds = [...range, ...tsRange(ctx.from, ctx.to)];
   if (f.who.startsWith("d:")) { where.push("device = ?"); binds.push(f.who.slice(2)); }
   if (f.who.startsWith("p:")) { where.push("device IN (SELECT id FROM devices WHERE label = ?)"); binds.push(f.who.slice(2)); }
   if (f.app) { where.push("app = ?"); binds.push(f.app); }
@@ -215,8 +220,8 @@ function whereOf(ctx, f) {
 
 async function csv(ctx) {
   const f = filtersOf(ctx.sp);
-  const { where, binds } = whereOf(ctx, f);
-  const rows = await ctx.all(`SELECT * FROM usage WHERE ${where} ORDER BY ts LIMIT 50000`, ...binds);
+  const { where, binds } = whereOf(ctx, f, await idRangeOf(ctx));
+  const rows = await ctx.all(`SELECT * FROM usage WHERE ${where} ORDER BY id LIMIT 50000`, ...binds);
   const cols = ["day", "ts", "person", "email", "name", "pc", "win_user", "device", "ip", "app", "kind", "model", "resolution", "n", "billing", "project", "job", "status"];
   const cell = (v) => (/[",\n]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""));
   const value = (r, c) => (c === "ts" ? kstTime(r.ts) : c === "person" ? ctx.dev.get(r.device)?.label || "" : r[c]);
@@ -495,11 +500,11 @@ async function recordTotals(ctx, f, where, binds) {
 async function records(ctx) {
   const { db, all, from, to } = ctx;
   const f = filtersOf(ctx.sp);
-  const { where, binds } = whereOf(ctx, f);
+  const { where, binds } = whereOf(ctx, f, await idRangeOf(ctx));
   const total = await recordTotals(ctx, f, where, binds);
   const pages = Math.max(1, Math.ceil(Number(total?.c || 0) / f.size));
   const pageNo = Math.min(f.page, pages);
-  const list = await all(`SELECT * FROM usage WHERE ${where} ORDER BY ${SORTS[f.sort]} ${f.dir === "asc" ? "ASC" : "DESC"}, ts DESC LIMIT ? OFFSET ?`,
+  const list = await all(`SELECT * FROM usage WHERE ${where} ORDER BY ${SORTS[f.sort]} ${f.dir === "asc" ? "ASC" : "DESC"}, id DESC LIMIT ? OFFSET ?`,
     ...binds, f.size, (pageNo - 1) * f.size);
   const models = await all("SELECT DISTINCT app, model FROM usage_daily WHERE day BETWEEN ? AND ? ORDER BY app, model", from, to);
   const keep = { tab: "records", from, to, who: f.who, app: f.app, model: f.model, status: f.status, q: f.q, size: f.size === 50 ? "" : f.size };

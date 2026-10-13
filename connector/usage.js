@@ -161,7 +161,7 @@ export async function usage(request, env) {
   if (url.pathname === "/usage/settle") {
     const db = env.USAGE_DB;
     const n = Math.round(Number(b.n));
-    const rid = text(b.id);
+    const rid = Math.round(Number(b.id));   // 원본 id(정수, 넣은 순서)
     const since = Date.now() - settleMs(env);
     const res = n >= 1
       ? await db.prepare("UPDATE usage SET n = ? WHERE id = ? AND email = ? AND n >= ? AND ts >= ?").bind(n, rid, t.e, n, since).run()
@@ -187,15 +187,14 @@ export async function usage(request, env) {
   // 한도 확인과 기록을 한 문장으로 — 같은 PC 의 Claude·Codex 가 동시에 보내도, 계정 상한이 있어도 넘지 않는다.
   const limit = await deviceLimit(env, d.id, app);
   const cap = await accountCap(env, t.e, app);
-  const id = crypto.randomUUID();
   const day = kstDay();
   const res = await env.USAGE_DB.prepare(
-    `INSERT INTO usage (id, ts, day, email, name, pc, win_user, device, ip, app, kind, model, resolution, n, billing, project, job, status)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent'
+    `INSERT INTO usage (ts, day, email, name, pc, win_user, device, ip, app, kind, model, resolution, n, billing, project, job, status)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent'
       WHERE ${SUM_TODAY("device")} + ? <= ?
         AND (? IS NULL OR ${SUM_TODAY("email")} + ? <= ?)`,
   ).bind(
-    id, Date.now(), day, t.e, text(t.n), text(b.pc), text(b.user), d.id, ip,
+    Date.now(), day, t.e, text(t.n), text(b.pc), text(b.user), d.id, ip,
     app, text(b.kind) || "generate", text(b.model), text(b.resolution), n, text(b.billing), text(b.project), text(b.job),
     day, d.id, app, n, limit,
     cap, day, t.e, app, n, cap ?? 0,
@@ -217,5 +216,5 @@ export async function usage(request, env) {
     }, 429);
   }
   const q = await quota(env, t.e, d.id, app);
-  return json({ ok: true, id, device: d.id, used: q.used, limit: q.limit, scope: q.scope });
+  return json({ ok: true, id: res.meta.last_row_id, device: d.id, used: q.used, limit: q.limit, scope: q.scope });
 }
