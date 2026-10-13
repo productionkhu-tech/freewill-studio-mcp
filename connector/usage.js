@@ -188,6 +188,7 @@ export async function usage(request, env) {
     const byAccount = cap !== null && accountUsed + n > cap;
     const where = d.pc ? `이 PC(${d.pc}${d.user ? ` · ${d.user}` : ""})` : "이 PC";
     const [used, max] = byAccount ? [accountUsed, cap] : [deviceUsed, limit];
+    if (max === 0 && !byAccount) await logEvent(env, "blocked_device", { email: t.e, device: d.id, detail: `${WHAT[app]} ${n}${UNIT[app]}` });
     return json({
       ok: false, used, limit: max, scope: byAccount ? "account" : "pc",
       error: max === 0

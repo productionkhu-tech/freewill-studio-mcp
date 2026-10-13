@@ -9,7 +9,7 @@ import { LIMITS, UNIT, WHAT, inForce, kstDay, text } from "./usage.js";
 import { logEvent } from "./events.js";
 
 const TABS = [["overview", "개요"], ["devices", "사람 · PC"], ["accounts", "계정"], ["records", "기록"], ["models", "모델"], ["limits", "한도"]];
-const KIND = { late_settle: "늦게 무르기 시도", device_reset: "장치 ID 를 새로 만듦", blocked_login: "막힌 계정이 연결 시도", blocked_usage: "막힌 계정이 보내기 시도" };
+const KIND = { blocked_device: "막힌 PC 가 보내기 시도", late_settle: "늦게 무르기 시도", device_reset: "장치 ID 를 새로 만듦", blocked_login: "막힌 계정이 연결 시도", blocked_usage: "막힌 계정이 보내기 시도" };
 const APPS = ["nanobanana", "seedance"];
 const PAGE_SIZES = [20, 50, 100, 200];   // 기록 탭 N개씩
 const PALETTE = ["#2453e6", "#0f9d8a", "#e0892b", "#9b51e0", "#d64545", "#3a8fd6"];
@@ -81,7 +81,7 @@ async function setDevice(request, env, viewer) {
   const f = await request.formData();
   const db = env.USAGE_DB;
   const action = String(f.get("action") || "");
-  const tab = tabOf(f, action === "name" ? "devices" : "limits");
+  const tab = tabOf(f, ["name", "block", "unblock"].includes(action) ? "devices" : "limits");
   const d = await db.prepare("SELECT * FROM devices WHERE id = ?").bind(String(f.get("device") || "")).first();
   if (!d) return back("PC 를 골라 주세요.", tab);
   const who = devName(d);
@@ -89,6 +89,15 @@ async function setDevice(request, env, viewer) {
     const label = String(f.get("label") || "").trim().slice(0, 40);
     await db.prepare("UPDATE devices SET label = ?, label_by = ?, label_at = ? WHERE id = ?").bind(label || null, viewer, Date.now(), d.id).run();
     return done(env, viewer, "name", label ? `${who} 에 '${label}' 이름을 붙였다.` : `${who} 의 이름을 지웠다.`, tab);
+  }
+  // PC 막기 = 두 앱 모두 하루 한도 0(어느 계정으로도 못 보냄). 풀기 = 두 앱 모두 기본 한도로.
+  if (action === "block" || action === "unblock") {
+    await db.batch(Object.keys(LIMITS).map((app) => (action === "block"
+      ? db.prepare(`INSERT INTO device_limits (device, app, daily, until, note, set_by, set_at) VALUES (?, ?, 0, NULL, 'PC 막음', ?, ?)
+          ON CONFLICT (device, app) DO UPDATE SET daily = 0, until = NULL, note = 'PC 막음', set_by = excluded.set_by, set_at = excluded.set_at`).bind(d.id, app, viewer, Date.now())
+      : db.prepare("DELETE FROM device_limits WHERE device = ? AND app = ?").bind(d.id, app))));
+    return done(env, viewer, action === "block" ? "device_block" : "device_unblock",
+      action === "block" ? `${who} — PC 를 막았다. 이 PC 에서는 어느 계정으로도 MCP 로 보내지 못한다.` : `${who} — PC 막기를 풀었다(기본 한도).`, tab);
   }
   const app = String(f.get("app") || "");
   if (!LIMITS[app]) return back("앱을 골라 주세요.", tab);
@@ -418,7 +427,7 @@ async function devicesTab(ctx) {
             SUM(CASE WHEN status = 'sent' AND app = 'nanobanana' THEN n ELSE 0 END) AS img,
             SUM(CASE WHEN status = 'sent' AND app = 'seedance' THEN n ELSE 0 END) AS vid,
             SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sends,
-            GROUP_CONCAT(DISTINCT email) AS emails
+            GROUP_CONCAT(DISTINCT email) AS emails, GROUP_CONCAT(DISTINCT ip) AS ips
        FROM usage WHERE day BETWEEN ? AND ? GROUP BY device`, from, to);
   const todays = await all(
     `SELECT device, SUM(CASE WHEN app = 'nanobanana' THEN n ELSE 0 END) AS img_today, SUM(CASE WHEN app = 'seedance' THEN n ELSE 0 END) AS vid_today
@@ -431,22 +440,26 @@ async function devicesTab(ctx) {
   const rows = ctx.devices.map((d) => {
     const s = st.get(d.id) || {};
     const emails = String(s.emails || "").split(",").filter(Boolean).join(", ");
+    const ips = String(s.ips || "").split(",").filter(Boolean);
     const li = limitOf(d.id, "nanobanana");
     const lv = limitOf(d.id, "seedance");
     return `<tr><td class="rn"></td>
 <td data-v="${esc(d.label || "")}"><form class="nform" method="post" action="/admin/device"><input type="hidden" name="tab" value="devices"><input type="hidden" name="device" value="${esc(d.id)}"><input name="label" maxlength="40" value="${esc(d.label || "")}" placeholder="사람 이름" aria-label="${esc(devName(d))} 사람 이름"><button class="small" name="action" value="name">저장</button></form></td>
 <td data-v="${esc(d.pc || "")}"><a href="${qs({ tab: "records", from, to, who: `d:${d.id}` })}" title="이 PC 기록 보기">${esc(d.pc || "(PC 이름 없음)")}</a><small>${esc([d.win_user, d.pc_names ? `전 이름: ${d.pc_names}` : ""].filter(Boolean).join(" · "))}</small></td>
-<td>${esc(emails)}</td><td>${esc(d.ip || "")}</td>
+<td>${esc(emails)}</td><td>${esc(d.ip || "")}${ips.length > 1 ? `<small title="${esc(ips.join(", "))}">이 기간 IP ${ips.length}개</small>` : ""}</td>
 <td data-v="${Number(s.img_today || 0) / (li || 1)}">${meter(Number(s.img_today || 0), li, "nanobanana")}</td>
 <td data-v="${Number(s.vid_today || 0) / (lv || 1)}">${meter(Number(s.vid_today || 0), lv, "seedance")}</td>
-<td class="n" data-v="${Number(s.img || 0)}">${num(s.img)}</td><td class="n" data-v="${Number(s.vid || 0)}">${num(s.vid)}</td><td class="n" data-v="${Number(s.sends || 0)}">${num(s.sends)}</td>
-<td data-v="${d.last_ts || 0}">${d.last_ts ? esc(kstTime(d.last_ts)) : "—"}</td></tr>`;
+<td class="n" data-v="${Number(s.img || 0)}">${num(s.img)}</td><td class="n" data-v="${Number(s.vid || 0)}">${num(s.vid)}</td>
+<td data-v="${d.last_ts || 0}">${d.last_ts ? esc(kstTime(d.last_ts)) : "—"}</td>
+<td data-v="${li === 0 && lv === 0 ? 1 : 0}">${li === 0 && lv === 0
+    ? `<span class="warn">막힘</span> <form class="inline" method="post" action="/admin/device"><input type="hidden" name="tab" value="devices"><input type="hidden" name="device" value="${esc(d.id)}"><button class="link ok" name="action" value="unblock">풀기</button></form>`
+    : `<form class="inline" method="post" action="/admin/device" onsubmit="return confirm('${esc(`${devName(d)} 를 막을까요? 이 PC 에서는 어느 계정으로도 보내지 못해요.`)}')"><input type="hidden" name="tab" value="devices"><input type="hidden" name="device" value="${esc(d.id)}"><button class="link" name="action" value="block">막기</button></form>`}</td></tr>`;
   });
   return `<section><h2>사람 · PC (${num(ctx.devices.length)}대)</h2>
-<p class="hint">한 줄 = PC 한 대의 윈도 사용자. 사람 이름을 붙이면 모든 탭에 그 이름으로 보이고, 같은 이름의 PC 는 개요·모델 탭에서 합쳐진다. 이름을 비우고 저장하면 지운다. PC 이름을 바꿔도 같은 줄로 이어지고 '전 이름'이 남는다. PC 이름을 누르면 그 PC 의 기록만 본다. IP 는 마지막으로 보낸 곳의 공인 IP(사무실은 모두 같을 수 있음). 표 머리를 누르거나 '정렬'에서 고른다.</p>
+<p class="hint">한 줄 = PC 한 대의 윈도 사용자. 사람 이름을 붙이면 모든 탭에 그 이름으로 보이고, 같은 이름의 PC 는 개요·모델 탭에서 합쳐진다. 이름을 비우고 저장하면 지운다. PC 이름을 바꿔도 같은 줄로 이어지고 '전 이름'이 남는다. PC 이름을 누르면 그 PC 의 기록만 본다. <b>막기</b>는 그 PC 에서 어느 계정으로도 보내지 못하게 한다(두 앱 모두 한도 0). IP 는 마지막으로 보낸 곳의 공인 IP — 사무실은 모두 같을 수 있고 집 · VPN 이면 바뀐다(한도 · 막기는 IP 와 상관없다). 표 머리를 누르거나 '정렬'에서 고른다.</p>
 <div class="scroll"><table class="sortable" id="devtable" data-size="10" data-search="이름 · PC · 계정 · IP 검색"><thead><tr><th class="rn">#</th>
 <th data-k="t" data-pick>사람</th><th data-k="t" data-pick>PC · 윈도 사용자</th><th data-k="t">연결 계정</th><th data-k="t">최근 IP</th>
-<th data-k="n">오늘 이미지</th><th data-k="n">오늘 영상</th><th data-k="n" class="n" data-pick>기간 이미지</th><th data-k="n" class="n" data-pick>기간 영상</th><th data-k="n" class="n">횟수</th><th data-k="n" aria-sort="descending" data-pick data-desc="최근 사용 순" data-asc="오래된 사용 순">마지막 사용</th>
+<th data-k="n">오늘 이미지</th><th data-k="n">오늘 영상</th><th data-k="n" class="n" data-pick>기간 이미지</th><th data-k="n" class="n" data-pick>기간 영상</th><th data-k="n" aria-sort="descending" data-pick data-desc="최근 사용 순" data-asc="오래된 사용 순">마지막 사용</th><th data-k="n">막기</th>
 </tr></thead><tbody>${rows.join("")}</tbody></table></div></section>`;
 }
 
@@ -595,7 +608,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line)}tbody tr:hover{backgro
 .chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}.chip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink);background:var(--bg)}.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}.chips .sum{color:var(--slate);margin-left:4px;flex:1}
 .pager{display:flex;gap:4px;justify-content:center;margin-top:14px;flex-wrap:wrap}.pager a,.pager span{padding:6px 11px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--ink);min-width:36px;text-align:center}.pager span.on{background:var(--accent);color:#fff;border-color:var(--accent)}.pager em{padding:6px 4px;color:var(--slate);font-style:normal}
 .lform{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 2fr auto;gap:8px;margin-bottom:16px}.lform.acc{grid-template-columns:minmax(0,420px) auto;justify-content:start}.link.ok{color:var(--accent)}.lform input,.lform select{min-width:0}.inline{display:inline}.link{background:none;border:0;color:var(--warn);font:inherit;font-weight:700;cursor:pointer;padding:0;min-height:0}
-#devtable th,#devtable td{padding:8px 7px}th.rn,td.rn{width:1%;text-align:right;color:var(--slate);font-variant-numeric:tabular-nums;padding-right:4px}.tbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}.tbar input[type=search]{width:min(100%,260px)}.tbar .count{color:var(--slate);margin-left:auto;font-size:13px}.pager button{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:500;min-width:36px;min-height:32px;padding:5px 10px;justify-content:center}.pager button.on{background:var(--accent);color:#fff;border-color:var(--accent)}.morebtn{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:600;margin-top:10px;min-height:32px;padding:5px 12px}.nform{flex-wrap:nowrap;gap:6px}.nform input{width:104px;padding:5px 8px;font-size:13px;min-height:32px}button.small{padding:5px 10px;font-size:12px;min-height:32px}
+#devtable th,#devtable td{padding:8px 7px}th.rn,td.rn{width:1%;text-align:right;color:var(--slate);font-variant-numeric:tabular-nums;padding-right:4px}.tbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}.tbar input[type=search]{width:min(100%,260px)}.tbar .count{color:var(--slate);margin-left:auto;font-size:13px}.pager button{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:500;min-width:36px;min-height:32px;padding:5px 10px;justify-content:center}.pager button.on{background:var(--accent);color:#fff;border-color:var(--accent)}.morebtn{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:600;margin-top:10px;min-height:32px;padding:5px 12px}.nform{flex-wrap:nowrap;gap:6px}.nform input{width:92px;padding:5px 8px;font-size:13px;min-height:32px}button.small{padding:5px 10px;font-size:12px;min-height:32px}
 @media (max-width:760px){.lform{grid-template-columns:1fr 1fr}.range{align-items:stretch}.bars li,.bars.wide li{grid-template-columns:20px minmax(90px,38%) 1fr auto}}
 </style></head><body><div class="wrap">
 <header><div><h1>프리윌 스튜디오 MCP 사용 기록</h1><div class="sub">MCP 로 앱에 보낸 생성만 기록된다(앱에서 직접 만든 것은 각 앱의 집계). 한도는 PC 기준 · 날짜는 한국 시간 · 보는 사람 ${esc(ctx.viewer)}</div></div>

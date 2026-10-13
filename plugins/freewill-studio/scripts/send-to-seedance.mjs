@@ -363,6 +363,7 @@ async function quota(n, what) {
   if (me.http === 401 || me.http === 403) fail(me.error || NO_TICKET);   // 403 = 관리자가 막은 계정
   const q = me.apps?.seedance;
   if (!q) fail(`사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
+  if (q.limit === 0) fail(`${q.scope === "account" ? `${owner.e} 계정은` : `이 PC(${host})는`} 관리자가 MCP 영상 생성을 막아 두었다 — 관리자에게 물을 것`);
   if (q.used + n > q.limit) {
     fail(`오늘 ${q.scope === "account" ? `${owner.e} 계정(모든 PC 합계)이` : `이 PC(${host})가`} MCP 로 보낸 영상 ${q.used}개 — ` +
       `하루 ${q.limit}개 한도라 이번 요청(${what})은 보내지 않는다. 개수를 줄이거나 내일 보내고, 급하면 앱에서 직접 하게 할 것`);
