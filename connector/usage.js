@@ -51,7 +51,8 @@ async function quota(env, email, device, app) {
 }
 
 // 이 요청의 장치. 장치 ID 가 없으면 같은 PC 이름·윈도 사용자로 마지막에 본 장치, 그것도 없으면 이름으로 만든 ID.
-async function resolveDevice(env, b, email) {
+// write = false(한도 조회)면 별칭·사건을 남기지 않고 묶을 장치만 알려 준다.
+async function resolveDevice(env, b, email, write = true) {
   const db = env.USAGE_DB;
   const pc = pcOf(b.pc);
   const user = pcOf(b.user);
@@ -63,6 +64,7 @@ async function resolveDevice(env, b, email) {
     // device.json 을 지워 ID 를 새로 만들어도 같은 PC 이름·윈도 사용자의 장치가 있으면 그 장치로 센다(하루 한도 초기화 막기)
     if (pc && !(await db.prepare("SELECT 1 AS k FROM devices WHERE id = ?").bind(sent).first())) {
       const same = await sameName();
+      if (same && !write) return { id: same.id, pc, user, real: true };
       if (same) {
         await db.prepare("INSERT OR IGNORE INTO device_alias (alias, device, ts) VALUES (?, ?, ?)").bind(sent, same.id, Date.now()).run();
         await logEvent(env, "device_reset", { email, device: same.id, detail: `${pc} · ${user} 가 새 장치 ID 로 보냄 — 원래 장치로 묶음` });
@@ -127,7 +129,7 @@ export async function usage(request, env) {
 
   if (url.pathname === "/usage/me") {
     const q = url.searchParams;
-    const d = await resolveDevice(env, { pc: q.get("pc"), user: q.get("user"), device: q.get("device") }, t.e);
+    const d = await resolveDevice(env, { pc: q.get("pc"), user: q.get("user"), device: q.get("device") }, t.e, false);
     // 처음 보는 장치면 아직 합치기 전이라 이름으로 센 옛 기록을 본다
     const known = await env.USAGE_DB.prepare("SELECT 1 AS k FROM devices WHERE id = ?").bind(d.id).first();
     const id = d.real && !known ? legacyId(d.pc, d.user) : d.id;
