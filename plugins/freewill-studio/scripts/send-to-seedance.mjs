@@ -235,7 +235,13 @@ async function usageApi(method, p, body) {
   } catch {
     throw new Stop(`사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인하거나, ${BLOCKED}`);
   }
-  const j = await r.json().catch(() => ({}));
+  const j = await r.json().catch(() => null);
+  // JSON 이 아닌 답 = 커넥터까지 못 감(클라우드플레어가 대신 답함). 기록이 안 남으니 보내지 않는다.
+  if (!j) {
+    return { http: r.status, ok: false, error: r.status === 429
+      ? "클라우드플레어 무료 하루 한도(계정 전체 요청 10만 번)에 걸려 사용 기록을 남길 수 없다 — 한국 시간 오전 9시에 풀린다. 그때까지 MCP 로는 보내지 않는다(급하면 앱에서 직접)"
+      : `사용 기록 서버가 지금 답하지 않는다(HTTP ${r.status}) — 잠시 뒤 다시. 기록이 안 남으니 보내지 않는다` };
+  }
   return { http: r.status, ...j };
 }
 
@@ -362,7 +368,7 @@ async function quota(n, what) {
   const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}&device=${encodeURIComponent(device())}`);
   if (me.http === 401 || me.http === 403) fail(me.error || NO_TICKET);   // 403 = 관리자가 막은 계정
   const q = me.apps?.seedance;
-  if (!q) fail(`사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
+  if (!q) fail(me.error || `사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
   if (q.limit === 0) fail(`${q.scope === "account" ? `${owner.e} 계정은` : `이 PC(${host})는`} 관리자가 MCP 영상 생성을 막아 두었다 — 관리자에게 물을 것`);
   if (q.used + n > q.limit) {
     fail(`오늘 ${q.scope === "account" ? `${owner.e} 계정(모든 PC 합계)이` : `이 PC(${host})가`} MCP 로 보낸 영상 ${q.used}개 — ` +

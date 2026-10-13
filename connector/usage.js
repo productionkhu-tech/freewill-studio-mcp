@@ -136,7 +136,19 @@ function touchAccount(env, t) {
   ).bind(t.e, text(t.n), now, now - QUIET_MS).run();
 }
 
+// DB 가 기록을 못 받으면(클라우드플레어 무료 하루 한도 · 장애) 워커가 죽은 것처럼 보이지 않게 이유를 돌려준다.
+// 스크립트는 기록이 안 남으면 앱에 보내지 않으므로 기록 없이 만들어지는 것은 없다.
 export async function usage(request, env) {
+  try {
+    return await handleUsage(request, env);
+  } catch (e) {
+    console.error("usage", e?.message || e);
+    return json({ ok: false, error: "사용 기록 DB 가 지금 기록을 받지 못한다 — 클라우드플레어 무료 하루 한도일 수 있다(한국 시간 오전 9시에 풀림). " +
+      "기록이 안 남으니 MCP 로는 보내지 않는다. 급하면 앱에서 직접 만들게 할 것" }, 503);
+  }
+}
+
+async function handleUsage(request, env) {
   const url = new URL(request.url);
   const t = await readTicket(env, request);
   if (!t) return json({ ok: false, error: "로그인 표가 없거나 만료됐습니다 — 스크립트를 커넥터(freewill_script)에서 다시 받을 것" }, 401);
