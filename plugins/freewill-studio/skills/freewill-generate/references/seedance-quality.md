@@ -35,7 +35,9 @@
    역방향 컷에서는 없는 것을 이름으로 적는다(`the wall behind the bed is solid panelling with no second door`). 레퍼런스에 없는 방·문·길을
    지어내는 게 가장 흔한 표류다.
 6. **금지보다 배분.** 번지는 색은 자리와 양을 정해 준다 — `Yellow exists only inside the lamp bulb and a palm-sized halo beneath it.`
-   부정문은 모델의 기본값이 곧 실패인 곳(복제, 싸움의 슬로모션, 깔리는 음악, 레퍼런스 음성 따라 하기)에만, 긍정 사실 다음에 짧게.
+   부정문은 모델의 기본값이 곧 실패인 곳(복제, 멋대로 컷 · 줌 · 떠다니는 핸드헬드, 싸움의 슬로모션, 깔리는 음악, 레퍼런스 음성 따라 하기)에만,
+   긍정 사실 다음에 짧게 — `Smooth and motorised: no handheld float, no zoom, no cut.` · `It dips once on its springs and does not travel along the ground.`
+   원하는 것을 금지 목록으로 대신하지는 않는다.
    맨말 품질어 — `film grain`, `blurry background`, `hazy`, `imperfect focus` — 는 화면 전체를 뭉갠다. 어느 면이 언제 어떻게
    (`a brief focus hunt on the fence at 2s; her face stays sharp`), 안개는 % 와 거리(m)로 쓴다.
 7. **잴 수 있는 말.** `fast` 대신 km/h·보폭·접촉(`fast` 가 복잡한 움직임에서 화면을 가장 많이 흔드는 말이라는 관찰), 무게는 kg
@@ -44,6 +46,7 @@
 8. **동사 하나에 뜻 하나, 문장은 짧게.** 두 가지로 읽히는 동사(tear, shoot, duck, bolt, draw, wave, fire, strike, break, snap)는 바꾼다 —
    `wind tearing at her coat` → `wind whipping hard at her coat`. 현재 시제, 박자마다 세 문장까지, 중요한 건 한 번만.
    인물은 요청이 없으면 렌즈를 보지 않는다. `beautiful` · `stunning` · `epic` · `dynamic` · `cinematic` · `masterpiece` 는 지우고 보이는 것으로.
+   디테일을 말하려면 그 디테일이 어디서 보이는지를 바로 붙인다(`8K capture detail — pores, wool weave, the grain of the dashboard plastic`).
 9. **프롬프트마다 처음부터.** 다른 프롬프트를 가리키지 않는다 — `as above`, `same as shot 10`, 장면 번호, 앞 컷 요약을 쓰지 않는다.
    컷끼리 맞춰야 하는 값은 **같은 절댓값을 양쪽에 다 쓴다**(같은 km/h, 같은 K, 같은 화면 %). 한 시퀀스의 렌즈 성격 · 조명 원칙 · 색 · STYLE ·
    소리 원칙은 한 곳에서 고쳐 모든 컷에 같은 글로 붙인다 — 어느 컷이 그중 하나를 바꾸면 바꾼다고 적는다.
@@ -276,12 +279,12 @@
 | 출처 | 우리 |
 |---|---|
 | 0.3–0.5초 인서트, `1.5s`, `0.8s whip` | 정수 초, 한 컷 2초 이상(박자 편집만 예외) — 짧은 인서트는 2초로 잡거나 무빙 안에 넣는다 |
-| 본문에 `16:9`, `24 fps`, `4K`, `Duration: 10s` | 전부 설정으로. 본문에 써도 바뀌지 않고 그림만 흔든다 |
+| 본문에 `16:9`, `24 fps`, `4K`, `Duration: 10s` | 비율 · 길이 · 해상도는 설정으로 — 본문의 숫자는 설정을 바꾸지 못하고, 설정과 다르면 모순이 된다(보내기 스크립트가 짚는다). 디테일을 말하는 룩 문장(`8K capture detail — pores …`)은 둔다 |
 | `@Image1` · `@loc_cave` | `[Image N]` · `@{name}`(지침 4단계) |
 | 전신 칸의 머리를 지운 시트, 패널을 잘라 낸 그림 | 시드림 원본 시트 그대로 — 손댄 시트는 BytePlus 실사 인물 필터에 걸렸다 |
 | 렌즈 말은 플레이트에 굽고 다시 쓰지 말라 | OPTICS 블록을 매 프롬프트에(화각 · 거리 · 높이). 렌즈 성격 말은 프로젝트마다 정한다 |
 | 30–100단어, 512자 | 우리 블록 형식으로 자세하게(5초 한 컷도 2,500자 넘게) |
-| 부정어 꼬리를 줄줄이(`NO CGI. NO BGM.`) | 꼭 막을 실패 하나만, 긍정 사실 다음에(1절 6) |
+| 부정어 꼬리를 줄줄이(`NO CGI. NO BGM.`) | 모델의 기본 실패를 막는 짧은 부정만, 긍정 사실 다음에(1절 6) |
 | '시네마틱' 대신 감독 이름 | 감독 · 작품 · 장비 이름은 쓰지 않는다 — 빛과 렌즈를 말로 |
 | 나이 단어 금지 | 힉스필드 필터 대책 — BytePlus 에선 확인 안 됨, 걸리면 바꾼다 |
 | 원테이크의 초 단위 박자가 컷을 부른다 / 안 부른다(출처 안에서 엇갈림) | 타임코드는 쓰되 1절 1의 원테이크 문장을 같이 |

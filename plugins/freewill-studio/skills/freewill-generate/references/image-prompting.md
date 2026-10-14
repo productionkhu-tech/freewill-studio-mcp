@@ -48,7 +48,8 @@
   MCU(가슴 위) · CU(얼굴) · ECU(세부 하나) · 매크로(질감). 들어오는 것과 모순은 `prompt-logic.md` 1절.
 - **앵글이 읽히는 것**: 낮게 = 힘 · 높게 = 약함 · 기울임 = 불안 · 어깨 너머 = 대화 · 시점 = 몰입.
 - **화각 · 거리 · 높이를 시댄스와 같은 말로** — `29° field of view from 2.5 m at eye level`(값은 `seedance-prompting.md` 4절 표).
-  첫 프레임으로 쓸 그림이면 영상 OPTICS 와 같은 값이어야 이어진다. 첫 프레임은 멈춘 한 순간이다 — 모션 블러 · 크래시 줌 같은 움직임 말을 넣지 않는다.
+  첫 프레임으로 쓸 그림이면 영상 OPTICS 와 같은 값이어야 이어진다. 스틸은 한 순간이다 — 크래시 줌 · 휩 팬 · 돌리 같은 카메라 무빙 말은 그림이 되지 않는다.
+  움직임 흐림은 빠른 대상에 일부러 줄 때만, 어디에 얼마나(`the gull big and soft with motion blur, the car sharp`).
 - **화면을 구역으로** — 삼분할 · 앞중뒤 층마다 무엇이 있는지, 자리는 x/y % 와 화면을 차지하는 %
   (`right third, x 70%, y 50%, filling about 25% of the frame`). 빈 구역도 긍정형으로(`the left third is plain dark wall`).
 - 장면 한 장을 원하는데 인물 요청이 여러 방향 시트로 나오면(Nano Banana Pro 의 버릇) 첫 문장을 `One single photograph, a single composition:` 으로.
@@ -66,7 +67,8 @@
 - **크기는 기준으로** — `tiny compared to the creature` 는 매번 다르게 나온다. 몸의 기준(`its eye is level with her knee`)이나 사람 키 비교,
   확실하지 않으면 작은 쪽을 더 작게.
 - **옷은 실루엣 + 알아볼 것 하나** — 단추 · 끈 · 장신구 · 무늬마다 그리는 힘을 쓴다.
-- `masterpiece` · `8K` · `ultra-detailed` · `hyperrealistic` · `award-winning` · `best quality` 는 효과가 없다 — 지우고 보이는 것을 쓴다.
+- `masterpiece` · `best quality` · `award-winning` · `stunning` 같은 빈 수식어는 효과가 없다 — 지운다. 디테일을 말하려면 그 디테일이 어디서 보이는지를
+  바로 붙인다(`8K capture detail — pores, wool weave, crisp paint reflections`).
 
 ## 5. 시트 · 플레이트 — assets.md 틀에 더하는 것
 

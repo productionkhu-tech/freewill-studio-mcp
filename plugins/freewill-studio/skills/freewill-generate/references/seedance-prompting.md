@@ -27,8 +27,9 @@ Omni(구글)는 해당 없다 — 그 공식 가이드대로.
 3. **시간 안에 들어가게.** 5초에는 사건 하나. 사건을 더 넣으면 전부 반쯤 되다 만다(5절).
 4. **모순 없이.** 그 카메라 자리·렌즈·순간에 실제로 보이는 것만 쓴다 — 클로즈업에 발, 뒷모습에 표정, 탑다운에 벽면을 쓰지 않는다.
    보내기 전 `references/prompt-logic.md` 대로 점검한다.
-5. **원하는 상태를 긍정형으로.** 꼭 막아야 할 실패 하나만 그 문장 바로 옆에 짧게(`Faces stay in deep side shadow; no flat front light.`).
-   금지 목록을 따로 늘어놓지 않는다 — 쓴 말이 그림을 부른다.
+5. **원하는 상태를 긍정형으로.** 막아야 할 실패는 그 긍정 문장 바로 뒤에 짧게(`Faces stay in deep side shadow; no flat front light.` ·
+   `Smooth and motorised: no handheld float, no zoom, no cut.`). 원하는 것을 금지 목록으로 대신하지 않는다 — 쓴 말이 그림을 부른다
+   (`seedance-quality.md` 1절 6).
 
 ## 2. 레퍼런스 — 역할을 범위로 묶는다 (레퍼런스→영상)
 

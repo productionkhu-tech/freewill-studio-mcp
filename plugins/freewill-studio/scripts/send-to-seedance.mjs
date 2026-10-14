@@ -186,23 +186,26 @@ function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
 
 // 논리 점검(references/prompt-logic.md) 중 글로 짚을 수 있는 것 — 막지 않고 "확인할 것"으로 보여 준다
 // (발에서 얼굴로 틸트업하는 컷, 박자 맞춘 빠른 편집처럼 맞는 경우가 있다).
-function logicNotes(j, { model, duration }) {
+function logicNotes(j, { model, duration, ratio }) {
   if (!/seedance/.test(model || "")) return [];
   const p = String(j.prompt).replace(/"[^"\n]*"/g, "");
   const notes = [];
   // 레퍼런스 줄(시트의 '전신 칸' 같은 말)은 빼고 컷마다 본다
   const refBlock = blocksOf(p)["ACTIVE REFERENCES"] || "";
   const body = (refBlock ? p.replace(refBlock, "") : p).split("\n").filter((l) => !/\[(?:Image|Video|Audio) \d+\]|@\{/.test(l)).join("\n");
-  for (const s of body.split(/\n(?=\s*(?:(?:CUT|SHOT|Shot|Cut)\s*\d+\b|(?:HARD|SMASH|MATCH|INSERT|WHIP|REVERSE) CUT\b))/)) {
+  // 블록(머리 줄)마다, 그 안에서 컷 표시마다 나눠 본다 — 모순은 한 컷 안에서만이다. 컷 표시는 줄 첫머리든 문장 중간이든
+  // CUT 2 · SHOT 2 · Segment 2(사용자 프롬프트북 말투) · HARD CUT · 0–2s. 사용자 프롬프트북 126컷에 대 보고 블록·문장 중간 컷을 나눴다
+  const cutMark = /(?=\b(?:CUT|SHOT|Shot|Cut|Segment|SEGMENT)\s*\d+\b|\b(?:HARD|SMASH|MATCH|INSERT|WHIP|REVERSE) CUT\b|\b\d+(?:\.\d+)?\s*s?\s*(?:–|-|to)\s*\d+(?:\.\d+)?\s*s\b)/;
+  for (const s of body.split(/\n(?=[A-Z][A-Z /&]{2,38}(?:\n|$))/).flatMap((b) => b.split(cutMark))) {
     if (/\b(?:extreme close-?up|close-?up|ECU|MCU|CU|macro)\b/i.test(s) && /\b(?:face|eyes?|lips|mouth|expression)\b/i.test(s) &&
-        /\b(?:feet|foot|shoes?|sneakers|boots|full[- ](?:body|length|figure)|head to (?:toe|shoes?))\b/i.test(s)) {
+        /\b(?:feet|foot|shoes?|sneakers|boots|full[- ]body|full[- ]length (?:shot|view|figure|portrait)|full figure|head to (?:toe|shoes?))\b/i.test(s)) {
       notes.push("클로즈업이라고 쓴 컷에 얼굴과 발·신발·전신이 같이 있다 — 한 화면에 함께 안 들어온다. 둘 다 필요하면 카메라 움직임(틸트업·푸시인)이나 컷으로 나누고 그 움직임을 적는다");
     }
     if (/\b(?:extreme wide|wide shot|establishing shot|EWS)\b/i.test(s) && /\b(?:pores?|eyelash(?:es)?|catch-?lights?|irises?|freckles?)\b/i.test(s)) {
       notes.push("와이드라고 쓴 컷에 모공·속눈썹 같은 세부가 있다 — 그 거리에선 보이지 않는다");
     }
   }
-  const nums = new Set([...p.matchAll(/\b(?:CUT|SHOT|Shot)\s*(\d+)\b/g)].map((m) => m[1]));
+  const nums = new Set([...p.matchAll(/\b(?:CUT|SHOT|Shot|Segment|SEGMENT)\s*(\d+)\b/g)].map((m) => m[1]));
   const hard = (p.match(/\b(?:HARD|SMASH|MATCH|INSERT|WHIP|REVERSE) CUT\b/g) || []).length;
   const cuts = Math.max(nums.size, hard ? hard + 1 : 0);
   if (duration > 0 && cuts >= 2 && duration / cuts < 2) {
@@ -212,22 +215,29 @@ function logicNotes(j, { model, duration }) {
   if (duration > 0 && tc.length && Math.max(...tc.map(([, b]) => b)) < duration) {
     notes.push(`타임코드가 ${Math.max(...tc.map(([, b]) => b))}초에서 끝난다 — 길이 ${duration}초의 남은 시간은 모델이 지어낸다. 끝까지 나누거나 FINAL FRAME 에 머무는 시간을 적는다`);
   }
-  // 커뮤니티 품질 규칙(references/seedance-quality.md) 중 글로 짚을 수 있는 것 — 대사 { } 와 따옴표 안 글자는 빼고 본다
+  // 커뮤니티 품질 규칙(references/seedance-quality.md) 중 글로 짚을 수 있는 것 — 대사 { } 와 따옴표 안 글자는 빼고 본다.
+  // 사용자의 잘 쓴 프롬프트(외주 프롬프트북 126컷)에 대 보고 괜히 걸리던 것은 뺐다 — 렌즈의 'fast prime', 'no zoom' 같은 잠금,
+  // '8K capture detail' 같은 디테일 묘사, 잠금 문장의 부정형(never moves on its bracket)
   const prose = p.replace(/(^|[^@])\{[^{}\n]*\}/g, "$1");
-  const fast = prose.match(/\b(?:fast|quickly|rapidly)\b(?!-food)/i);
+  const fast = prose.match(/\b(?:walk|run|sprint|drive|move|rush|race|speed|charge|dash|swerve|spin|turn|swing|fly|chase|ride|climb|fall)(?:s|es|ed|ing)?\b(?:\s+\w+){0,2}?\s+(?:fast|quickly|rapidly)\b|\b(?:fast|quickly|rapidly)[- ]moving\b/i);
   if (fast && !/\d\s*(?:km\/h|m\/s|mph)\b/i.test(prose)) {
-    notes.push(`"${fast[0]}" — 빠르기는 km/h·m/s 나 보폭·접촉으로 쓴다(복잡한 움직임에서 화면을 가장 많이 흔드는 말이라는 관찰 — seedance-quality 1절 7)`);
+    notes.push(`"${fast[0]}" — 움직임의 빠르기는 km/h·m/s 나 보폭·접촉으로 쓴다(복잡한 움직임에서 'fast' 가 화면을 가장 많이 흔든다는 관찰 — seedance-quality 1절 7)`);
   }
-  const slop = [...new Set((prose.match(/\b(?:cinematic|epic|stunning|breathtaking|masterpiece|award[- ]winning|best quality|high[- ]quality|ultra[- ](?:realistic|detailed)|hyper-?realistic)\b/gi) || []).map((w) => w.toLowerCase()))];
+  // 빈 수식어만 — 'hyperrealistic photographic detail — pores …' 처럼 바로 디테일을 붙이는 말은 사용자 프롬프트북도 쓴다
+  const slop = [...new Set((prose.match(/\b(?:cinematic|epic|stunning|breathtaking|masterpiece|award[- ]winning|best quality)\b/gi) || []).map((w) => w.toLowerCase()))];
   if (slop.length) notes.push(`그림이 안 되는 말(${slop.join(", ")}) — 지우고 보이는 것(빛의 방향·렌즈·재질·동작)으로 바꾼다(seedance-quality 1절 8)`);
-  const setting = [...new Set(prose.match(/\b(?:16:9|9:16|21:9|9:21|4:3|3:4|1:1|2\.39:1|2\.35:1|1\.85:1|480p|720p|1080p|2160p|4K|8K|\d{2,3} ?fps)\b/gi) || [])];
-  if (setting.length) notes.push(`본문에 설정값(${setting.join(", ")})이 있다 — 비율·해상도·fps 는 앱 설정이 정한다. 본문에 쓰면 바뀌지 않고 그림만 흔든다(레터박스 룩이면 모양을 말로)`);
-  if (/(?<!crash |dolly |snap )\bzoom(?:s|ed|ing)?\b/i.test(prose)) {
+  // 비율은 설정이 정한다 — 본문에 적은 비율이 이 작업의 비율 설정과 다르거나 서로 다르면 모순
+  const ratios = [...new Set(prose.match(/\b(?:16:9|9:16|21:9|9:21|4:3|3:4|1:1|2\.39:1|2\.35:1)\b/g) || [])];
+  const fixed = /^\d+(?:\.\d+)?:\d+$/.test(String(ratio || "")) ? String(ratio) : "";
+  if (ratios.length > 1 || (fixed && ratios.length && !ratios.includes(fixed))) {
+    notes.push(`본문의 비율(${ratios.join(", ")})이 ${fixed && !ratios.includes(fixed) ? `설정 ${fixed} 와` : "서로"} 다르다 — 비율은 설정이 정한다. 본문에서 지우거나 설정과 맞춘다`);
+  }
+  // 'zoom' 은 화각이 바뀌는 것 — 'no zoom', 'never by a zoom' 같은 잠금은 그대로 둔다
+  const zoomed = [...prose.matchAll(/(?<!crash |dolly |snap )\bzoom(?:s|ed|ing)?\b/gi)]
+    .some((m) => !/\b(?:no|never|not|nothing|nor|without|rather than|instead of)\b[^.;:]{0,30}$/i.test(prose.slice(Math.max(0, m.index - 40), m.index)));
+  if (zoomed) {
     notes.push("'zoom' 은 화각이 바뀌는 것 — OPTICS 의 화각 고정과 부딪힌다. 카메라가 다가가는 거면 push in·dolly in, 정말 줌이면 OPTICS 에 시작·끝 화각을 적는다(seedance-quality 4절)");
   }
-  const locks = blocksOf(p)["POSITIVE LOCKS"] || "";
-  const negs = locks.split(/(?<=[.;])\s+/).filter((x) => /\b(?:no|not|never|nothing|nobody|without|don't|doesn't)\b/i.test(x)).length;
-  if (negs >= 3) notes.push(`POSITIVE LOCKS 에 부정문이 ${negs}개 — 원하는 상태를 긍정으로 쓰고('One telephone, on the nightstand only') 꼭 막을 실패 하나만 짧게(seedance-prompting 1절 5)`);
   // 짧은 대사 + 긴 원테이크 = 남는 시간을 지어낸 웅얼거림으로 채운다(커뮤니티 측정, 시댄스 2.0 영어). 한국어는 세 글자를 한 단어로 어림한다
   const lines = [...String(j.prompt).matchAll(/(?:^|[^@])\{([^{}\n]+)\}/g)].map((m) => m[1]);
   if (lines.length && cuts <= 1 && duration >= 4 && !/\bsilen(?:t|ce)\b/i.test(prose)) {
@@ -641,7 +651,7 @@ async function main() {
     }
   }
   const notes = jobs.flatMap((j, i) => [
-    ...logicNotes(j, { model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) }),
+    ...logicNotes(j, { model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration), ratio: j.ratio ?? defaults.ratio }),
     ...(userFormat(j) ? lints[i].house.map((h) => `(사내 형식 기준) ${h}`) : []),
     ...(seedanceJob(j) && modeOf(j) === "multimodal_reference" && j.refs.some((r) => !r.role && KINDS.Image.test(r.path))
       ? [`그림 파일 ${j.refs.filter((r) => !r.role && KINDS.Image.test(r.path)).length}장을 [Image N] 으로 붙였다 — 다시 쓸 인물·장소·소품이면 어셋 라이브러리 엘리먼트로 등록해 @{이름} 으로 부른다(지침 6단계 시댄스 0)`]
