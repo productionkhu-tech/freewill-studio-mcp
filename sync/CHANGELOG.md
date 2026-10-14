@@ -11,6 +11,18 @@
 - **higgsfield-facs** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.1.2 · 파일 2개, +592 −0줄
 - **higgsfield-style** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.1.3 · 파일 2개, +308 −0줄
 - **cinematic-video-prompt** (Quốc Nghi Huỳnh (커뮤니티 · MIT)) 처음 반영 #09b03f78 · 파일 9개, +1350 −0줄
+- **higgsfield-seedance-vfx** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.1.0 · 파일 4개, +589 −0줄
+- **higgsfield-audio** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.9.1 · 파일 2개, +887 −0줄
+- **higgsfield-scene-engine** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.1.0 · 파일 2개, +218 −0줄
+- **higgsfield-troubleshoot** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.3.1 · 파일 2개, +515 −0줄
+- **higgsfield-prompt** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.7.2 · 파일 2개, +772 −0줄
+- **higgsfield-recipes** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.1.2 · 파일 2개, +347 −0줄
+- **higgsfield-shotlist-director** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.3.0 · 파일 2개, +453 −0줄
+- **higgsfield-gpt-image-2** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.3.1 · 파일 4개, +1079 −0줄
+- **higgsfield-image-shots** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.0.0 · 파일 2개, +485 −0줄
+- **higgsfield-character-design** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.3.0 · 파일 2개, +337 −0줄
+- **higgsfield-cinema** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.5.3 · 파일 4개, +2221 −0줄
+- **higgsfield** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.40.0 · 파일 40개, +6392 −0줄
 
 ## 2026-10-12
 

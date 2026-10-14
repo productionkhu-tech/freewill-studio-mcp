@@ -268,14 +268,26 @@ One telephone, on the nightstand only. One recorder, on the desk only. The room 
 
 | 필요할 때 | topic |
 |---|---|
-| 시댄스 2.5 레퍼런스 문법 — 쓸 것·뺄 것·충실도, 여러 레퍼런스, 긴 영상 단계·끝 상태, 오디오·글자 표기, 첫·끝 프레임 | `official:higgsfield-seedance-2-5` (모드별: `/MODE-PLAYBOOKS`) |
-| 시댄스 2.0 — 실패 유형·엔진 규칙·필터 거절 | `official:higgsfield-seedance/FAILURE-MODES` · `/ENGINE-RULES` · `/PRODUCTION-PATTERNS` |
-| 카메라 무빙 이름과 언제 쓰는지, 감정에 맞춘 카메라 | `official:higgsfield-camera` · `official:cinematic-video-prompt/01-camera-angles-and-movement` |
+| 찍기 전에 이 장면이 찍을 가치가 있는지 — 목표·장애물·전술·반전·가치 변화 | `official:higgsfield-scene-engine` |
+| 시댄스 2.5 레퍼런스 문법 — 쓸 것·뺄 것·충실도, 여러 레퍼런스, 긴 영상 단계·끝 상태, 오디오·글자 표기, 첫·끝 프레임 | `official:higgsfield-seedance-2-5` (모드별: `/MODE-PLAYBOOKS`, VFX: `/VFX-PIPELINE`) |
+| 시댄스 2.0 — 작성 법칙·실패 유형·엔진 규칙·필터 거절 | `official:higgsfield-seedance` · `/FAILURE-MODES` · `/ENGINE-RULES` · `/PRODUCTION-PATTERNS` · `/HELL-GRIND` |
+| 영상→영상(편집·VFX·연장) — 원본을 지키고 하나만 바꾸기 | `official:higgsfield-seedance-vfx` · `official:higgsfield/templates/seedance/footage-vfx-transform` |
+| 서술형이냐 타임코드형이냐, 프롬프트 구조 | `official:higgsfield-prompt` |
+| 결과가 이상할 때 — 증상 → 원인 → 고치기 | `official:higgsfield-troubleshoot` · `official:higgsfield/skills/shared/house-rulings` |
+| 부정어를 언제 어떻게(긍정형 원칙의 예외) | `official:higgsfield/skills/shared/negative-constraints` |
+| 장르별 시작 틀 — 액션 추격·제품·공포·패션·SF VFX·인물 소개·풍경 설정·코미디·로맨스·댄스 | `official:higgsfield-recipes` · `official:higgsfield/templates/<01~10 이름>` · 예시 `official:higgsfield/prompt-examples` |
+| 여러 컷의 룩 통일(전역 스타일 머리말) · 여러 인물 고정 · 위치 지도(staging·top-down) · 표정 비트 | `official:higgsfield/templates/seedance/<global-style-prefix · multi-character-anchor · staging-reference · top-down-map · facs-expression-beats>` |
+| 여러 컷 샷리스트 | `official:higgsfield-shotlist-director` |
+| 카메라 무빙 이름과 언제 쓰는지, 감정에 맞춘 카메라 | `official:higgsfield-camera` · `official:cinematic-video-prompt/01-camera-angles-and-movement` · 어휘 `official:higgsfield/vocab` |
 | 조명·색 보정·룩·무드 어휘 | `official:higgsfield-style` · `official:cinematic-video-prompt/02-lighting` · `/05-style-color-mood` |
 | 구도·렌즈·필름 질감 | `official:cinematic-video-prompt/03-composition` · `/04-lens-technical-film` |
 | 재질·날씨·자세 | `official:cinematic-video-prompt/06-materials-weather-pose` |
 | 연기 — 원하는 것·장애물·전술·시선, 인물 연기 프로필 | `official:higgsfield-acting` |
 | 클로즈업 미세 표정(얼굴 근육 단위) | `official:higgsfield-facs` |
+| 소리 — 대사·립싱크·효과음·배경음·음악 | `official:higgsfield-audio` |
+
+O-Side 문서 안의 상대 경로는 이렇게 받는다 — `../higgsfield-<이름>/SKILL.md` → `official:higgsfield-<이름>`, `../shared/<파일>.md` →
+`official:higgsfield/skills/shared/<파일>`, `../../templates/<경로>.md` → `official:higgsfield/templates/<경로>`, 루트의 `vocab.md` 같은 파일 → `official:higgsfield/<파일>`.
 
 ## 11. 보내기 전에
 

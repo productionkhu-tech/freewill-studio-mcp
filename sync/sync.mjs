@@ -448,8 +448,19 @@ function writeVersions() {
   const unknown = official.filter((x) => !(x.families || []).length);
   // 커뮤니티 원본(community: true) — 공식이 아니라 보충 자료. 하위 파일도 topic 으로 같이 적는다(LICENSE 는 빼고).
   const community = sources.tracked.filter((t) => t.community && lock.skills[t.skill]).map((t) => ({ name: t.skill, ...t }));
-  const subTopics = (name) => (lock.skills[name]?.files || []).filter((f) => !/^(SKILL|LICENSE)\.md$/.test(f))
-    .map((f) => `\`official:${name}/${f.replace(/^references\//, "").replace(/\.md$/, "")}\``);
+  // 폴더 안 파일이 여럿이면 폴더별로 묶어 짧게 — `official:higgsfield/templates/seedance/<이름>` (anime-animation · …)
+  const subTopics = (name) => {
+    const rels = (lock.skills[name]?.files || []).filter((f) => !/^(SKILL|LICENSE)\.md$/.test(f))
+      .map((f) => f.replace(/^references\//, "").replace(/\.md$/, ""));
+    const byDir = new Map();
+    for (const r of rels) {
+      const dir = r.includes("/") ? r.slice(0, r.lastIndexOf("/")) : "";
+      byDir.set(dir, [...(byDir.get(dir) || []), r.slice(r.lastIndexOf("/") + 1)]);
+    }
+    return [...byDir].flatMap(([dir, names]) => (!dir || names.length === 1)
+      ? names.map((n) => `\`official:${name}/${dir ? `${dir}/` : ""}${n}\``)
+      : [`\`official:${name}/${dir}/<이름>\` (${names.join(" · ")})`]);
+  };
   const fallback = sources.tracked.find((t) => t.role === "fallback");
   const body = [
     "# 앱 모델 → 공식 프롬프트 가이드",
