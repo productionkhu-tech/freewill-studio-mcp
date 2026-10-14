@@ -50,6 +50,8 @@
 // 레퍼런스 순서가 프롬프트의 [Image N]·[Video N]·[Audio N] 번호다(종류별로 센다). 첫·끝 프레임은 role 로 정한다.
 // 프롬프트는 보내기 전에 점검한다(lintPrompt) — 본문은 영어, 앱 표기 [Image N], 첫·끝 프레임 모드엔 [Image N] 없음.
 // 일부러 한국어 프롬프트로 보내려면 작업(또는 defaults)에 "prompt_language": "ko".
+// 사용자가 개인 스킬·자기 프롬프트·다른 형식을 정했으면 "user_format": true — 사내 쓰는 법 점검(끝 프레임·대사 없음 문장·
+// 구도를 그림에 맡기기 등)은 막지 않고 "확인할 것"으로만 보여 준다. 앱이 실패하는 것(표기·바인딩·레퍼런스 수·소수 초)은 그래도 멈춘다.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -103,7 +105,9 @@ function blocksOf(p) {
 const FRAMING_FROM_IMAGE = /\b(?:camera (?:position|placement|angle|height|setup)|framing|composition|viewpoint|point of view|vantage)\s+(?:of|from|in|as in|shown in|seen in)\s+\[Image \d+\]|\bmatch(?:es|ing)?\s+(?:the\s+)?(?:camera|framing|composition|view|angle)\b[^.\n]{0,40}\[Image \d+\]|\b(?:close to|as in|like) the (?:view|angle|framing|composition|shot) of \[Image \d+\]/i;
 function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
   const p = String(j.prompt);
+  // hard = 앱·BytePlus 가 실패하거나 바인딩이 깨지는 것(사용자 형식이어도 멈춤) · house = 사내 쓰는 법 점검(user_format 이면 확인할 것으로만)
   const out = [];
+  const house = [];
   const bare = p.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/g, "");
   if (lang !== "ko" && /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(bare)) {
     out.push("본문이 한국어다 — 영어로 쓴다(대사·화면 글자만 따옴표 안에 그 언어로). 사용자용 한국어 요약은 확인 카드에");
@@ -127,10 +131,10 @@ function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
     const dec = bare.match(/\b\d+\.\d+\s*(?:s|secs?|seconds?)\b/i);
     if (dec) out.push(`소수 초("${dec[0]}")가 있다 — BytePlus 가 실패시킨다. 타임코드는 정수 초(0–2s, 2–5s)로, 짧은 사이는 말로(half a second)`);
     const end = Math.max(0, ...timecodes(bare).map(([, b]) => b));
-    if (duration > 0 && end > duration) out.push(`타임코드가 ${end}초까지 간다 — 길이는 ${duration}초다. 0초부터 ${duration}초 안에서 빈틈없이 나눈다`);
+    if (duration > 0 && end > duration) house.push(`타임코드가 ${end}초까지 간다 — 길이는 ${duration}초다. 0초부터 ${duration}초 안에서 빈틈없이 나눈다`);
     const lean = mode === "multimodal_reference" && bare.match(FRAMING_FROM_IMAGE);
     if (lean) {
-      out.push(`구도를 레퍼런스 그림에 맡겼다("${lean[0].slice(0, 60)}") — 레퍼런스→영상에서 그림은 생김새·재질·빛만 맡는다. ` +
+      house.push(`구도를 레퍼런스 그림에 맡겼다("${lean[0].slice(0, 60)}") — 레퍼런스→영상에서 그림은 생김새·재질·빛만 맡는다. ` +
         "카메라 자리·화각·거리는 글로 쓰고(seedance-prompting 2절), 그림 구도 그대로가 필요하면 첫 프레임 모드로");
     }
   }
@@ -139,39 +143,39 @@ function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
     // 공식 목표 문장 = "Generate <core event>. The core subject is <subject>, and the principal event is <summary>."
     const goal = p.match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1] || "";
     if (/\b(event|events|action|sequence|script) below\b|\bthe referenced (subjects?|assets?|characters?)\b/i.test(goal)) {
-      out.push("【Generation Goal】 이 '레퍼런스 주체'·'아래 사건'만 가리킨다 — 공식 템플릿대로 핵심 주체와 주된 사건을 목표 문장에 직접 쓴다");
+      house.push("【Generation Goal】 이 '레퍼런스 주체'·'아래 사건'만 가리킨다 — 공식 템플릿대로 핵심 주체와 주된 사건을 목표 문장에 직접 쓴다");
     }
     const ev = p.match(/【Event Script】([\s\S]*?)(?=【|$)/);
     if (ev && !/\bat the end\b/i.test(ev[1])) {
-      out.push("【Event Script】 에 끝 상태가 없다 — 공식 템플릿대로 At the start … / Principal event … / At the end …(끝의 위치·자세·상태)");
+      house.push("【Event Script】 에 끝 상태가 없다 — 공식 템플릿대로 At the start … / Principal event … / At the end …(끝의 위치·자세·상태)");
     }
-    const house = blocksOf(p);
-    if ("ACTION" in house && !("FINAL FRAME" in house) && !/\bat the end\b|\b(?:shot|take|clip|video) ends\b|\b(?:last|final) frame\b/i.test(p)) {
-      out.push("끝 상태가 없다 — ACTION 다음에 FINAL FRAME 블록(마지막 프레임에 누가·무엇이 어디에, 무엇이 멈춰 있고 무엇이 움직이는지)");
+    const blocks = blocksOf(p);
+    if ("ACTION" in blocks && !("FINAL FRAME" in blocks) && !/\bat the end\b|\b(?:shot|take|clip|video) ends\b|\b(?:last|final) frame\b/i.test(p)) {
+      house.push("끝 상태가 없다 — ACTION 다음에 FINAL FRAME 블록(마지막 프레임에 누가·무엇이 어디에, 무엇이 멈춰 있고 무엇이 움직이는지)");
     }
     // 대사 표시는 { } — 엘리먼트 멘션 @{이름} 은 대사가 아니다
     const talks = /(^|[^@])\{[^}\n]+\}|\b(says|said|asks|whispers|shouts|speaks|replies|calls out|sings)\b/i.test(p);
     if (!talks && !(/\bno (dialogue|narration|speech|voice-?over)\b/i.test(p) && /\b(subtitles?|on-screen text|captions?)\b/i.test(p))) {
-      out.push("대사 없는 장면 제약이 없다 — 공식대로 'No dialogue or narration; mouths stay naturally closed. No subtitles or on-screen text.' 를 넣는다");
+      house.push("대사 없는 장면 제약이 없다 — 공식대로 'No dialogue or narration; mouths stay naturally closed. No subtitles or on-screen text.' 를 넣는다");
     }
     if (/<(subject|summary|placeholder|relationship|fixed features|observable state|final visual state|initial state|starting state|main event)\b[^>]*>/i.test(p)) {
-      out.push("템플릿 자리표(<subject> 등)가 남았다 — 그 장면의 구체 내용으로 바꾼다");
+      house.push("템플릿 자리표(<subject> 등)가 남았다 — 그 장면의 구체 내용으로 바꾼다");
     }
     for (const line of p.split("\n")) {
       const use = line.match(/use only ([^;.]*)/i)?.[1] || "";
       if (/\b[a-z]+ or [a-z]+\b/i.test(use)) {
-        out.push(`'use only' 목록에 'A or B' 같은 틀 문구가 남았다 — 이 그림에서 쓸 것만 구체적으로: "${use.trim().slice(0, 70)}"`);
+        house.push(`'use only' 목록에 'A or B' 같은 틀 문구가 남았다 — 이 그림에서 쓸 것만 구체적으로: "${use.trim().slice(0, 70)}"`);
         break;
       }
     }
     for (const line of p.split("\n")) {
       if (/use only/i.test(line) && /\b(views|sheet|turnaround|jointly define)\b/i.test(line) && !/\b(backdrop|background|panel|layout)\b/i.test(line)) {
-        out.push("인물 시트 레퍼런스에 제외 문구가 없다 — 같은 줄에 \"do not use the sheet's gray backdrop or panel layout\"");
+        house.push("인물 시트 레퍼런스에 제외 문구가 없다 — 같은 줄에 \"do not use the sheet's gray backdrop or panel layout\"");
         break;
       }
     }
   }
-  return [...new Set(out)];
+  return { hard: [...new Set(out)], house: [...new Set(house)] };
 }
 
 // 논리 점검(references/prompt-logic.md) 중 글로 짚을 수 있는 것 — 막지 않고 "확인할 것"으로 보여 준다
@@ -559,7 +563,7 @@ async function main() {
     return out;
   };
   const unknown = [...new Set(jobs.flatMap((j) => Object.keys({ ...defaults, ...j })).filter((k) =>
-    !keys.includes(k) && !["name", "prompt", "refs", "prompt_language"].includes(k)))];
+    !keys.includes(k) && !["name", "prompt", "refs", "prompt_language", "user_format"].includes(k)))];
   if (unknown.length) log(`  참고: 설명서에 없는 키는 보내지 않는다 — ${unknown.join(", ")}`);
   for (const j of jobs) {
     const model = j.model ?? defaults.model;
@@ -568,15 +572,21 @@ async function main() {
     }
   }
   // dry-run 에서 먼저 걸리게 — 확인 카드 전에 고친다
-  const problems = jobs.flatMap((j) =>
-    lintPrompt(j, { mode: j.mode ?? defaults.mode, omniTask: j.omniTask ?? defaults.omniTask, lang: j.prompt_language ?? defaults.prompt_language, model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) })
-      .map((p) => `${j.name || "(이름 없음)"}: ${p}`));
-  // 여러 작업을 코드 틀로 찍어내면 목표 문장이 같아진다 — 프롬프트가 통째로 같은(일부러 다시 보내는) 경우는 빼고
-  const goals = jobs.map((j) => ({ p: String(j.prompt), g: (String(j.prompt).match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1] ?? blocksOf(j.prompt)["SCENE CONTEXT"] ?? "").trim() }));
+  // 사용자가 개인 스킬·자기 프롬프트·다른 형식을 주면(지침 0절) "user_format": true — 사내 쓰는 법 점검은 막지 않고 확인할 것으로만.
+  // 앱·BytePlus 가 실패하는 것(표기·바인딩·레퍼런스 수·소수 초)은 그래도 멈춘다.
+  const userFormat = (j) => Boolean(j.user_format ?? defaults.user_format);
+  const nameOf = (j) => j.name || "(이름 없음)";
+  const lints = jobs.map((j) => lintPrompt(j, { mode: j.mode ?? defaults.mode, omniTask: j.omniTask ?? defaults.omniTask, lang: j.prompt_language ?? defaults.prompt_language, model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) }));
+  const problems = jobs.flatMap((j, i) => [...lints[i].hard, ...(userFormat(j) ? [] : lints[i].house)].map((p) => `${nameOf(j)}: ${p}`));
+  // 여러 작업을 코드 틀로 찍어내면 목표 문장이 같아진다 — 프롬프트가 통째로 같은(일부러 다시 보내는) 경우와 사용자 형식은 빼고
+  const goals = jobs.filter((j) => !userFormat(j)).map((j) => ({ p: String(j.prompt), g: (String(j.prompt).match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1] ?? blocksOf(j.prompt)["SCENE CONTEXT"] ?? "").trim() }));
   const same = goals.filter((x, i) => x.g && goals.some((y, k) => k !== i && y.g === x.g && y.p !== x.p));
   if (same.length) problems.push(`여러 작업의 목표 문장(【Generation Goal】·SCENE CONTEXT)이 똑같다(${same.length}건) — 장면마다 주 대상·주 사건을 그 장면 내용으로 쓴다(공통 문장을 끼워 넣지 않는다)`);
-  const notes = jobs.flatMap((j) => logicNotes(j, { model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) })
-    .map((n) => `${j.name || "(이름 없음)"}: ${n}`));
+  if (jobs.some(userFormat)) log(`  사용자 형식(user_format) ${jobs.filter(userFormat).length}건 — 사내 쓰는 법 점검은 막지 않고 아래 "확인할 것"으로만 보여 준다`);
+  const notes = jobs.flatMap((j, i) => [
+    ...logicNotes(j, { model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) }),
+    ...(userFormat(j) ? lints[i].house.map((h) => `(사내 형식 기준) ${h}`) : []),
+  ].map((n) => `${nameOf(j)}: ${n}`));
   const noteText = notes.length ? `\n  확인할 것 (논리 점검 — references/prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}` : "";
   if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}${noteText}`);
   if (noteText) log(noteText.slice(1));
