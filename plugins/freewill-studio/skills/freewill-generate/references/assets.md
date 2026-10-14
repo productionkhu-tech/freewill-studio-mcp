@@ -23,9 +23,10 @@
 - 화면이 있는 기기(폰·태블릿·모니터)는 앞면 화면을 **크로마 그린 단색**으로 — 화면 내용은 나중에 합성한다. 사용자가 화면 내용을 정해 주면 그대로.
 - 탈것 번호판은 가상의 문자열 하나를 정해 앞뒤에 똑같이(따옴표로 정확히). 실제 브랜드 엠블럼·로고는 빈 면으로.
 - 묻는 건 형식이 아니라 내용뿐이다 — 인물: 누구(나이·생김새·옷), 몇 명 / 소품·탈것: 무엇(재질·색·디테일) / 배경: 어디·언제(실내외·시간대). 형식은 확인 카드에 한 줄로 보여 준다.
-- **시댄스 레퍼런스→영상에 넣을 세트**(사용자 10/14 "에셋이 빈약하다 — 앞뒤 옆 위 느낌으로 여러 방향, 분리는 제대로, 16:9")는 한 장으로 끝내지 않는다:
-  공간은 메인 3/4 를 먼저 고른 뒤 그 그림을 레퍼런스로 카메라만 옮겨 **역방향 · 측면 · 위** 3장을 더(아래 '같은 공간 다른 방향'),
-  소품·사람 아닌 캐릭터(로봇 등)는 **6면 시트**(앞·뒤·좌·우·위·아래). 사람은 3칸 시트 그대로(시드림 원본 — 실사 인물 필터). 전부 16:9.
+- **시댄스 레퍼런스→영상에 넣을 세트**(사용자 10/14 "에셋이 빈약하다 — 앞뒤 옆 위 느낌으로 여러 방향, 분리는 제대로, 16:9"):
+  소품·사람 아닌 캐릭터(로봇 등)는 **6면 시트**(앞·뒤·좌·우·위·아래, 칸 분리, 하나만). 사람은 3칸 시트 그대로(시드림 원본 — 실사 인물 필터). 전부 16:9.
+  **공간(배경)은 메인 3/4 플레이트 한 장**이다 — 여러 방향은 물체 이야기였다(사용자 10/14 "배경 에셋은 하나만 있어도 되는데"). 역방향 컷(숏 / 리버스)이
+  컷 목록에 실제로 있을 때만 그 방향 플레이트를 아래 '같은 공간 다른 방향'으로 하나 더 만들어 엘리먼트를 따로 둔다(180° 축 — `seedance-quality.md` 5절).
 - 영상에서 **말하거나 감정 연기가 큰 인물**이면 같은 사람의 **강한 표정 클로즈업**(크게 웃음·화남 — 이가 보이게) 한 장을 시트와 따로 더 만든다 —
   무표정 그림만 있으면 첫 대사에서 입 모양·치아를 지어낸다(커뮤니티 `official:higgsfield-seedance-2-5` 의 레퍼런스 세트 권장).
 
@@ -90,7 +91,7 @@ Optics: 84° rectilinear wide, camera at 1.6 m eye height, verticals kept vertic
 Light: [main source, direction and colour temperature], [secondary sources], soft shadows. Colour: [palette in words — 60/30/10 if the user gave one].
 ```
 
-**같은 공간 다른 방향 (영상 레퍼런스 세트용 — 고른 메인 그림을 레퍼런스로)**
+**같은 공간 다른 방향 (역방향 컷이 실제로 있을 때만 — 고른 메인 그림을 레퍼런스로)**
 ```
 Edit the image: show the same single [place] from a different camera position.
 CHANGE: the camera moves to [the far end, looking back toward the entrance / the side wall, looking straight across the space / directly overhead, looking straight down at the floor plan].
@@ -131,7 +132,7 @@ GPT 로 고치면 끝에 `Keep everything else exactly the same.` — 없으면 
 
 - **시트는 생성 원본 그대로** 레퍼런스로 넣는다 — 패널을 잘라 내거나 손댄 시트는 BytePlus 실사 인물 필터에 걸리기 쉽다. 그림 비율은 0.39~2.5 안.
 - **영상에 넣을 에셋은 어셋 라이브러리 엘리먼트로 등록해 `@{이름}` 으로 부르는 게 기본이다**(지침 6단계 시댄스 0) — 이름 · 분류
-  character / location / prop · 설명 한 줄 · 이미지(시트 원본 그대로, 장소는 여러 방향 그림까지 한 엘리먼트에). 이름은 `hero_mina` ·
+  character / location / prop · 설명 한 줄 · 이미지(시트 원본 그대로, 장소는 메인 플레이트 한 장 — 역방향 컷용 플레이트가 있으면 그건 엘리먼트를 따로). 이름은 `hero_mina` ·
   `lot_hotel_garage` · `prop_dashcam` 처럼 짧은 영어로. 그림 파일을 직접 붙이는 건 한 번 쓰고 말 그림일 때만.
 - 영상 프롬프트에는 이렇게: 시트의 칸·구분선·라벨은 배치일 뿐 물건이 아니라고, 그 소품은 화면에 하나뿐이라고 — `The sheet's panels, dividing line and labels are layout only and never appear as objects; only ONE [object] exists in the frame.` 인물은 나이 · 역할 · 지금 상태 · 눈에 띄는 특징만 짧게, 나머지는 레퍼런스가 맡는다.
 - 그 컷에 나오지 않는 에셋은 넣지 않는다 — 넣으면 모델이 화면에 억지로 넣는다.

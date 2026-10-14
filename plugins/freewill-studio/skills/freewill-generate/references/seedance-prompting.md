@@ -48,7 +48,7 @@ Omni(구글)는 해당 없다 — 그 공식 가이드대로.
 
 ```
 @{hero_mina} is Mina, a Korean woman in her early thirties, slim, chin-length black bob, navy trench coat over a white shirt. Use her face, hair and wardrobe from the sheet's front full-body panel; do not take the sheet's grey backdrop or panel layout. 100% matches the reference.
-@{loc_carpark} is one single underground car park seen from several directions: board-marked concrete, pale green epoxy floor, square columns with striped corner guards, fluorescent tubes. Use it for the space's layout, materials and light; the framing of every shot is written below, not taken from its views. Do not use the cars or people in it.
+@{loc_carpark} is the underground car park plate: board-marked concrete, pale green epoxy floor, square columns with striped corner guards, fluorescent tubes. Use it for the space's geography, materials, colour and light only; the framing of every shot is written below, not taken from the plate. Do not use the cars or people in it.
 @{prop_dashcam} is the dashboard camera: matte black body, one round lens in a gunmetal ring, a slim windshield mount. Exactly one camera exists in the frame; the sheet's views and dividing line are layout only. 100% matches the reference.
 [Video 1] is used only for the camera move — a slow handheld walk-in; not for the people, clothing or location in it.
 The references supply identity, materials, colour and light; the shot sizes, camera positions and timing written here supply the framing.
@@ -68,7 +68,10 @@ The references supply identity, materials, colour and light; the shot sizes, cam
   ③ 여러 컷에 나오는 인물은 프로필 한 덩어리(옷 = 어느 그림, 늘 드는 소품, 나오는 장소) ④ 컷마다 그 컷에 쓰는 것만 다시 고르기
   ⑤ 소품은 한 사람 것(`belongs only to Mina`), 인원·옷·방향이 컷마다 같은지 확인.
 - **그 컷에 안 나오는 대상의 그림은 넣지 않는다** — 넣으면 모델이 화면에 억지로 넣는다. 여러 컷이면 컷 문단에서 그 컷에 나오는 것만 부른다.
-- 같은 대상의 여러 그림(장소 4방향, 6면 시트)은 하나로 묶고 개수를 잠근다 — `jointly define one …`, `exactly one …, never a copy`.
+- 같은 대상의 여러 그림(소품 · 캐릭터 6면 시트)은 하나로 묶고 개수를 잠근다 — `jointly define one …`, `exactly one …, never a copy`.
+- **공간은 메인 플레이트 한 장이 기본이다**(사용자 10/14 "배경 에셋은 하나만 있어도 되는데") — 여러 방향은 소품 · 캐릭터 이야기다.
+  역방향 컷(숏 / 리버스)이 정말 있으면 그 방향 플레이트를 따로 엘리먼트로 두고(`loc_room` · `loc_room_reverse`) 그 컷에서 카메라가 보는 쪽만 부른다
+  (`seedance-quality.md` 5절 — 180° 축).
 - 그림의 구도를 따르라고 쓰지 않는다 — `matching the camera position of [Image 1]` 같은 문장은 다른 컷까지 그 구도로 끌고 가거나 무시된다.
 
 ## 3. 형식 — 블록 순서
@@ -84,7 +87,7 @@ ACTIVE REFERENCES
 [One line per reference, scoped by role (section 2), then the hierarchy line.]
 
 LOCATION MAP
-[Foreground / midground / background with distances in metres. Where the camera stands, which side the light comes from, the paths subjects move along.]
+[Foreground / midground / background with distances in metres. Where the camera stands, which side the light comes from, the paths subjects move along. With two or more shots: the axis (the line between the people, or the direction of travel), who is screen-left and screen-right, and the side of the line every shot stays on.]
 
 FIRST FRAME / BLOCKING
 [The literal first frame: every required subject already in frame, positions as screen x/y %, body facing and gaze, distance to the landmark.]
@@ -148,7 +151,9 @@ POSITIVE LOCKS
 - **화각만으로 샷 크기가 정해지지 않는다** — 거리와 높이를 같이: `29°, camera 4 m from her at 1.5 m height; the close framing comes from lens reach, not from the camera being near.`
 - 렌즈와 내용을 맞춘다 — 와이드는 공간·몸·가까운 물체 과장, 망원은 얼굴·관찰·압축, 접사는 따로 인서트. 한 컷에 섞이면 컷을 나눈다.
 - 컷마다 받침(고정·돌리·핸드헬드)과 **움직임 하나**: 방향·거리·속도 — `dollies straight forward 1.5 m at walking pace and settles`. 움직이는 이유를 붙인다(깨달음, 소리 쪽으로).
-- 좌우는 카메라 기준, 컷이 바뀌어도 화면 방향 유지. 카메라는 빛의 반대편(그늘 쪽)에 서서 빛이 정면으로 납작하게 맞지 않게.
+- 좌우는 카메라 기준. 카메라는 빛의 반대편(그늘 쪽)에 서서 빛이 정면으로 납작하게 맞지 않게.
+- **컷이 둘 이상이면 180° · 30° 를 기본으로 지킨다**(연출로 일부러 깰 때만 깨고, 그때는 의도와 넘는 방법을 적는다) — 축을 정해 카메라는 선의 한쪽에,
+  컷마다 누가 화면 왼쪽 · 오른쪽이고 어느 쪽을 보는지, 같은 대상을 다시 잡으면 30° 넘게 옮기거나 크기를 한 단계 넘게. `seedance-quality.md` 5절.
 - 장비·감독·영화 이름은 쓰지 않는다 — 그 모양을 말로 묘사한다.
 
 ## 5. 시간과 컷
@@ -164,7 +169,7 @@ POSITIVE LOCKS
 - 타임코드는 **정수 초**, 0초부터 길이까지 빈틈·겹침 없이: `0–2s … 2–4s … 4–5s`. 컷 경계가 곧 HARD CUT 이다.
 - 컷을 정했으면 `Cuts only at the stated points; the camera does not cut on its own.`
 - 그 시간에 실제로 할 수 있는 움직임인가 — 걷기 약 1.4 m/s, 문을 열고 들어오기 2–3초.
-- 컷 사이에 유지할 것: 인물 수·위치·화면 방향·빛·옷·소품 상태.
+- 컷 사이에 유지할 것(컨티뉴이티): 축과 카메라 쪽 · 인물 수 · 위치 · 화면 방향 · 시선 · 쥔 손 · 빛의 방향과 색온도 · 옷 · 소품 상태 — 컷마다 같은 값을 다시 쓴다.
 
 ## 6. 연출
 
@@ -176,8 +181,8 @@ POSITIVE LOCKS
 - **연기는 감정 이름이 아니라 행동** — 원하는 것(동사)·막는 것·그래서 몸과 눈이 하는 것. `she looks sad` 대신
   `her eyes drop to the cup, her jaw sets, she swallows once before she answers`. 듣는 사람도 반응한다. 절제가 기본.
 - **대사**는 `{ }` 안의 말만, 그 사람의 입만 그때 움직인다. 말 앞뒤에 숨 쉴 틈.
-- 연기(전술 · 듣기 · 눈 · 미세 표정), 대사 길이와 립싱크, 감정에 맞춘 카메라 질감, 밤 조명, 여러 인물 · 이어지는 클립은
-  `seedance-quality.md` 2–7절에 자세히 있다 — 이 컷에 해당하는 절을 골라 같은 밀도로 쓴다.
+- 연기(전술 · 듣기 · 눈 · 미세 표정), 대사 길이와 립싱크, 감정에 맞춘 카메라 질감, 컷 잇기(180° · 30° · 컨티뉴이티), 밤 조명, 여러 인물 · 이어지는 클립은
+  `seedance-quality.md` 2–8절에 자세히 있다 — 이 컷에 해당하는 절을 골라 같은 밀도로 쓴다.
 
 ## 7. 빛·색·물리·수치
 
@@ -196,7 +201,7 @@ POSITIVE LOCKS
 
 ## 9. 예 — 같은 장면, 전과 후
 
-설정: 시댄스 2.5 · 레퍼런스→영상 · 21:9 · 5초 · 모텔 방 4방향 그림, 전화기 6면 시트, 녹음기 6면 시트
+설정: 시댄스 2.5 · 레퍼런스→영상 · 21:9 · 5초 · 모텔 방, 전화기 6면 시트, 녹음기 6면 시트
 
 **전** (실제로 보낸 것의 일부)
 ```
@@ -207,6 +212,7 @@ Shot 3, slow dolly-in toward the nightstand beside the bed, ending close to the 
 - 5초에 컷 3개 — 컷마다 2초가 안 돼 사건이 다 되다 만다.
 - 카메라 자리를 그림에 맡겼다 — 구도가 끌려가거나 무시된다.
 - 다시 쓸 방·소품을 그림 파일 6장(`[Image 1]`~`[Image 6]`)으로 붙였다 — 엘리먼트로 등록하면 이름으로 부르고 다음 컷에도 그대로 쓴다.
+- 방을 4방향 그림으로 넣었다 — 공간은 메인 플레이트 한 장이면 된다(역방향 컷이 있을 때만 그 방향 플레이트를 따로).
 - 화각·카메라 높이·빛 방향·색온도가 없다 — 모델이 무난한 평균으로 채운다.
 
 **후** (같은 설정, 원테이크 — 세 가지를 엘리먼트로 등록하고 `@{이름}` 으로, `refs` 는 비움)
@@ -215,7 +221,7 @@ SCENE CONTEXT
 A 1970s neo-noir thriller, night, heavy rain. In an empty motel room a mustard rotary telephone rings on the nightstand while, on the writing desk across the room, a reel-to-reel tape recorder switches itself on and starts taping a call nobody answers.
 
 ACTIVE REFERENCES
-@{loc_motel_room} is one single motel room seen from four directions: walnut wall panelling, patterned carpet, venetian blinds, a long writing desk under the window and a small nightstand at the head of the bed. Use it for the room's layout, materials and light; the framing below is written here, not taken from its views.
+@{loc_motel_room} is the motel room plate: walnut wall panelling, patterned carpet, venetian blinds, a long writing desk under the window and a small nightstand at the head of the bed. Use it for the room's geography, materials, colour and light only; the framing below is written here, not taken from the plate.
 @{prop_rotary_phone} is the telephone: glossy mustard-yellow body, cream handset resting in the cradle, clear rotary dial over a cream number ring, coiled cream cord. Exactly one telephone exists; the sheet's six views and grey backdrop are layout only. 100% matches the reference.
 @{prop_reel_recorder} is the tape recorder: brushed-aluminium top plate, walnut cheeks, two clear reels of brown tape, chrome head block, two cream VU meters, a row of black piano keys. Exactly one recorder exists; the sheet's six views and grey backdrop are layout only. 100% matches the reference.
 The references supply identity, materials and light; the shot size, camera position and timing written here supply the framing.

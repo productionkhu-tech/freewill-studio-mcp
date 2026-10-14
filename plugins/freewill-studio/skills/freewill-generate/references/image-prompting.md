@@ -83,7 +83,8 @@
   `take the exact face from the man in the first image and translate it onto her: the same eyes, brows, nose and lips, the same moles and freckles in matching positions`.
 - **군중은 다양성 시트** — 서로 다른 4–5명이 선 한 장을 `a variety reference` 로. 한 사람 그림 + '모두 다르게' 글은 복제 인간이 된다.
 - **공간 플레이트** — 3/4, 사람 없음, 해 자리 박기, 블로킹이 지나갈 **빈 통로**(어수선한 건 양옆으로 — 가운데 깊이의 잡동사니는 영상에서 뭉개진다),
-  모든 장면으로 번질 색조는 피한다, 기준물 하나. 역방향 · 옆 플레이트는 메인과 노출을 맞춘다:
+  모든 장면으로 번질 색조는 피한다, 기준물 하나. 공간은 메인 플레이트 한 장이 기본이고, 역방향 컷(숏 / 리버스)이 실제로 있을 때만
+  그 방향 플레이트를 더 만든다(엘리먼트는 따로 — 180° 축, `seedance-quality.md` 5절). 그때는 메인과 노출을 맞춘다:
   `Match the exposure of this plate to the master plate (the second image, the same room), keeping everything else identical. CHANGE: exposure and light level only.`
 - 소품은 움직임 시험이 필요 없다. 연기할 인물은 굳히기 전에 짧은 시댄스 초안(480p)으로 움직여 본다 — 그림이 좋을수록 영상이 선명하다.
 - (시험할 것) 출처는 "한 시트에 읽히는 얼굴은 하나 — 전신 칸의 머리는 지운다"고 한다(전신 칸의 작은 얼굴로 생김새가 평균으로 흐려진다는 이유).

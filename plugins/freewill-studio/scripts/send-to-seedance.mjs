@@ -211,6 +211,11 @@ function logicNotes(j, { model, duration, ratio }) {
   if (duration > 0 && cuts >= 2 && duration / cuts < 2) {
     notes.push(`${duration}초에 컷 ${cuts}개 — 컷마다 2초가 안 된다. 4–5초면 사건 하나·컷 2개까지(seedance-prompting 5절). 박자 맞춘 빠른 편집이면 그대로`);
   }
+  // 컷이 둘 이상인데 화면 방향(축) 문장이 하나도 없으면 컷마다 좌우가 뒤집히기 쉽다 — 180° · 30° 는 기본(사용자 10/14, seedance-quality 5절)
+  const sides = /\bscreen[- ]?(?:left|right)\b|\bframe[- ](?:left|right)\b|\b(?:left|right)[- ](?:third|half|edge|side) of (?:the )?frame\b|\b(?:left|right) third\b|\bcamera[- ](?:left|right)\b|\bx ?\d{1,3} ?%|\baxis\b|\bline of action\b|\b180\b/i;
+  if (cuts >= 2 && !sides.test(p.replace(/(^|[^@])\{[^{}\n]*\}/g, "$1"))) {
+    notes.push(`컷이 ${cuts}개인데 화면 방향 문장이 없다 — 축(두 사람을 잇는 선이나 움직이는 방향)과 카메라가 선의 어느 쪽인지, 컷마다 누가 화면 왼쪽 · 오른쪽이고 어느 쪽을 보는지 적는다(seedance-quality 5절 · 180°)`);
+  }
   const tc = timecodes(p);
   if (duration > 0 && tc.length && Math.max(...tc.map(([, b]) => b)) < duration) {
     notes.push(`타임코드가 ${Math.max(...tc.map(([, b]) => b))}초에서 끝난다 — 길이 ${duration}초의 남은 시간은 모델이 지어낸다. 끝까지 나누거나 FINAL FRAME 에 머무는 시간을 적는다`);
