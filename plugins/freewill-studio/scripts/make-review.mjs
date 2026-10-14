@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // 검수 · 분류 — 작업 폴더에 받은 컷(보내기 스크립트 --save-to 가 남긴 _목록.tsv)을 컷마다 테이크 나란히 놓고
-// OK · 보류 · NG 와 메모를 고르는 HTML 을 만든다. 페이지에서 저장하면 다운로드 폴더에 JSON 이 생긴다.
-// 그 저장본을 --apply 로 주면 파일을 <폴더>/OK/ · <폴더>/보류/ · _후보/<폴더>/ 로 옮기고 작업 폴더의 _컷목록.tsv 를 새로 쓴다.
-// 지우는 일은 없다 — NG 도 _후보 로 옮기기만 한다. (지침 6단계 "작업 정리 — 검수와 분류")
+// OK · 보류 · 탈락 과 메모를 고르는 HTML 을 만든다. 페이지에서 저장하면 다운로드 폴더에 JSON 이 생긴다.
+// 그 저장본을 --apply 로 주면 파일을 <폴더>/OK/ · <폴더>/보류/ · <폴더>/탈락/ 으로 옮기고 작업 폴더의 _컷목록.tsv 를 새로 쓴다.
+// 지우는 일은 없다 — 탈락도 탈락/ 으로 옮기기만 한다(예전 저장본의 "NG" 는 탈락으로 읽는다). (지침 6단계 "작업 정리 — 검수와 분류")
 //
 //   node make-review.mjs <작업 폴더> [--title "작업 이름"]       → <작업 폴더>/_검수/검수.html (같은 자리에서 갱신)
 //   node make-review.mjs <작업 폴더> --apply <저장본.json>       → 분류대로 옮김 · _컷목록.tsv · 검수.html 다시 · OK 카드 목록
@@ -26,7 +26,7 @@ title = title || path.basename(work);
 const REVIEW_DIR = path.join(work, "_검수");
 const PAGE = path.join(REVIEW_DIR, "검수.html");
 const MASTER = path.join(work, "_컷목록.tsv");
-const STATUSES = ["OK", "보류", "NG"];
+const STATUSES = ["OK", "보류", "탈락"];
 const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
 
 // ---------- 읽기 ----------
@@ -37,11 +37,11 @@ function readTsv(p) {
   return lines.map((l) => Object.fromEntries(l.split("\t").map((v, i) => [head[i] || `c${i}`, v])));
 }
 
-// 지금 그 파일이 어디 있는지 — 받은 자리(미정) · OK/ · 보류/ · _후보/<폴더>/ (NG)
+// 지금 그 파일이 어디 있는지 — 받은 자리(미정) · OK/ · 보류/ · 탈락/ (예전 판의 _후보/<폴더>/ 도 탈락으로 본다)
 function locate(folder, file) {
   const base = path.join(work, folder);
   const spots = [[path.join(base, file), ""], [path.join(base, "OK", file), "OK"], [path.join(base, "보류", file), "보류"],
-    [path.join(work, "_후보", folder, file), "NG"]];
+    [path.join(base, "탈락", file), "탈락"], [path.join(work, "_후보", folder, file), "탈락"]];
   const hit = spots.find(([p]) => fs.existsSync(p));
   return hit ? { abs: hit[0], status: hit[1] } : null;
 }
@@ -100,10 +100,11 @@ function apply(saved) {
   for (const [key, d] of Object.entries(saved.takes || {})) {
     const t = byKey.get(key);
     if (!t) continue;
-    const status = STATUSES.includes(d?.status) ? d.status : "";
+    const raw = d?.status === "NG" ? "탈락" : d?.status;   // 예전 저장본
+    const status = STATUSES.includes(raw) ? raw : "";
     const target = status === "OK" ? path.join(work, t.folder, "OK", t.file)
       : status === "보류" ? path.join(work, t.folder, "보류", t.file)
-      : status === "NG" ? path.join(work, "_후보", t.folder, t.file)
+      : status === "탈락" ? path.join(work, t.folder, "탈락", t.file)
       : path.join(work, t.folder, t.file);
     if (path.resolve(target) !== path.resolve(t.abs)) {
       fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -155,8 +156,8 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
 <header><div class="bar"><h1>${esc(title)} 검수</h1><span class="count" id="count"></span>
 <span class="filters">${["전체", "미정", ...STATUSES].map((f) => `<button type="button" data-f="${f}">${f}</button>`).join("")}</span>
 <button type="button" id="play">OK 이어서 보기</button><span id="saved"></span><button type="button" id="save">저장 (Ctrl+S)</button></div></header>
-<main><p class="intro">테이크마다 <b>OK</b>(쓸 것) · <b>보류</b>(다시 볼 것) · <b>NG</b>(안 쓸 것)를 고르고 메모를 적은 뒤 저장하면 다운로드 폴더에 JSON 이 생긴다.
-에이전트가 그 저장본대로 파일을 OK/ · 보류/ · _후보/ 로 옮기고 앱 카드에 채택(★)을 켠다. 그림·영상을 누르면 크게 보인다(←/→, Esc).</p>
+<main><p class="intro">테이크마다 <b>OK</b>(쓸 것) · <b>보류</b>(다시 볼 것) · <b>탈락</b>(안 쓸 것)을 고르고 메모를 적은 뒤 저장하면 다운로드 폴더에 JSON 이 생긴다.
+에이전트가 그 저장본대로 파일을 OK/ · 보류/ · 탈락/ 으로 옮기고 앱 카드에 채택(★)을 켠다. 그림·영상을 누르면 크게 보인다(←/→, Esc).</p>
 ${sections || "<p>받은 컷이 없다 — 보내기 스크립트 --save-to 로 이 폴더에 받은 뒤 다시 만든다.</p>"}</main>
 <div id="lb"><button type="button" class="x">닫기</button><div class="stage"></div><div class="cap"></div></div>
 <script type="application/json" id="rv-data">${data.replace(/</g, "\\u003c")}</script>
@@ -181,13 +182,13 @@ main{max-width:1500px;margin:0 auto;padding:16px 20px 60px}.intro{color:#5b616e;
 .chip{font-size:12px;color:#5b616e;background:#eef1f6;border-radius:999px;padding:1px 8px}
 .takes{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .take{border:2px solid #e3e6eb;border-radius:10px;overflow:hidden;background:#fafbfc}
-.take[data-status="OK"]{border-color:#1f8a4c}.take[data-status="보류"]{border-color:#c98a00}.take[data-status="NG"]{border-color:#c62828;opacity:.7}
+.take[data-status="OK"]{border-color:#1f8a4c}.take[data-status="보류"]{border-color:#c98a00}.take[data-status="탈락"]{border-color:#c62828;opacity:.7}
 .take img,.take video{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#111;cursor:zoom-in}
 .tf{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;gap:8px}
 .seg{display:inline-flex;border:1px solid #d5d9e0;border-radius:8px;overflow:hidden}
 .seg button{border:0;background:#fff;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer;border-right:1px solid #e3e6eb}.seg button:last-child{border-right:0}
 .take[data-status="OK"] .seg [data-s="OK"]{background:#1f8a4c;color:#fff}.take[data-status="보류"] .seg [data-s="보류"]{background:#c98a00;color:#fff}
-.take[data-status="NG"] .seg [data-s="NG"]{background:#c62828;color:#fff}
+.take[data-status="탈락"] .seg [data-s="탈락"]{background:#c62828;color:#fff}
 textarea{width:100%;border:1px solid #e3e6eb;border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;resize:vertical;min-height:38px}
 .take textarea{border-width:1px 0 0;border-radius:0}.cmemo{margin-top:10px}
 details{margin-top:8px}summary{cursor:pointer;color:#5b616e;font-size:13px}pre{white-space:pre-wrap;background:#f3f5f8;border-radius:8px;padding:10px;font-size:12px}
@@ -203,11 +204,11 @@ var S;try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null}
 if(!S){S={takes:{},cuts:{}};document.querySelectorAll('.take').forEach(function(t){S.takes[t.dataset.key]={status:t.dataset.status||'',memo:t.querySelector('.memo').value}});document.querySelectorAll('.cut').forEach(function(c){S.cuts[c.dataset.cut]=c.querySelector('.cmemo').value})}
 function keep(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 var filter='전체';
-function paint(){var n={OK:0,'보류':0,NG:0,'미정':0};
+function paint(){var n={OK:0,'보류':0,'탈락':0,'미정':0};
  document.querySelectorAll('.take').forEach(function(t){var d=S.takes[t.dataset.key]||{status:''};t.dataset.status=d.status||'';n[d.status||'미정']++;
   t.classList.toggle('hide',!(filter==='전체'||(filter==='미정'?!d.status:d.status===filter)))});
  document.querySelectorAll('.cut').forEach(function(c){c.classList.toggle('hide',!c.querySelector('.take:not(.hide)'))});
- document.getElementById('count').textContent='OK '+n.OK+' · 보류 '+n['보류']+' · NG '+n.NG+' · 미정 '+n['미정'];
+ document.getElementById('count').textContent='OK '+n.OK+' · 보류 '+n['보류']+' · 탈락 '+n['탈락']+' · 미정 '+n['미정'];
  document.querySelectorAll('.filters button').forEach(function(b){b.classList.toggle('on',b.dataset.f===filter)})}
 document.querySelectorAll('.take').forEach(function(t){var k=t.dataset.key;S.takes[k]=S.takes[k]||{status:t.dataset.status||'',memo:''};
  var m=t.querySelector('.memo');if(S.takes[k].memo)m.value=S.takes[k].memo;m.addEventListener('input',function(){S.takes[k].memo=m.value;keep()});
@@ -245,7 +246,7 @@ if (applyFile) {
   if (path.resolve(keepCopy) !== path.resolve(applyFile)) fs.copyFileSync(applyFile, keepCopy);
   render();
   const n = (s) => takes.filter((t) => (t.status || "") === s).length;
-  console.log(`분류 적용 — OK ${n("OK")} · 보류 ${n("보류")} · NG ${n("NG")} · 미정 ${n("")} · 옮긴 파일 ${moved.length}개`);
+  console.log(`분류 적용 — OK ${n("OK")} · 보류 ${n("보류")} · 탈락 ${n("탈락")} · 미정 ${n("")} · 옮긴 파일 ${moved.length}개`);
   for (const m of moved) console.log(`  ${m}`);
   console.log(`_컷목록.tsv · 검수.html 을 새로 썼다: ${MASTER}`);
   if (okCards.length) {
