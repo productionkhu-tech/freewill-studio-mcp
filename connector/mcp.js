@@ -28,6 +28,7 @@ const GUIDES = {
   "app-rules": `${SKILL}/references/app-rules.md`,
   "read-apps-without-node": `${SKILL}/references/read-apps-without-node.md`,
   "prompt-book": `${SKILL}/references/prompt-book.md`,
+  assets: `${SKILL}/references/assets.md`,
   versions: `${SKILL}/official/VERSIONS.md`,
   "official:sd25-pe": `${SKILL}/official/sd25-pe/SKILL.md`,
   "official:sd2-pe": `${SKILL}/official/sd2-pe/SKILL.md`,
@@ -57,7 +58,7 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 > 지침 안의 파일 경로는 커넥터 도구로 받는다:
 > - \`references/interview.md\` → \`freewill_guide("interview")\` · \`references/house-rules.md\` → \`"house-rules"\` ·
 >   \`references/app-rules.md\` → \`"app-rules"\` · \`references/read-apps-without-node.md\` → \`"read-apps-without-node"\` ·
->   \`references/prompt-book.md\` → \`"prompt-book"\` · \`official/VERSIONS.md\` → \`"versions"\`
+>   \`references/prompt-book.md\` → \`"prompt-book"\` · \`references/assets.md\` → \`"assets"\` · \`official/VERSIONS.md\` → \`"versions"\`
 > - \`official/<이름>/SKILL.md\`·\`GUIDE.md\` → \`freewill_guide("official:<이름>")\` — 예: \`"official:sd25-pe"\`, \`"official:nano-banana"\`
 > - \`official/<이름>/references/<파일>.md\` → \`"official:<이름>/<파일>"\` — 예: \`"official:imagegen/prompting"\`, \`"official:higgsfield-generate/model-catalog"\`
 > - \`<플러그인 폴더>/scripts/<이름>.mjs\` → \`freewill_script("<이름>")\` 로 받아 **임시 폴더에 .mjs 로 저장한 뒤** \`node\` 로 실행한다.
