@@ -404,8 +404,25 @@ async function main() {
   }
   const after = (await get(`/api/gallery?pid=${encodeURIComponent(tab.pid)}`))?.items || [];
   const fresh = after.filter((i) => !galleryBefore.has(i.filepath));
-  log(`새로 들어온 이미지 ${fresh.length}장:`);
-  for (const i of fresh) log(`  ${i.filepath}`);
+  // 작업별로 나눠 적는다 — 갤러리는 그림마다 프롬프트·모델을 갖고 있다. 모델이 같은 작업이 여럿이면 파일 이름만으로는
+  // 어느 작업 것인지 모른다. 같은 프롬프트를 모델만 바꿔 보낸 작업은 모델로 가른다.
+  const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+  const sentJobs = jobs.slice(0, sent);
+  const jobOf = (i) => {
+    const same = sentJobs.filter((j) => norm(j.prompt) === norm(i.prompt));
+    return same.length > 1 ? same.find((j) => (j.model ?? defaults.model ?? base.model) === i.model) || same[0] : same[0];
+  };
+  log(`새로 들어온 이미지 ${fresh.length}장 — 작업별:`);
+  for (const [k, j] of sentJobs.entries()) {
+    const mine = fresh.filter((i) => jobOf(i) === j);
+    log(`  ${j.name || `job_${k + 1}`} — ${mine.length}/${countOf(j)}장`);
+    for (const i of mine) log(`    ${i.filepath}`);
+  }
+  const other = fresh.filter((i) => !jobOf(i));
+  if (other.length) {
+    log(`  어느 작업인지 모름 ${other.length}장 — 그사이 사람이 이 탭에서 만든 것일 수 있다`);
+    for (const i of other) log(`    ${i.filepath}`);
+  }
 }
 
 main().catch((e) => {

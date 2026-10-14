@@ -57,16 +57,33 @@ A straight-on product photograph of one [object] shown twice on a flat mid-grey 
 
 **탈것 (3/4 앞 · 3/4 뒤)**
 ```
-A product reference of a [colour and finish] [body type], [design character], shown twice on one sheet over a plain light-grey seamless studio backdrop, split by a single thin vertical line down the centre: a three-quarter FRONT view from camera-left on the left — the nose, the bonnet, the front plate and the driver's side — and a three-quarter REAR view from camera-right on the right — the tail, the rear lamps, the rear plate and the passenger side — the same vehicle, colour and wheels in both. [Key design lines: lamps, grille, wheels, glass, mirrors]. Licence plates front and rear read "[ABC 1234]" in dark block characters, identical on both. The vehicle stands alone with every door closed. Even soft daylight from high front-left, a soft contact shadow under every tyre. Photoreal automotive product photography, generic unbranded design with a plain smooth badge area.
+A product reference of a [colour and finish] [body type], [design character], shown twice on one sheet over a plain light-grey seamless studio backdrop, split by a single thin vertical line down the centre: a three-quarter FRONT view from camera-left on the left — the nose, the bonnet, the front plate and the driver's side — and a three-quarter REAR view from camera-right on the right — the tail, the rear lamps, the rear plate and the passenger side — the same vehicle, colour and wheels in both. [Key design lines: lamps, grille, wheels, glass, mirrors]. Licence plates front and rear read "[ABC 1234]" in dark block characters, identical on both. The vehicle stands alone with every door closed. Even soft daylight from high front-left, a soft contact shadow under every tyre. The badge recesses on the nose and on the tailgate are smooth, blank body-colour surfaces — a generic, unbranded design. Photoreal automotive product photography.
 ```
+실제 차처럼 그리면 모델이 실존 브랜드 엠블럼을 붙이기 쉽다(한글 번호판 SUV 를 Nano Banana Pro 로 만들었더니 2장 모두 실제 브랜드 엠블럼).
+엠블럼 자리는 위처럼 "매끈한 빈 면"으로 긍정형으로 적고, 결과에서 엠블럼부터 본다 — 붙어 나오면 아래 '고칠 때'로 그 자리만 빈 면으로 고친다.
 
 **배경 (3/4 풀샷)**
 ```
-A three-quarter wide [interior/exterior] view, shot like a real-estate [interior] photograph from standing eye height with a wide lens. The camera stands [where], well off the centre line and turned about forty degrees across the space, so it reads in two-point perspective with depth from foreground to background — never a head-on view: [what recedes along the left], [what recedes along the right], [what closes the far end].
+A three-quarter wide [interior/exterior] view, shot like a real-estate [interior] photograph from standing eye height with a wide lens. The camera stands [where], well off the centre line and turned about forty degrees across the space, so it reads in two-point perspective with depth from foreground to background. [The main aisle / corridor / street] runs diagonally across the frame from the [right] foreground to the [left] background, and [what closes the far end] sits in the [left] third of the frame, seen at an angle: [what recedes along the left], [what recedes along the right].
 [Place, era, time of day]. [Architecture and materials with their finish]. [Furniture and fixed objects]. Every sign, screen and label is a plain blank surface. The space is empty of people; clear, still air.
 Light: [main source, direction and colour temperature], [secondary sources], soft shadows. Colour: [palette in words — 60/30/10 if the user gave one].
 ```
 카메라 위치 문장이 가장 중요하다 — 맨 앞에 둔다. 영상에서 카메라가 서는 쪽과 같은 방향에서 찍어 두면 플레이트가 컷과 부딪히지 않는다.
+통로·복도·주차장·거리처럼 한 방향으로 길게 뻗은 공간은 그 끝을 정면으로 보는 1점 투시로 새기 쉽다(지하주차장 2장 중 1장이 그렇게 나옴).
+그 길이 화면을 대각으로 가로지르고 끝이 화면 한쪽 1/3 에 온다고 **자리를 적는다**. "never a head-on view" 같은 부정문은 오히려 그 구도를 부르니 쓰지 않는다.
+
+## 받은 뒤 점검 — 형식부터
+
+결과를 열어 보고 형식이 맞는지 먼저 본다(지침 6단계 끝 보고). A/B 중 맞는 쪽을 권하고, 어긋난 장은 무엇이 어긋났는지 한 줄로 보여 주고
+"어떤 걸 다시 만들까요?"(지침 7단계)로 묻는다.
+
+| 종류 | 볼 것 |
+|---|---|
+| 인물 1명 | 3칸 구성(얼굴 · 정면 전신 · 뒷모습 전신) · 세 칸이 같은 사람·같은 옷 · 회색 무지 · 빛이 부드러운지(인물만 밝게 뜨면 영상에서 튄다) |
+| 여러 인물 | 한 줄 · 겹침 없음 · 머리부터 신발까지 · 모두 정면 |
+| 소품 | 앞·뒤 같은 크기·같은 자리 · 화면은 크로마 그린 단색 · 글자·로고 없음 |
+| 탈것 | 3/4 앞·뒤 · 번호판 글자가 앞뒤 같은지 · **실존 브랜드 엠블럼** |
+| 배경 | 1점 투시로 새지 않았는지 · 사람 없음 · 표지판·기둥 번호 같은 글자 |
 
 ## 고칠 때 (편집)
 
