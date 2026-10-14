@@ -2,6 +2,16 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-10-14
+
+- **higgsfield-seedance-2-5** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.6.0 · 파일 4개, +1838 −0줄
+- **higgsfield-seedance** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.16.0 · 파일 6개, +3607 −0줄
+- **higgsfield-camera** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.5.1 · 파일 2개, +480 −0줄
+- **higgsfield-acting** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.3.0 · 파일 2개, +658 −0줄
+- **higgsfield-facs** (O-Side Media (커뮤니티 · MIT)) 처음 반영 1.1.2 · 파일 2개, +592 −0줄
+- **higgsfield-style** (O-Side Media (커뮤니티 · MIT)) 처음 반영 3.1.3 · 파일 2개, +308 −0줄
+- **cinematic-video-prompt** (Quốc Nghi Huỳnh (커뮤니티 · MIT)) 처음 반영 #09b03f78 · 파일 9개, +1350 −0줄
+
 ## 2026-10-12
 
 - **nano-banana** (Google) 처음 반영 #99b20e9a · 파일 1개, +265 −0줄

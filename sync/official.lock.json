@@ -181,6 +181,131 @@
       "appliedAt": "2026-10-12",
       "chars": 41742,
       "files": []
+    },
+    "higgsfield-seedance-2-5": {
+      "kind": "skill",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": "1.6.0",
+      "hash": "a54bae696fb7d059095d818d81c798b12159c2d9bf3f3d276814d5b91b5c9528",
+      "digest": null,
+      "appliedAt": "2026-10-14",
+      "files": [
+        "LICENSE.md",
+        "MODE-PLAYBOOKS.md",
+        "SKILL.md",
+        "VFX-PIPELINE.md"
+      ]
+    },
+    "higgsfield-seedance": {
+      "kind": "skill",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": "1.16.0",
+      "hash": "1976566e97b9192ae876d02a81154cbdf905aff10b0067c89b11a943fdcc2a84",
+      "digest": null,
+      "appliedAt": "2026-10-14",
+      "files": [
+        "ENGINE-RULES.md",
+        "FAILURE-MODES.md",
+        "HELL-GRIND.md",
+        "LICENSE.md",
+        "PRODUCTION-PATTERNS.md",
+        "SKILL.md"
+      ]
+    },
+    "higgsfield-camera": {
+      "kind": "skill",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": "3.5.1",
+      "hash": "16d7028bc6c6b762bb6a64170c50aea3d5aa7ae8ca9caea5300a55b8a705f514",
+      "digest": null,
+      "appliedAt": "2026-10-14",
+      "files": [
+        "LICENSE.md",
+        "SKILL.md"
+      ]
+    },
+    "higgsfield-acting": {
+      "kind": "skill",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": "1.3.0",
+      "hash": "0c4e6b68ea7242d39acb624d9666be7d54aad515fdbf2005e361ecb02e24b0c3",
+      "digest": null,
+      "appliedAt": "2026-10-14",
+      "files": [
+        "LICENSE.md",
+        "SKILL.md"
+      ]
+    },
+    "higgsfield-facs": {
+      "kind": "skill",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": "1.1.2",
+      "hash": "dd0848d1fb818438b56ee5935ee948a9200afe28b7a10fd1279559be7edbb618",
+      "digest": null,
+      "appliedAt": "2026-10-14",
+      "files": [
+        "LICENSE.md",
+        "SKILL.md"
+      ]
+    },
+    "higgsfield-style": {
+      "kind": "skill",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": "3.1.3",
+      "hash": "59ac42577df8a3f8ee9a4c9b3f70fca1a2e5c8708acc88e867ceb50656b84d03",
+      "digest": null,
+      "appliedAt": "2026-10-14",
+      "files": [
+        "LICENSE.md",
+        "SKILL.md"
+      ]
+    },
+    "cinematic-video-prompt": {
+      "kind": "skill",
+      "vendor": "Quốc Nghi Huỳnh (커뮤니티 · MIT)",
+      "source": "Rylaispirit/cinematic-video-prompt-skill",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": null,
+      "hash": "09b03f7847ca39e683715381f50c6810a169dcea7022c0c0f4c9112b0d0fcf33",
+      "digest": null,
+      "appliedAt": "2026-10-14",
+      "files": [
+        "LICENSE.md",
+        "SKILL.md",
+        "examples/example-prompts.md",
+        "references/01-camera-angles-and-movement.md",
+        "references/02-lighting.md",
+        "references/03-composition.md",
+        "references/04-lens-technical-film.md",
+        "references/05-style-color-mood.md",
+        "references/06-materials-weather-pose.md"
+      ]
     }
   },
   "held": {},

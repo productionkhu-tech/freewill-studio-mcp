@@ -129,6 +129,102 @@
       "models": [],
       "use": "references/prompt-engineering.md(기본 원칙) + references/model-catalog.md(모델별 성격·고르는 기준) — 공식 가이드가 없는 모델에",
       "skip": "CLI 설치·로그인·명령, Marketing Studio, Soul, \"200토큰 이하\"(공식 가이드가 있으면 공식을 따른다)"
+    },
+    {
+      "skill": "higgsfield-seedance-2-5",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "community": true,
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "license": "MIT — Copyright (c) 2026 O-Side Media (사본 폴더에 LICENSE.md 같이 보관)",
+      "path": "skills/higgsfield-seedance-2-5",
+      "use": "시댄스 2.5 — 레퍼런스마다 쓸 것·쓰지 않을 것·충실도, 여러 레퍼런스 5단계(대상마다 한 줄→묶기→프로필→장면별로 고르기→소유), 긴 영상의 단계·끝 상태, 오디오·글자 표기, 첫·끝 프레임, 감정·카메라 용어 (MODE-PLAYBOOKS: 모드별)",
+      "skip": "Higgsfield 파라미터·CLI·genre 힌트, 핸들 표기 @Image 1(앱은 [Image 1]), 사내 형식과 겹치는 짧은 공식(Core Prompt Formula)"
+    },
+    {
+      "skill": "higgsfield-seedance",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "community": true,
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "license": "MIT — Copyright (c) 2026 O-Side Media (사본 폴더에 LICENSE.md 같이 보관)",
+      "path": "skills/higgsfield-seedance",
+      "use": "시댄스 2.0 — 프롬프트 작성 법칙, 실패 유형(FAILURE-MODES)·엔진 규칙(ENGINE-RULES)·제작 패턴(PRODUCTION-PATTERNS), 콘텐츠 필터 거절 진단",
+      "skip": "Higgsfield 파라미터·preflight 스크립트 실행, 여섯 칸 공식(사내 형식이 먼저)"
+    },
+    {
+      "skill": "higgsfield-camera",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "community": true,
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "license": "MIT — Copyright (c) 2026 O-Side Media (사본 폴더에 LICENSE.md 같이 보관)",
+      "path": "skills/higgsfield-camera",
+      "use": "카메라 무빙·앵글·샷 크기 어휘와 언제 쓰는지·예문, 감정에 맞춘 카메라(Camera-Emotion Sync)",
+      "skip": "Higgsfield 화면의 프리셋 이름 자체(움직임을 말로 풀어 쓴다)"
+    },
+    {
+      "skill": "higgsfield-acting",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "community": true,
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "license": "MIT — Copyright (c) 2026 O-Side Media (사본 폴더에 LICENSE.md 같이 보관)",
+      "path": "skills/higgsfield-acting",
+      "use": "연기 층 — 원하는 것·장애물·전술·비트·서브텍스트·듣기·시선, 인물별 연기 프로필과 장면별 고쳐 쓰기",
+      "skip": "—"
+    },
+    {
+      "skill": "higgsfield-facs",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "community": true,
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "license": "MIT — Copyright (c) 2026 O-Side Media (사본 폴더에 LICENSE.md 같이 보관)",
+      "path": "skills/higgsfield-facs",
+      "use": "얼굴 근육(FACS Action Unit) 단위 표정 지시 — 클로즈업 미세 연기, 섞인·억지 표정",
+      "skip": "—"
+    },
+    {
+      "skill": "higgsfield-style",
+      "vendor": "O-Side Media (커뮤니티 · MIT)",
+      "source": "OSideMedia/higgsfield-ai-prompt-skill",
+      "community": true,
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "license": "MIT — Copyright (c) 2026 O-Side Media (사본 폴더에 LICENSE.md 같이 보관)",
+      "path": "skills/higgsfield-style",
+      "use": "룩·무드 어휘 — 색 보정(Color Grade)·조명(Lighting) 어휘, 시네마틱 조명 기법, 스타일 레시피",
+      "skip": "Higgsfield 플랫폼 스타일 프리셋 이름, 비율 안내(앱 설정으로)"
+    },
+    {
+      "skill": "cinematic-video-prompt",
+      "vendor": "Quốc Nghi Huỳnh (커뮤니티 · MIT)",
+      "source": "Rylaispirit/cinematic-video-prompt-skill",
+      "path": "",
+      "only": [
+        "^SKILL.md$",
+        "^references/",
+        "^examples/"
+      ],
+      "community": true,
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "license": "MIT — Copyright (c) 2026 Quốc Nghi Huỳnh (사본 폴더에 LICENSE.md 같이 보관)",
+      "use": "어휘 사전(설명은 베트남어, 용어는 영어) — references/01 카메라 앵글·무빙(언제 쓰는지), 02 조명, 03 구도, 04 렌즈·필름, 05 스타일·색·무드, 06 재질·날씨·포즈. SKILL.md 8절 실전 교훈",
+      "skip": "2절 공식(칸마다 키워드 1~2개)·6절 '기술 키워드 8개까지' — 사내 형식(자세하게)이 먼저"
     }
   ],
   "docs": [

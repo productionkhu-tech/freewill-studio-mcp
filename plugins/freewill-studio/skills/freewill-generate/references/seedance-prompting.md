@@ -48,8 +48,18 @@ Omni(구글)는 해당 없다 — 그 공식 가이드대로.
 The reference images supply identity, materials, colour and light; the shot sizes, camera positions and timing written here supply the framing.
 ```
 
+- **쓸 것과 쓰지 않을 것을 한 문장에** — `[Image 4] is the workbench and window light. Do not use the people in the image.`
+  그림에 새어 나올 수 있는 것(다른 사람, 시트의 회색 배경·칸, 마네킹)은 그 줄에서 바로 뺀다.
+- **충실도를 같이** — 그대로(face, build, wardrobe 전부) / 일부만(`the jacket and the scar; hairstyle may change`) /
+  다른 대상에 옮기기(`apply this fabric's weave to Mina's coat only` — 옮겨 갈 대상을 꼭 이름으로) / 느낌만(색·분위기).
+- **동작·컷 문장에서는 `[Image N]` 대신 이름 + 눈에 보이는 특징 하나로** — `Mina, in the navy trench coat, crosses to the door.`
+  핸들을 문장 주어로 쓰면 같은 인물이 둘로 나오기 쉽다(시댄스 2.5). `[Image N]` 은 ACTIVE REFERENCES 의 역할 줄에만.
 - 인물 외모 글은 짧게 — 나이·역할·체형, 지금 상태, 꼭 살아야 할 특징 한두 개. 긴 외모 글은 그림과 싸운다. 작은 글자·로고·색처럼
   빠지기 쉬운 건 글로도 한 번 적는다.
+- **레퍼런스가 많으면 다섯 단계로** — ① 대상마다 한 줄씩 이름 붙이기(`[Image 1] … [Image 4] define four characters` 처럼 한 줄에 묶지 않는다)
+  ② 종류별로 묶기(인물 · 소품 · 장소 · 움직임·소리) + `Do not interchange these characters' appearances, positions or dialogue.`
+  ③ 여러 컷에 나오는 인물은 프로필 한 덩어리(옷 = 어느 그림, 늘 드는 소품, 나오는 장소) ④ 컷마다 그 컷에 쓰는 것만 다시 고르기
+  ⑤ 소품은 한 사람 것(`belongs only to Mina`), 인원·옷·방향이 컷마다 같은지 확인.
 - **그 컷에 안 나오는 대상의 그림은 넣지 않는다** — 넣으면 모델이 화면에 억지로 넣는다. 여러 컷이면 컷 문단에서 그 컷에 나오는 것만 부른다.
 - 같은 대상의 여러 그림(장소 4방향, 6면 시트)은 하나로 묶고 개수를 잠근다 — `jointly define one …`, `exactly one …, never a copy`.
 - 그림의 구도를 따르라고 쓰지 않는다 — `matching the camera position of [Image 1]` 같은 문장은 다른 컷까지 그 구도로 끌고 가거나 무시된다.
@@ -246,7 +256,23 @@ One telephone, on the nightstand only. One recorder, on the desk only. The room 
 첫 프레임만 쓰는 경우(같은 방 그림을 첫 프레임으로)는 ACTIVE REFERENCES·LOCATION MAP 을 빼고 OPTICS 를
 `Keep the first frame's field of view and camera height.` 로 시작해, 그 장면에서 움직이는 것과 끝 상태만 같은 밀도로 쓴다.
 
-## 10. 보내기 전에
+## 10. 참고 가이드 — 어휘·작성법 보충 (커뮤니티 · MIT, 매일 자동 동기화)
+
+형식은 이 문서(또는 사용자 지시)를 따르고, 아래는 **말을 고르고 함정을 피할 때** 찾아본다. 그 안의 짧은 공식·키워드 수 제한·
+다른 플랫폼 파라미터·`@Image 1` 표기는 따르지 않는다(앱은 `[Image 1]`). 목록과 버전은 `freewill_guide("versions")` 의 커뮤니티 표.
+
+| 필요할 때 | topic |
+|---|---|
+| 시댄스 2.5 레퍼런스 문법 — 쓸 것·뺄 것·충실도, 여러 레퍼런스, 긴 영상 단계·끝 상태, 오디오·글자 표기, 첫·끝 프레임 | `official:higgsfield-seedance-2-5` (모드별: `/MODE-PLAYBOOKS`) |
+| 시댄스 2.0 — 실패 유형·엔진 규칙·필터 거절 | `official:higgsfield-seedance/FAILURE-MODES` · `/ENGINE-RULES` · `/PRODUCTION-PATTERNS` |
+| 카메라 무빙 이름과 언제 쓰는지, 감정에 맞춘 카메라 | `official:higgsfield-camera` · `official:cinematic-video-prompt/01-camera-angles-and-movement` |
+| 조명·색 보정·룩·무드 어휘 | `official:higgsfield-style` · `official:cinematic-video-prompt/02-lighting` · `/05-style-color-mood` |
+| 구도·렌즈·필름 질감 | `official:cinematic-video-prompt/03-composition` · `/04-lens-technical-film` |
+| 재질·날씨·자세 | `official:cinematic-video-prompt/06-materials-weather-pose` |
+| 연기 — 원하는 것·장애물·전술·시선, 인물 연기 프로필 | `official:higgsfield-acting` |
+| 클로즈업 미세 표정(얼굴 근육 단위) | `official:higgsfield-facs` |
+
+## 11. 보내기 전에
 
 1. `references/prompt-logic.md` 대로 한 블록씩 대조하고 모순을 고친다.
 2. 보내기 스크립트 dry-run 이 짚는 "확인할 것"을 하나씩 보고 고치거나, 맞는 경우면 그대로 둔다.

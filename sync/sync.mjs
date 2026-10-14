@@ -17,6 +17,11 @@
 //   node sync/sync.mjs                 평소 실행 (GitHub Actions 가 매일)
 //   node sync/sync.mjs --accept a,b    검토 대기 중인 스킬을 사람이 보고 반영
 //   node sync/sync.mjs --dry-run       받아서 비교만 하고 아무것도 안 바꿈
+//   node sync/sync.mjs --only a,b      이 원본만 받아 본다(새로 붙인 원본 시험용 — 새 스킬 감지는 건너뜀)
+//
+// 2026-10-14 부터: skills CLI 가 못 찾는 저장소 하위 폴더 스킬(커뮤니티 저장소 등)은 tracked 에 "path" 를 적어
+// GitHub 에서 그 폴더의 .md 만 받는다(스크립트·글꼴·평가 파일은 안 받음). "community": true 면 설치·원격 실행 명령이
+// 새로 생길 때도 자동 반영을 멈춘다 — 공식 회사가 아닌 개인·팀 저장소라서.
 
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -41,6 +46,8 @@ const args = process.argv.slice(2);
 const DRY = args.includes("--dry-run");
 const acceptAt = args.indexOf("--accept");
 const ACCEPT = new Set(acceptAt >= 0 ? (args[acceptAt + 1] || "").split(",").map((s) => s.trim()).filter(Boolean) : []);
+const onlyAt = args.indexOf("--only");
+const ONLY = new Set(onlyAt >= 0 ? (args[onlyAt + 1] || "").split(",").map((s) => s.trim()).filter(Boolean) : []);
 
 const today = new Date().toISOString().slice(0, 10);
 const sources = readJson(path.join(SYNC_DIR, "sources.json"));
@@ -78,6 +85,38 @@ function fetchSkill(t) {
   // CLI 가 주는 computedHash 는 쓰지 않는다 — Windows 와 Linux 에서 값이 달라서(하위 폴더가 있는
   // 스킬만), 내용이 그대로인데도 GitHub Actions 에서 "바뀜"으로 잡혔다. 내용으로 직접 센다.
   return { dir, hash: contentHash(dir), digest: entry.wellKnownDigest || null, version: versionOf(dir) };
+}
+
+// 토큰 없이는 IP 당 시간 60회라 로컬에서 몇 번 돌리면 막힌다. Actions 는 GITHUB_TOKEN, 로컬은 GH_TOKEN.
+function ghHeaders() {
+  const headers = { "User-Agent": "freewill-sync", Accept: "application/vnd.github+json" };
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+// skills CLI 가 못 찾는 저장소 하위 폴더 스킬 — 그 폴더의 .md 만 받고(only 정규식으로 더 좁힐 수 있음), 저장소의 LICENSE 를
+// LICENSE.md 로 같이 둔다(MIT 등은 사본에 저작권·허락 문구를 같이 두는 게 조건).
+async function fetchGithubPath(t) {
+  const res = await fetch(`https://api.github.com/repos/${t.source}/git/trees/HEAD?recursive=1`, { headers: ghHeaders() });
+  if (!res.ok) throw new Error(`GitHub 목록 ${res.status}`);
+  const tree = (await res.json()).tree || [];
+  const base = t.path ? `${t.path.replace(/\/+$/, "")}/` : "";
+  const want = tree.filter((e) => e.type === "blob" && e.path.startsWith(base) && /\.md$/i.test(e.path) &&
+    (!t.only || t.only.some((re) => new RegExp(re).test(e.path.slice(base.length)))));
+  if (!want.some((e) => e.path === `${base}SKILL.md`)) throw new Error(`${base}SKILL.md 가 없음 — 경로가 바뀌었는지 확인`);
+  const lic = tree.find((e) => e.type === "blob" && /^LICEN[CS]E(\.md|\.txt)?$/i.test(e.path));
+  const dir = path.join(STAGING, "github", t.skill);
+  fs.rmSync(dir, { recursive: true, force: true });
+  const raw = (p) => `https://raw.githubusercontent.com/${t.source}/HEAD/${p.split("/").map(encodeURIComponent).join("/")}`;
+  for (const [from, to] of [...want.map((e) => [e.path, e.path.slice(base.length)]), ...(lic ? [[lic.path, "LICENSE.md"]] : [])]) {
+    const r = await fetch(raw(from), { headers: { "User-Agent": "freewill-sync" } });
+    if (!r.ok) throw new Error(`${from} ${r.status}`);
+    const out = path.join(dir, ...to.split("/"));
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, Buffer.from(await r.arrayBuffer()));
+  }
+  return { dir, hash: contentHash(dir), digest: null, version: versionOf(dir) };
 }
 
 // 스킬을 내지 않는 회사의 공식 문서 — 프롬프트 가이드 부분만 뽑는다(connector/docs.js). 자유 이용 라이선스(구글 CC BY)는
@@ -135,11 +174,7 @@ async function listSource(w) {
     }
     throw new Error("well-known 목록 주소를 찾지 못함");
   }
-  // 토큰 없이는 IP 당 시간 60회라 로컬에서 몇 번 돌리면 막힌다. Actions 는 GITHUB_TOKEN, 로컬은 GH_TOKEN.
-  const headers = { "User-Agent": "freewill-sync", Accept: "application/vnd.github+json" };
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`https://api.github.com/repos/${w.source}/git/trees/HEAD?recursive=1`, { headers });
+  const res = await fetch(`https://api.github.com/repos/${w.source}/git/trees/HEAD?recursive=1`, { headers: ghHeaders() });
   if (!res.ok) throw new Error(`GitHub 목록 ${res.status}`);
   const j = await res.json();
   return j.tree
@@ -219,6 +254,13 @@ const RISKY = [
   [/ignore (all )?(previous|prior|above) instructions/i, "이전 지시를 무시하라는 문구"],
   [/rm\s+-rf\s+[~/]/, "rm -rf ~ 또는 /"],
 ];
+// 커뮤니티 원본(community: true)은 설치·원격 받기 명령이 새로 생겨도 멈춘다 — 에이전트가 읽는 글이라 명령을 끼워 넣기 쉽다.
+const COMMUNITY_RISKY = [
+  [/\b(?:npx|npm (?:i|install)|pnpm (?:add|dlx)|yarn (?:add|dlx)|pip3? install|pipx|uvx|brew install)\b/i, "패키지 설치·실행 명령"],
+  [/\b(?:curl|wget|Invoke-WebRequest|iwr)\s/i, "원격 받기 명령"],
+  [/\bgit clone\b/i, "git clone"],
+  [/\b(?:powershell|pwsh)(?:\.exe)?\s+-|\b(?:bash|sh)\s+-c\b/i, "셸 실행"],
+];
 
 function check(t, newDir, oldDir) {
   const problems = [];
@@ -236,6 +278,7 @@ function check(t, newDir, oldDir) {
   const now = allText(newDir);
   const before = hadOld ? allText(oldDir) : "";
   for (const [re, label] of RISKY) if (re.test(now) && !re.test(before)) problems.push(`위험 문구가 새로 생김: ${label}`);
+  if (t.community) for (const [re, label] of COMMUNITY_RISKY) if (re.test(now) && !re.test(before)) problems.push(`커뮤니티 원본에 새로 생김: ${label}`);
   return problems;
 }
 
@@ -277,15 +320,15 @@ async function main() {
   fs.rmSync(STAGING, { recursive: true, force: true });
   fs.mkdirSync(STAGING, { recursive: true });
 
-  await discover(); // 새 공식 스킬을 먼저 붙여서 같은 실행에서 받는다
+  if (!ONLY.size) await discover(); // 새 공식 스킬을 먼저 붙여서 같은 실행에서 받는다
 
   const items = [
-    ...sources.tracked.map((t) => ({ t, get: () => fetchSkill(t) })),
+    ...sources.tracked.map((t) => ({ t, get: () => (t.path !== undefined ? fetchGithubPath(t) : fetchSkill(t)) })),
     ...(sources.docs || []).map((d) => ({
       t: { skill: d.name, kind: "doc", live: d.store === false, vendor: d.vendor, source: d.url, mode: d.mode || "auto", models: [], families: d.families || [] },
       get: () => fetchDoc(d),
     })),
-  ];
+  ].filter(({ t }) => !ONLY.size || ONLY.has(t.skill));
   for (const { t, get } of items) {
     let got;
     try {
@@ -386,7 +429,7 @@ function writeVersions() {
   const fam = (fs_) => (fs_ || []).map((f) => `\`${f}\``).join(" · ");
   const ver = (name) => { const v = lock.skills[name]; return v ? `${v.version || short(v.hash)} · ${v.appliedAt}` : "아직 못 받음"; };
   const official = [
-    ...sources.tracked.filter((t) => !t.role).map((t) => ({ name: t.skill, kind: "공식 스킬", ...t })),
+    ...sources.tracked.filter((t) => !t.role && !t.community).map((t) => ({ name: t.skill, kind: "공식 스킬", ...t })),
     ...(sources.docs || []).map((d) => ({ name: d.name, kind: d.store === false ? "공식 문서(원문에서 바로)" : "공식 문서", ...d })),
   ].filter((x) => lock.skills[x.name]);
   const covered = new Set(official.flatMap((x) => x.families || []));
@@ -403,6 +446,10 @@ function writeVersions() {
       `| ${fam(r.families)} | ${r.guides.map((g) => `\`${g}\``).join(" + ")} | 공식 가이드 없음 (${cell(r.vendor)}) | ${cell(r.note)} | — | — |`),
   ];
   const unknown = official.filter((x) => !(x.families || []).length);
+  // 커뮤니티 원본(community: true) — 공식이 아니라 보충 자료. 하위 파일도 topic 으로 같이 적는다(LICENSE 는 빼고).
+  const community = sources.tracked.filter((t) => t.community && lock.skills[t.skill]).map((t) => ({ name: t.skill, ...t }));
+  const subTopics = (name) => (lock.skills[name]?.files || []).filter((f) => !/^(SKILL|LICENSE)\.md$/.test(f))
+    .map((f) => `\`official:${name}/${f.replace(/^references\//, "").replace(/\.md$/, "")}\``);
   const fallback = sources.tracked.find((t) => t.role === "fallback");
   const body = [
     "# 앱 모델 → 공식 프롬프트 가이드",
@@ -421,6 +468,15 @@ function writeVersions() {
       "모델 계열을 못 짐작한 새 공식 가이드 — 설명을 보고 맞는 모델이면 쓴다:",
       "",
       ...unknown.map((x) => `- \`official:${x.name}\` (${x.vendor}) — ${ver(x.name)}`),
+      "",
+    ] : []),
+    ...(community.length ? [
+      "**커뮤니티 참고 가이드(MIT)** — 모델 회사 공식이 아니다. 사내 쓰는 법(`seedance-prompting`)·공식 가이드를 보충하는 작성법·어휘로 쓰고,",
+      "그 안의 형식·길이 규칙, 다른 플랫폼 파라미터, `@Image 1` 표기는 따르지 않는다(사용자 지시 > 앱 규칙 > 사내 쓰는 법이 먼저).",
+      "",
+      "| 가이드 (topic) | 만든 곳 | 쓰는 부분 | 건너뛰는 부분 | 버전 · 반영일 |",
+      "|---|---|---|---|---|",
+      ...community.map((x) => `| \`official:${x.name}\`${subTopics(x.name).length ? ` · ${subTopics(x.name).join(" · ")}` : ""} | ${cell(x.vendor)} | ${cell(x.use)} | ${cell(x.skip)} | ${ver(x.name)} |`),
       "",
     ] : []),
     "**표에 없는 모델(새로 들어온 모델)** — ① 같은 회사·같은 계열의 가장 가까운 가이드(예: 새 시댄스 버전이면 가장 최근 시댄스 가이드)",
