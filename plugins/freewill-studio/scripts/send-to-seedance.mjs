@@ -81,7 +81,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 따옴표 안(대사·화면 글자)은 한국어여도 된다. 첫·끝 프레임은 앱이 role 로 묶고 알약(바인딩 표시)으로 안 바꾼다.
 const KINDS = { Image: /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif)$/i, Video: /\.(mp4|mov|m4v|webm)$/i, Audio: /\.(wav|mp3)$/i };
 const FRAME_MODES = ["image_to_video_first", "image_to_video_first_last"];
-function lintPrompt(j, { mode, omniTask, lang, model }) {
+// 타임코드 구간 — "0–2s", "2 to 5s", "0:00 to 0:03" → [[0, 2], [2, 5], [0, 3]]
+function timecodes(s) {
+  const out = [];
+  for (const m of s.matchAll(/\b(\d{1,2})\s*s?\s*(?:–|—|-|to)\s*(\d{1,2})\s*s(?:ec(?:ond)?s?)?\b/gi)) out.push([+m[1], +m[2]]);
+  for (const m of s.matchAll(/\b(\d{1,2}):(\d{2})\s*(?:–|—|-|to)\s*(\d{1,2}):(\d{2})\b/g)) out.push([+m[1] * 60 + +m[2], +m[3] * 60 + +m[4]]);
+  return out;
+}
+// 사내 블록 형식(references/seedance-prompting.md)의 블록 — 대문자만으로 된 줄이 제목이다
+function blocksOf(p) {
+  const out = {};
+  let cur = null;
+  for (const line of String(p).split("\n")) {
+    const h = line.trim();
+    if (/^[A-Z][A-Z /&]{2,38}$/.test(h)) { cur = h.replace(/\s+/g, " "); out[cur] = ""; }
+    else if (cur) out[cur] += line + "\n";
+  }
+  return out;
+}
+// 레퍼런스→영상에서 구도를 그림에 맡기는 문장(10/14 "matching the camera position of [Image 1]") — 그림은 생김새·재질·빛만 맡는다
+const FRAMING_FROM_IMAGE = /\b(?:camera (?:position|placement|angle|height|setup)|framing|composition|viewpoint|point of view|vantage)\s+(?:of|from|in|as in|shown in|seen in)\s+\[Image \d+\]|\bmatch(?:es|ing)?\s+(?:the\s+)?(?:camera|framing|composition|view|angle)\b[^.\n]{0,40}\[Image \d+\]|\b(?:close to|as in|like) the (?:view|angle|framing|composition|shot) of \[Image \d+\]/i;
+function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
   const p = String(j.prompt);
   const out = [];
   const bare = p.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/g, "");
@@ -102,6 +122,18 @@ function lintPrompt(j, { mode, omniTask, lang, model }) {
       out.push("레퍼런스→영상인데 [Image N] 이 없다 — 레퍼런스마다 맡을 역할을 [Image 1] 처럼 적어 묶는다(앱이 알약으로 바인딩한다)");
     }
   }
+  if (/seedance/.test(model || "")) {
+    // 앱 설명서: 본문에 소수 길이 지시를 쓰면 BytePlus 가 내부 오류로 실패한다
+    const dec = bare.match(/\b\d+\.\d+\s*(?:s|secs?|seconds?)\b/i);
+    if (dec) out.push(`소수 초("${dec[0]}")가 있다 — BytePlus 가 실패시킨다. 타임코드는 정수 초(0–2s, 2–5s)로, 짧은 사이는 말로(half a second)`);
+    const end = Math.max(0, ...timecodes(bare).map(([, b]) => b));
+    if (duration > 0 && end > duration) out.push(`타임코드가 ${end}초까지 간다 — 길이는 ${duration}초다. 0초부터 ${duration}초 안에서 빈틈없이 나눈다`);
+    const lean = mode === "multimodal_reference" && bare.match(FRAMING_FROM_IMAGE);
+    if (lean) {
+      out.push(`구도를 레퍼런스 그림에 맡겼다("${lean[0].slice(0, 60)}") — 레퍼런스→영상에서 그림은 생김새·재질·빛만 맡는다. ` +
+        "카메라 자리·화각·거리는 글로 쓰고(seedance-prompting 2절), 그림 구도 그대로가 필요하면 첫 프레임 모드로");
+    }
+  }
   // 시댄스 2.5 공식 템플릿(sd25-pe) 기준 — 10/12 알파젠 10케이스를 코드 틀로 찍어내 끝 상태·대사 없음 제약이 빠지고 틀 문구가 남았던 것
   if (/seedance-2-5/.test(model || "") && lang !== "ko") {
     // 공식 목표 문장 = "Generate <core event>. The core subject is <subject>, and the principal event is <summary>."
@@ -112,6 +144,10 @@ function lintPrompt(j, { mode, omniTask, lang, model }) {
     const ev = p.match(/【Event Script】([\s\S]*?)(?=【|$)/);
     if (ev && !/\bat the end\b/i.test(ev[1])) {
       out.push("【Event Script】 에 끝 상태가 없다 — 공식 템플릿대로 At the start … / Principal event … / At the end …(끝의 위치·자세·상태)");
+    }
+    const house = blocksOf(p);
+    if ("ACTION" in house && !("FINAL FRAME" in house) && !/\bat the end\b|\b(?:shot|take|clip|video) ends\b|\b(?:last|final) frame\b/i.test(p)) {
+      out.push("끝 상태가 없다 — ACTION 다음에 FINAL FRAME 블록(마지막 프레임에 누가·무엇이 어디에, 무엇이 멈춰 있고 무엇이 움직이는지)");
     }
     // 대사 표시는 { } — 엘리먼트 멘션 @{이름} 은 대사가 아니다
     const talks = /(^|[^@])\{[^}\n]+\}|\b(says|said|asks|whispers|shouts|speaks|replies|calls out|sings)\b/i.test(p);
@@ -136,6 +172,37 @@ function lintPrompt(j, { mode, omniTask, lang, model }) {
     }
   }
   return [...new Set(out)];
+}
+
+// 논리 점검(references/prompt-logic.md) 중 글로 짚을 수 있는 것 — 막지 않고 "확인할 것"으로 보여 준다
+// (발에서 얼굴로 틸트업하는 컷, 박자 맞춘 빠른 편집처럼 맞는 경우가 있다).
+function logicNotes(j, { model, duration }) {
+  if (!/seedance/.test(model || "")) return [];
+  const p = String(j.prompt).replace(/"[^"\n]*"/g, "");
+  const notes = [];
+  // 레퍼런스 줄(시트의 '전신 칸' 같은 말)은 빼고 컷마다 본다
+  const refBlock = blocksOf(p)["ACTIVE REFERENCES"] || "";
+  const body = (refBlock ? p.replace(refBlock, "") : p).split("\n").filter((l) => !/\[(?:Image|Video|Audio) \d+\]|@\{/.test(l)).join("\n");
+  for (const s of body.split(/\n(?=\s*(?:(?:CUT|SHOT|Shot|Cut)\s*\d+\b|(?:HARD|SMASH|MATCH|INSERT|WHIP|REVERSE) CUT\b))/)) {
+    if (/\b(?:extreme close-?up|close-?up|ECU|MCU|CU|macro)\b/i.test(s) && /\b(?:face|eyes?|lips|mouth|expression)\b/i.test(s) &&
+        /\b(?:feet|foot|shoes?|sneakers|boots|full[- ](?:body|length|figure)|head to (?:toe|shoes?))\b/i.test(s)) {
+      notes.push("클로즈업이라고 쓴 컷에 얼굴과 발·신발·전신이 같이 있다 — 한 화면에 함께 안 들어온다. 둘 다 필요하면 카메라 움직임(틸트업·푸시인)이나 컷으로 나누고 그 움직임을 적는다");
+    }
+    if (/\b(?:extreme wide|wide shot|establishing shot|EWS)\b/i.test(s) && /\b(?:pores?|eyelash(?:es)?|catch-?lights?|irises?|freckles?)\b/i.test(s)) {
+      notes.push("와이드라고 쓴 컷에 모공·속눈썹 같은 세부가 있다 — 그 거리에선 보이지 않는다");
+    }
+  }
+  const nums = new Set([...p.matchAll(/\b(?:CUT|SHOT|Shot)\s*(\d+)\b/g)].map((m) => m[1]));
+  const hard = (p.match(/\b(?:HARD|SMASH|MATCH|INSERT|WHIP|REVERSE) CUT\b/g) || []).length;
+  const cuts = Math.max(nums.size, hard ? hard + 1 : 0);
+  if (duration > 0 && cuts >= 2 && duration / cuts < 2) {
+    notes.push(`${duration}초에 컷 ${cuts}개 — 컷마다 2초가 안 된다. 4–5초면 사건 하나·컷 2개까지(seedance-prompting 5절). 박자 맞춘 빠른 편집이면 그대로`);
+  }
+  const tc = timecodes(p);
+  if (duration > 0 && tc.length && Math.max(...tc.map(([, b]) => b)) < duration) {
+    notes.push(`타임코드가 ${Math.max(...tc.map(([, b]) => b))}초에서 끝난다 — 길이 ${duration}초의 남은 시간은 모델이 지어낸다. 끝까지 나누거나 FINAL FRAME 에 머무는 시간을 적는다`);
+  }
+  return [...new Set(notes)];
 }
 
 // 같은 PC 에서 보내기가 둘 이상 겹칠 때(예: Claude 와 Codex 가 동시에) "자리 확인 → 한 작업 넣기" 를 한 번에 하나만 하게 하는
@@ -502,13 +569,17 @@ async function main() {
   }
   // dry-run 에서 먼저 걸리게 — 확인 카드 전에 고친다
   const problems = jobs.flatMap((j) =>
-    lintPrompt(j, { mode: j.mode ?? defaults.mode, omniTask: j.omniTask ?? defaults.omniTask, lang: j.prompt_language ?? defaults.prompt_language, model: j.model ?? defaults.model })
+    lintPrompt(j, { mode: j.mode ?? defaults.mode, omniTask: j.omniTask ?? defaults.omniTask, lang: j.prompt_language ?? defaults.prompt_language, model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) })
       .map((p) => `${j.name || "(이름 없음)"}: ${p}`));
   // 여러 작업을 코드 틀로 찍어내면 목표 문장이 같아진다 — 프롬프트가 통째로 같은(일부러 다시 보내는) 경우는 빼고
-  const goals = jobs.map((j) => ({ p: String(j.prompt), g: String(j.prompt).match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1]?.trim() }));
+  const goals = jobs.map((j) => ({ p: String(j.prompt), g: (String(j.prompt).match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1] ?? blocksOf(j.prompt)["SCENE CONTEXT"] ?? "").trim() }));
   const same = goals.filter((x, i) => x.g && goals.some((y, k) => k !== i && y.g === x.g && y.p !== x.p));
-  if (same.length) problems.push(`여러 작업의 【Generation Goal】 이 똑같다(${same.length}건) — 장면마다 주 대상·주 사건을 그 장면 내용으로 쓴다(공통 문장을 끼워 넣지 않는다)`);
-  if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}`);
+  if (same.length) problems.push(`여러 작업의 목표 문장(【Generation Goal】·SCENE CONTEXT)이 똑같다(${same.length}건) — 장면마다 주 대상·주 사건을 그 장면 내용으로 쓴다(공통 문장을 끼워 넣지 않는다)`);
+  const notes = jobs.flatMap((j) => logicNotes(j, { model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) })
+    .map((n) => `${j.name || "(이름 없음)"}: ${n}`));
+  const noteText = notes.length ? `\n  확인할 것 (논리 점검 — references/prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}` : "";
+  if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}${noteText}`);
+  if (noteText) log(noteText.slice(1));
 
   // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
   const videosOf = (j) => {

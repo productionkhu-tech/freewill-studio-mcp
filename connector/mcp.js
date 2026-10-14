@@ -29,6 +29,8 @@ const GUIDES = {
   "read-apps-without-node": `${SKILL}/references/read-apps-without-node.md`,
   "prompt-book": `${SKILL}/references/prompt-book.md`,
   assets: `${SKILL}/references/assets.md`,
+  "seedance-prompting": `${SKILL}/references/seedance-prompting.md`,
+  "prompt-logic": `${SKILL}/references/prompt-logic.md`,
   versions: `${SKILL}/official/VERSIONS.md`,
   "official:sd25-pe": `${SKILL}/official/sd25-pe/SKILL.md`,
   "official:sd2-pe": `${SKILL}/official/sd2-pe/SKILL.md`,
@@ -58,7 +60,8 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 > 지침 안의 파일 경로는 커넥터 도구로 받는다:
 > - \`references/interview.md\` → \`freewill_guide("interview")\` · \`references/house-rules.md\` → \`"house-rules"\` ·
 >   \`references/app-rules.md\` → \`"app-rules"\` · \`references/read-apps-without-node.md\` → \`"read-apps-without-node"\` ·
->   \`references/prompt-book.md\` → \`"prompt-book"\` · \`references/assets.md\` → \`"assets"\` · \`official/VERSIONS.md\` → \`"versions"\`
+>   \`references/prompt-book.md\` → \`"prompt-book"\` · \`references/assets.md\` → \`"assets"\` ·
+>   \`references/seedance-prompting.md\` → \`"seedance-prompting"\` · \`references/prompt-logic.md\` → \`"prompt-logic"\` · \`official/VERSIONS.md\` → \`"versions"\`
 > - \`official/<이름>/SKILL.md\`·\`GUIDE.md\` → \`freewill_guide("official:<이름>")\` — 예: \`"official:sd25-pe"\`, \`"official:nano-banana"\`
 > - \`official/<이름>/references/<파일>.md\` → \`"official:<이름>/<파일>"\` — 예: \`"official:imagegen/prompting"\`, \`"official:higgsfield-generate/model-catalog"\`
 > - \`<플러그인 폴더>/scripts/<이름>.mjs\` → \`freewill_script("<이름>")\` 로 받아 **임시 폴더에 .mjs 로 저장한 뒤** \`node\` 로 실행한다.
@@ -172,7 +175,8 @@ async function withModelGuides(text) {
 // 지침 버전 — 보내기 전에 지켜야 할 지침(start · house-rules · interview · app-rules)의 내용 지문. start 맨 위에 적어 주고
 // 보내기 스크립트에도 넣어 준다. 대화가 읽은 지침이 옛것이면(jobs.json 의 guide 가 다르면) 스크립트가 보내지 않고 다시
 // 읽게 한다 — 에이전트는 처음 읽은 지침을 기억하고 다시 받을지는 제 판단이라, 이미 하던 대화가 낡은 규칙으로 보내지 않게.
-const VERSIONED = ["start", "house-rules", "interview", "app-rules", "versions"];
+// 쓰는 법이 바뀌면 오래 쓴 대화도 다시 읽게 — 시댄스 형식·논리 점검·에셋 틀도 지문에 넣는다
+const VERSIONED = ["start", "house-rules", "interview", "app-rules", "versions", "seedance-prompting", "prompt-logic", "assets"];
 async function guideVersion() {
   const texts = await Promise.all(VERSIONED.map((t) => fromRepo(GUIDES[t])));
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texts.join(String.fromCharCode(0))));

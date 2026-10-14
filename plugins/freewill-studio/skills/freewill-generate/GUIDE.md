@@ -17,6 +17,10 @@ Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
 4. **사내 규칙** — `references/house-rules.md`
 5. **Higgsfield 가이드** — 모델 고르기·질문 방식 참고용일 뿐
 
+**시댄스 프롬프트는 사내 형식이 먼저다**(사용자 지시 10/14 — 공식 템플릿만으로 쓴 프롬프트가 덤덤하고 레퍼런스를 구도로 착각했다):
+형식·밀도·연출은 `references/seedance-prompting.md`, 공식 가이드는 그 모드가 받는 것·잠그는 것·표기를 확인하는 데 쓴다.
+**모든 프롬프트(이미지·영상)는 자세하고 정성스럽게 쓰고, 보내기 전에 `references/prompt-logic.md` 로 논리 점검을 한다.**
+
 **개인 스킬**: 사용자가 지정하거나("내 lira 스킬로"), 설치된 개인 스킬이 이 작업에 더 잘 맞으면 자유롭게 써도 된다.
 그래도 앱 규칙(2)과 사내 규칙의 확인·과금 부분은 그대로 지킨다.
 
@@ -58,6 +62,7 @@ Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
 - 유형 구분과 유형별 질문은 `references/interview.md`
 - 인물·여러 인물·소품·탈것·배경 **에셋**(영상 레퍼런스용 시트·플레이트)이면 형식이 정해져 있다 — `references/assets.md`
   (회색 배경 시트: 인물 3칸·여러 인물 정면 한 장·소품 앞뒤·탈것 3/4 앞뒤, 배경은 3/4 대각 풀샷). 사용자가 다른 형식이나 개인 스킬을 말하면 그걸 따른다
+- 영상(시댄스)이면 `references/seedance-prompting.md` 를 먼저 읽는다 — 장르·사건·컷·레퍼런스 역할을 그 형식으로 정리하면서 묻는다
 
 ## 2. 이 PC 의 앱 읽기 — 저장소가 아니라 로컬 앱이 기준
 
@@ -124,13 +129,20 @@ Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
 영상은 표의 **모드별 topic** 을 읽는다 — 3단계에서 정한 mode 그대로(예: `official:sd25-pe/image_to_video_first`). 공통 원칙과
 그 모드 템플릿만 들어 있어 짧고, 다른 모드 템플릿과 섞이지 않는다.
 
+- **시댄스는 `references/seedance-prompting.md` 형식으로 쓴다**(사내 — 사용자 지시라 공식 템플릿보다 먼저). 공식 모드 절은 그 모드가
+  받는 것·잠그는 것·표기(대사 `{ }` 등)를 확인하는 데 쓴다. 공식의 "요청하지 않은 스타일·카메라는 지어내지 말라"는 따르지 않는다 —
+  카메라·렌즈·빛·색·연기는 감독으로서 정해 쓰고, 사용자가 정한 인물·사건·대사·결말·개수만 그대로 둔다.
+- **자세하고 정성스럽게** — 이미지든 영상이든 짧게 줄이지 않는다. 길이는 장식 형용사가 아니라 위치·수치·재질·빛으로 늘린다.
+- **논리 점검** — 다 쓰면 `references/prompt-logic.md` 대로 블록마다 대조한다. 클로즈업에 발·신발, 뒷모습에 표정, 탑다운에 벽면,
+  5초에 컷 셋, 장소는 낮인데 조명은 밤 같은 모순을 고친 뒤에 확인 카드로 간다.
 - **에셋**(인물·소품·탈것·배경 시트)은 `references/assets.md` 의 틀을 뼈대로 쓰고 이 모델의 공식 가이드로 다듬는다.
 - **파라미터는 프롬프트에 쓰지 않는다** — 비율·길이·해상도·개수·오디오는 앱 설정으로 넘긴다 (sd25-pe 원칙 7과 같다).
 - **앱 쪽 제약**(해상도·레퍼런스 수·모드별 고정값)은 가이드가 아니라 2단계에서 읽은 앱 규칙(`references/app-rules.md`)을 따른다.
 - **모델을 골라야 하면**(사용자가 정하지 않았을 때) 힉스필드 `official:higgsfield-generate/model-catalog` 의 고르는 기준(Picking flow)을
   이 PC 앱에 있는 모델로 바꿔 읽는다.
 - 두 가이드가 부딪히면 그 모델 회사의 공식 가이드를 따른다. 예: 힉스필드는 "200토큰 이하", 시댄스 2.5 공식은
-  구조화해서 자세히 — 시댄스 2.5 에서는 공식을 따른다. 힉스필드는 공식 가이드가 없는 모델에만 쓴다. **단, 아래 "앱에 맞춘 규칙" 은 공식 스킬보다 먼저다.**
+  구조화해서 자세히 — 시댄스 2.5 에서는 공식을 따른다. 힉스필드는 공식 가이드가 없는 모델에만 쓴다. **단, 아래 "앱에 맞춘 규칙" 은 공식 스킬보다 먼저고,
+  시댄스 프롬프트의 형식·밀도는 사내 `seedance-prompting.md` 가 먼저다.**
 
 ### 앱에 맞춘 규칙 — 공식 스킬과 부딪히면 이게 먼저
 
@@ -151,22 +163,24 @@ Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
    | `text_to_video` (`text_to_video`) | — | 장면·동작·카메라·소리 | `[Image N]` |
    | `image_to_video_first` (`image_to_video`) | refs `role: first_frame` — 카드에 '시작 프레임' | 그 장면에서 이어지는 동작·카메라·소리. 첫 장면 모습을 길게 다시 묘사하지 않는다 | `[Image N]`, 공식 스킬의 `Use @ImageN as the first frame.` — 앱이 role 로 넘긴다(BytePlus API 가이드도 role 우선) |
    | `image_to_video_first_last` (`image_to_video`) | `role: first_frame` · `last_frame` | 처음에서 끝까지 무엇이 어떻게 바뀌는지 | `[Image N]` |
-   | `multimodal_reference` (`reference_to_video`) | refs 순서 = `[Image N]` → 앱이 알약으로 바인딩 | 대상마다 한 줄씩 역할 — `The puppy is [Image 1]; use only its appearance and fur.` · 안 쓰는 레퍼런스는 【Unused Assets】 (공식 4·5단계) | 한 줄에 여러 대상 묶기 |
+   | `multimodal_reference` (`reference_to_video`) | refs 순서 = `[Image N]` → 앱이 알약으로 바인딩 | 대상마다 한 줄 — 무엇인지 + 그 그림에서 쓸 것(생김새·재질·빛). 구도는 글로 쓴다(seedance-prompting 2절) · 그 컷에 안 나오는 대상의 그림은 넣지 않는다 | 한 줄에 여러 대상 묶기, "matching the camera position of [Image N]" 처럼 구도를 그림에 맡기기 |
    | `edit_video` (`edit`) | `[Video 1]` = 고칠 원본 | 편집 동사(edit · add · remove · replace · change) + 바꿀 것과 그대로 둘 것. Omni 는 앱이 `[Video N]` 을 지우므로 "the source video" 로 | 길이·비율(자동) |
    | `extend_video` (`extend`) | `[Video N]` | extend forward / backward · continue + 이어질 내용. Omni 는 "the source video" 로 | — |
 
 4. **"이 그림으로" 는 두 가지다.** 그 그림이 영상의 첫 장면 그대로면 첫 프레임, 그림 속 인물·대상·분위기를 따라 새
    장면을 만들면 레퍼런스→영상. 사용자가 "레퍼런스로" 라고 하면 레퍼런스다. 애매하면 선택지로 묻는다 — 그림 장수로
    정하지 않는다.
-5. **여러 컷도 한 컷씩 공식 템플릿대로 쓴다 — 프롬프트를 코드 틀로 찍어내지 않는다.** 공통 문장을 끼워 넣거나 정규식으로
+5. **여러 컷도 한 컷씩 그 장면 내용으로 쓴다 — 프롬프트를 코드 틀로 찍어내지 않는다.** 공통 문장을 끼워 넣거나 정규식으로
    한꺼번에 바꾸면 장면별 목표·끝 상태가 빠지고 "architecture or furniture" 같은 틀 문구가 남는다(10/12 알파젠 10케이스).
    장면마다 목표(주 대상·주 사건), 레퍼런스 역할(그 그림에서 쓸 것만 구체적으로 — 인물 시트는 "시트의 배경·패널 배치는
-   쓰지 않음"까지), 시작·끝 상태, 대사가 없으면 "No dialogue or narration … No subtitles or on-screen text" 를 그 장면
-   내용으로 채운다. 시댄스 2.5 는 보내기 스크립트가 이 다섯 가지와 '여러 작업의 같은 목표 문장'을 점검해 걸리면 보내지 않는다.
+   쓰지 않음"까지), 첫 프레임·끝 프레임, 대사가 없으면 "No dialogue or narration … No subtitles or on-screen text" 를 그 장면
+   내용으로 채운다(형식은 `seedance-prompting.md` 3절). 시댄스 2.5 는 보내기 스크립트가 이것들과 '여러 작업의 같은 목표 문장',
+   소수 초·길이를 넘는 타임코드를 점검해 걸리면 보내지 않고, 컷 수·구도를 그림에 맡긴 문장·클로즈업과 전신의 모순은 "확인할 것"으로 짚는다.
 
 ## 5. 확인 카드
 
 생성하기 전에 한 번 보여주고 답을 받는다. 확인 정책은 `references/house-rules.md` 를 따른다.
+카드를 만들기 전에 논리 점검(`references/prompt-logic.md`)과 dry-run 의 "확인할 것"을 끝낸다 — 모순이 남은 프롬프트로 카드를 내지 않는다.
 
 **답은 버튼으로 받는다 — 사용자가 "예" 를 글로 치게 하지 않는다.** 카드는 대화에 그대로 보여 주고 이어서 묻는다.
 Claude 는 AskUserQuestion, 질문 도구가 없는 Codex 는 `freewill_ask`:
