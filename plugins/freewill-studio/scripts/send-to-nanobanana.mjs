@@ -22,7 +22,10 @@
 //   - 한 사람 하루 1000장(커넥터가 센다). 넘으면 아무것도 보내지 않고 멈춘다.
 //
 //   node send-to-nanobanana.mjs jobs.json            보내기
-//   node send-to-nanobanana.mjs jobs.json --watch    보내고 끝날 때까지 지켜본 뒤 새 파일 목록
+//   node send-to-nanobanana.mjs jobs.json --watch    보내고 끝날 때까지 지켜본 뒤 새 파일 목록(작업별)
+//   node send-to-nanobanana.mjs jobs.json --save-to <폴더>
+//                                                    지켜본 뒤 새 그림을 그 폴더로 복사(<작업 이름>_A.png · _목록.tsv) —
+//                                                    앱 저장 폴더의 원본은 그대로 둔다(옮기면 앱 갤러리에서 사라진다)
 //   node send-to-nanobanana.mjs jobs.json --keep     탭 입력값을 되돌리지 않음
 //   node send-to-nanobanana.mjs --tab "K" jobs.json  지금 탭 이름이 K 일 때만 보냄
 //
@@ -47,8 +50,9 @@ const NB = process.env.FREEWILL_NB_URL || "http://127.0.0.1:5656";
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const opt = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : null; };
-const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--tab");
-const WATCH = flag("--watch");
+const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--tab" && args[i - 1] !== "--save-to");
+const SAVE_TO = opt("--save-to");
+const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const KEEP = flag("--keep");
 const DRY = flag("--dry-run"); // 앱 연결·탭·팀/프로젝트만 확인하고 아무것도 보내지 않음 (비용 0)
 const TAB = opt("--tab");
@@ -422,6 +426,27 @@ async function main() {
   if (other.length) {
     log(`  어느 작업인지 모름 ${other.length}장 — 그사이 사람이 이 탭에서 만든 것일 수 있다`);
     for (const i of other) log(`    ${i.filepath}`);
+  }
+
+  // --save-to: 작업 폴더로 복사한다(지침 6단계 "정리") — <작업 이름>_A.png, _B … 같은 이름이 있으면 _2. 앱 저장 폴더의 원본은 그대로
+  // 둔다(옮기면 앱 갤러리에서 사라진다). 어느 파일이 어디서 왔는지는 _목록.tsv 에.
+  if (SAVE_TO) {
+    const safe = (s) => String(s || "job").replace(/[\\/:*?"<>|]+/g, "_").trim();
+    fs.mkdirSync(SAVE_TO, { recursive: true });
+    const rows = [];
+    for (const [k, j] of sentJobs.entries()) {
+      for (const [t, i] of fresh.filter((x) => jobOf(x) === j).entries()) {
+        if (!fs.existsSync(i.filepath)) { log(`  못 옮김 — 원본이 없음: ${i.filepath}`); continue; }
+        const name = safe(j.name || `job_${k + 1}`), take = String.fromCharCode(65 + t), ext = path.extname(i.filepath) || ".png";
+        let dest = path.join(SAVE_TO, `${name}_${take}${ext}`);
+        for (let n = 2; fs.existsSync(dest); n++) dest = path.join(SAVE_TO, `${name}_${take}_${n}${ext}`);
+        fs.copyFileSync(i.filepath, dest);
+        rows.push([j.name || `job_${k + 1}`, take, i.model || "", i.filepath, path.basename(dest)].join("\t"));
+      }
+    }
+    const list = path.join(SAVE_TO, "_목록.tsv");
+    if (rows.length) fs.appendFileSync(list, `${fs.existsSync(list) ? "" : "작업\t테이크\t모델\t원본\t파일\n"}${rows.join("\n")}\n`);
+    log(rows.length ? `그림 ${rows.length}장을 ${SAVE_TO} 로 복사했다(앱 원본은 그대로) · 목록 _목록.tsv` : "복사한 그림 없음");
   }
 }
 

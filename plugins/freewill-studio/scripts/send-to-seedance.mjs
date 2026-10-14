@@ -25,6 +25,8 @@
 //   node send-to-seedance.mjs jobs.json --dry-run   앱 상태만 확인(설명서 버전·프로젝트·과금·권한) — 아무것도 안 보냄
 //   node send-to-seedance.mjs jobs.json             보내기 — 앱이 받아서 보낼 때까지 하나씩
 //   node send-to-seedance.mjs jobs.json --watch     보내고 영상이 다 끝날 때까지 지켜봄
+//   node send-to-seedance.mjs jobs.json --save-to <폴더>
+//                                                   지켜보다 끝난 영상을 받아 그 폴더로 옮김(<작업 이름>_A.mp4 · _목록.tsv)
 //   node send-to-seedance.mjs --status <id> [<id>]  보낸 요청의 지금 상태
 //   node send-to-seedance.mjs --do <명령> [JSON 인자 | @인자파일.json]
 //                                                   앱 기능 명령(26.10.305~) — 프로젝트 · 어셋 라이브러리 · 카드 ·
@@ -62,11 +64,14 @@ const SD = process.env.FREEWILL_SD_URL || "http://127.0.0.1:3000";
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const DRY = flag("--dry-run");
-const WATCH = flag("--watch");
+// --save-to <폴더>: 끝난 영상을 받아(card.download) 다운로드 폴더에서 그 폴더로 옮긴다 — <작업 이름>_A.mp4 … (지침 6단계 "정리")
+const saveAt = args.indexOf("--save-to");
+const SAVE_TO = saveAt >= 0 ? args[saveAt + 1] || null : null;
+const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const STATUS = flag("--status");
 const MANUAL = flag("--manual");
 const DO = flag("--do");
-const positional = args.filter((a) => !a.startsWith("--"));
+const positional = args.filter((a, i) => !a.startsWith("--") && !(saveAt >= 0 && i === saveAt + 1));
 // --manual 로 읽은 설명서 버전을 기억해 두는 곳(--do 가 쓴다). 앱 주소마다 따로 — 시험 서버와 섞이지 않게.
 const STATE_FILE = path.join(os.tmpdir(), `freewill-seedance-manual-${SD.replace(/[^a-z0-9]+/gi, "_")}.json`);
 const rememberManual = (version) => { try { fs.writeFileSync(STATE_FILE, JSON.stringify({ version, at: Date.now() })); } catch {} };
@@ -724,6 +729,36 @@ async function main() {
   }
   if (open.length) log(`아직 안 끝난 요청 ${open.length}건 — 앱 화면에서 계속 진행된다`);
   await showStatus(sent.map((x) => x.id));
+  if (SAVE_TO) await saveResults(sent, spec.manual);
+}
+
+// 끝난 카드를 받아(card.download — 앱이 다운로드 폴더에 저장한다) 작업 폴더로 옮긴다: <작업 이름>_A.mp4, _B … 같은 이름이 있으면 _2.
+// 어느 카드가 어느 파일인지는 그 폴더의 _목록.tsv 에 남긴다(프롬프트 북·검수 페이지가 읽는다).
+const safeName = (s) => String(s || "job").replace(/[\\/:*?"<>|]+/g, "_").trim();
+async function saveResults(sent, manual) {
+  fs.mkdirSync(SAVE_TO, { recursive: true });
+  const rows = [];
+  for (const x of sent) {
+    const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
+    const done = (j.messages || []).filter((c) => c.status === "succeeded");
+    for (const [k, c] of done.entries()) {
+      let r;
+      try { r = await sendCommand(manual, "card.download", { id: c.id }); }
+      catch (e) { log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
+      const src = r?.path || r?.file || r?.saved;
+      if (!src || !fs.existsSync(src)) { log(`  못 받음 ${x.name} · 카드 ${c.id} — 앱이 저장 경로를 안 줬다`); continue; }
+      const take = String.fromCharCode(65 + k);
+      const ext = path.extname(src) || ".mp4";
+      let dest = path.join(SAVE_TO, `${safeName(x.name)}_${take}${ext}`);
+      for (let n = 2; fs.existsSync(dest); n++) dest = path.join(SAVE_TO, `${safeName(x.name)}_${take}_${n}${ext}`);
+      try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); }
+      rows.push([x.name, take, c.id, c.taskId || "", path.basename(dest)].join("\t"));
+      log(`  저장 ${dest}`);
+    }
+  }
+  const list = path.join(SAVE_TO, "_목록.tsv");
+  if (rows.length) fs.appendFileSync(list, `${fs.existsSync(list) ? "" : "작업\t테이크\t카드\ttask\t파일\n"}${rows.join("\n")}\n`);
+  log(rows.length ? `영상 ${rows.length}개를 ${SAVE_TO} 로 옮겼다(다운로드 폴더에는 안 남김) · 목록 _목록.tsv` : "옮긴 영상 없음 — 끝난 카드가 없거나 받지 못했다");
 }
 
 main().catch((e) => {
