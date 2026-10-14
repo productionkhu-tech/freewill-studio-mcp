@@ -114,8 +114,9 @@ function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
   const out = [];
   const house = [];
   const bare = p.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/g, "");
-  if (lang !== "ko" && /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(bare)) {
-    out.push("본문이 한국어다 — 영어로 쓴다(대사·화면 글자만 따옴표 안에 그 언어로). 사용자용 한국어 요약은 확인 카드에");
+  // 대사 표시 { } 안(엘리먼트 @{이름} 은 빼고)도 그 언어 그대로 둔다 — She whispers {괜찮아} in Korean.
+  if (lang !== "ko" && /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(bare.replace(/(^|[^@])\{[^{}\n]*\}/g, "$1"))) {
+    out.push("본문이 한국어다 — 영어로 쓴다(대사·화면 글자만 따옴표나 대사 표시 { } 안에 그 언어로). 사용자용 한국어 요약은 확인 카드에");
   }
   if (/@(?:Image|Video|Audio) ?\d/i.test(p)) out.push("@Image1 은 공식 스킬의 표기다 — 앱에서는 [Image 1] · [Video 1] · [Audio 1] (대괄호, 띄어 씀)");
   const marks = [...p.matchAll(/\[(Image|Video|Audio) (\d+)\]/g)];
@@ -210,6 +211,28 @@ function logicNotes(j, { model, duration }) {
   const tc = timecodes(p);
   if (duration > 0 && tc.length && Math.max(...tc.map(([, b]) => b)) < duration) {
     notes.push(`타임코드가 ${Math.max(...tc.map(([, b]) => b))}초에서 끝난다 — 길이 ${duration}초의 남은 시간은 모델이 지어낸다. 끝까지 나누거나 FINAL FRAME 에 머무는 시간을 적는다`);
+  }
+  // 커뮤니티 품질 규칙(references/seedance-quality.md) 중 글로 짚을 수 있는 것 — 대사 { } 와 따옴표 안 글자는 빼고 본다
+  const prose = p.replace(/(^|[^@])\{[^{}\n]*\}/g, "$1");
+  const fast = prose.match(/\b(?:fast|quickly|rapidly)\b(?!-food)/i);
+  if (fast && !/\d\s*(?:km\/h|m\/s|mph)\b/i.test(prose)) {
+    notes.push(`"${fast[0]}" — 빠르기는 km/h·m/s 나 보폭·접촉으로 쓴다(복잡한 움직임에서 화면을 가장 많이 흔드는 말이라는 관찰 — seedance-quality 1절 7)`);
+  }
+  const slop = [...new Set((prose.match(/\b(?:cinematic|epic|stunning|breathtaking|masterpiece|award[- ]winning|best quality|high[- ]quality|ultra[- ](?:realistic|detailed)|hyper-?realistic)\b/gi) || []).map((w) => w.toLowerCase()))];
+  if (slop.length) notes.push(`그림이 안 되는 말(${slop.join(", ")}) — 지우고 보이는 것(빛의 방향·렌즈·재질·동작)으로 바꾼다(seedance-quality 1절 8)`);
+  const setting = [...new Set(prose.match(/\b(?:16:9|9:16|21:9|9:21|4:3|3:4|1:1|2\.39:1|2\.35:1|1\.85:1|480p|720p|1080p|2160p|4K|8K|\d{2,3} ?fps)\b/gi) || [])];
+  if (setting.length) notes.push(`본문에 설정값(${setting.join(", ")})이 있다 — 비율·해상도·fps 는 앱 설정이 정한다. 본문에 쓰면 바뀌지 않고 그림만 흔든다(레터박스 룩이면 모양을 말로)`);
+  if (/(?<!crash |dolly |snap )\bzoom(?:s|ed|ing)?\b/i.test(prose)) {
+    notes.push("'zoom' 은 화각이 바뀌는 것 — OPTICS 의 화각 고정과 부딪힌다. 카메라가 다가가는 거면 push in·dolly in, 정말 줌이면 OPTICS 에 시작·끝 화각을 적는다(seedance-quality 4절)");
+  }
+  const locks = blocksOf(p)["POSITIVE LOCKS"] || "";
+  const negs = locks.split(/(?<=[.;])\s+/).filter((x) => /\b(?:no|not|never|nothing|nobody|without|don't|doesn't)\b/i.test(x)).length;
+  if (negs >= 3) notes.push(`POSITIVE LOCKS 에 부정문이 ${negs}개 — 원하는 상태를 긍정으로 쓰고('One telephone, on the nightstand only') 꼭 막을 실패 하나만 짧게(seedance-prompting 1절 5)`);
+  // 짧은 대사 + 긴 원테이크 = 남는 시간을 지어낸 웅얼거림으로 채운다(커뮤니티 측정, 시댄스 2.0 영어). 한국어는 세 글자를 한 단어로 어림한다
+  const lines = [...String(j.prompt).matchAll(/(?:^|[^@])\{([^{}\n]+)\}/g)].map((m) => m[1]);
+  if (lines.length && cuts <= 1 && duration >= 4 && !/\bsilen(?:t|ce)\b/i.test(prose)) {
+    const words = lines.reduce((a, l) => a + (/[가-힣]/.test(l) ? Math.ceil((l.match(/[가-힣]/g) || []).length / 3) : l.split(/\s+/).filter((w) => /\w/.test(w)).length), 0);
+    if (words <= 6) notes.push(`대사가 ${words}단어 남짓인데 한 컷 ${duration}초다 — 남는 시간을 지어낸 웅얼거림으로 채우기 쉽다. 대사를 늘리거나, 길이를 줄이거나, 말 뒤 침묵을 행동으로 적는다(seedance-quality 3절)`);
   }
   return [...new Set(notes)];
 }
@@ -624,7 +647,7 @@ async function main() {
       ? [`그림 파일 ${j.refs.filter((r) => !r.role && KINDS.Image.test(r.path)).length}장을 [Image N] 으로 붙였다 — 다시 쓸 인물·장소·소품이면 어셋 라이브러리 엘리먼트로 등록해 @{이름} 으로 부른다(지침 6단계 시댄스 0)`]
       : []),
   ].map((n) => `${nameOf(j)}: ${n}`));
-  const noteText = notes.length ? `\n  확인할 것 (논리 점검 — references/prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}` : "";
+  const noteText = notes.length ? `\n  확인할 것 (논리 점검 — references/prompt-logic.md · seedance-quality.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}` : "";
   if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}${noteText}`);
   if (noteText) log(noteText.slice(1));
 

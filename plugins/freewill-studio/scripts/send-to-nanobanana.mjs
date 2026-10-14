@@ -235,6 +235,23 @@ async function setRefs(paths) {
   return null;
 }
 
+// 이미지 프롬프트에서 글로 짚을 수 있는 것(references/image-prompting.md · prompt-logic.md) — 막지 않고 "확인할 것"으로 보여 준다
+function imageNotes(j) {
+  const p = String(j.prompt).replace(/"[^"\n]*"|“[^”\n]*”/g, "");
+  const notes = [];
+  const setting = [...new Set(p.match(/\b(?:16:9|9:16|21:9|4:3|3:4|1:1|3:2|2:3|4:5|5:4|[248]K|high-resolution|\d{3,4} ?px)\b/gi) || [])];
+  if (setting.length) notes.push(`본문에 설정값(${setting.join(", ")})이 있다 — 비율·해상도는 앱 설정이 정한다. 본문에서 지운다`);
+  const slop = [...new Set((p.match(/\b(?:masterpiece|best quality|high[- ]quality|ultra[- ](?:detailed|realistic)|hyper-?realistic|award[- ]winning|trending on artstation|stunning|breathtaking)\b/gi) || []).map((w) => w.toLowerCase()))];
+  if (slop.length) notes.push(`효과 없는 말(${slop.join(", ")}) — 지우고 재질·빛·렌즈로 쓴다(image-prompting 4절)`);
+  // 시트처럼 칸이 나뉜 그림은 칸마다 샷 크기가 달라서 빼고 본다
+  if (!/\b(?:panels?|sheet|grid|side by side|split)\b/i.test(p) && /\b(?:extreme close-?up|close-?up|ECU|MCU|CU|macro)\b/i.test(p) &&
+      /\b(?:feet|foot|shoes?|sneakers|boots|full[- ](?:body|length|figure)|head to (?:toe|shoes?))\b/i.test(p)) {
+    notes.push("클로즈업인데 발·신발·전신이 같이 있다 — 한 화면에 함께 안 들어온다(prompt-logic 1절). 샷 크기를 바꾸거나 하나를 뺀다");
+  }
+  if (/\b(?:motion blur|crash zoom|whip pan)\b/i.test(p)) notes.push("스틸에 움직임 말(motion blur · crash zoom · whip pan) — 번진 그림이 된다. 첫 프레임용이면 멈춘 한 순간으로(prompt-logic 3절)");
+  return notes;
+}
+
 async function main() {
   if (!file) fail("작업 파일(jobs.json)을 주세요");
   let spec;
@@ -268,6 +285,8 @@ async function main() {
     fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'): ${korean.map((j) => j.name || "(이름 없음)").join(", ")} — ` +
       "본문이 한국어다. 영어로 쓴다(그림에 넣을 글자만 따옴표 안에 그 언어로). 사용자용 한국어 요약은 확인 카드에");
   }
+  const notes = jobs.flatMap((j) => imageNotes(j).map((n) => `${j.name || "(이름 없음)"}: ${n}`));
+  if (notes.length) log(`  확인할 것 (references/image-prompting.md · prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}`);
 
   // 3) 이번에 넣을 장수와 한도 — 하루 한도에 걸리면 하나도 보내지 않는다
   const base = await get("/api/settings");

@@ -31,6 +31,8 @@ const GUIDES = {
   assets: `${SKILL}/references/assets.md`,
   "seedance-prompting": `${SKILL}/references/seedance-prompting.md`,
   "prompt-logic": `${SKILL}/references/prompt-logic.md`,
+  "seedance-quality": `${SKILL}/references/seedance-quality.md`,
+  "image-prompting": `${SKILL}/references/image-prompting.md`,
   versions: `${SKILL}/official/VERSIONS.md`,
   "official:sd25-pe": `${SKILL}/official/sd25-pe/SKILL.md`,
   "official:sd2-pe": `${SKILL}/official/sd2-pe/SKILL.md`,
@@ -63,7 +65,8 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 > - \`references/interview.md\` → \`freewill_guide("interview")\` · \`references/house-rules.md\` → \`"house-rules"\` ·
 >   \`references/app-rules.md\` → \`"app-rules"\` · \`references/read-apps-without-node.md\` → \`"read-apps-without-node"\` ·
 >   \`references/prompt-book.md\` → \`"prompt-book"\` · \`references/assets.md\` → \`"assets"\` ·
->   \`references/seedance-prompting.md\` → \`"seedance-prompting"\` · \`references/prompt-logic.md\` → \`"prompt-logic"\` · \`official/VERSIONS.md\` → \`"versions"\`
+>   \`references/seedance-prompting.md\` → \`"seedance-prompting"\` · \`references/seedance-quality.md\` → \`"seedance-quality"\` ·
+>   \`references/image-prompting.md\` → \`"image-prompting"\` · \`references/prompt-logic.md\` → \`"prompt-logic"\` · \`official/VERSIONS.md\` → \`"versions"\`
 > - \`official/<이름>/SKILL.md\`·\`GUIDE.md\` → \`freewill_guide("official:<이름>")\` — 예: \`"official:sd25-pe"\`, \`"official:nano-banana"\`
 > - \`official/<이름>/references/<파일>.md\` → \`"official:<이름>/<파일>"\` — 예: \`"official:imagegen/prompting"\`, \`"official:higgsfield-generate/model-catalog"\`
 > - \`<플러그인 폴더>/scripts/<이름>.mjs\` → \`freewill_script("<이름>")\` 로 받아 **임시 폴더에 .mjs 로 저장한 뒤** \`node\` 로 실행한다.
@@ -99,7 +102,7 @@ const TOOLS = [
       "이 PC 의 나노바나나·시댄스를 다루는 스크립트 원문을 받는다 — read-local-apps(앱 버전·모델 규칙·지금 설정 읽기), " +
       "send-to-nanobanana(띄워 둔 나노바나나로 생성 보내기), send-to-seedance(띄워 둔 시댄스로 영상 생성 보내기, 앱 26.10.304~), " +
       "make-prompt-book(컨펌된 결과를 HTML 프롬프트 북으로 정리 — 형식은 freewill_guide(\"prompt-book\")), " +
-      "make-review(작업 폴더에 받은 컷을 검수 페이지로 — OK·보류·NG 고르고 저장본대로 폴더 분류). " +
+      "make-review(작업 폴더에 받은 컷을 검수 페이지로 — OK·보류·탈락 고르고 저장본대로 폴더 분류). " +
       "PC 에서 명령을 돌릴 수 있을 때만 쓸모 있다: 받은 원문을 임시 폴더에 " +
       ".mjs 로 저장해 node 로 실행. node 가 없으면 freewill_guide(\"read-apps-without-node\") 의 PowerShell 절차.",
     inputSchema: {
@@ -179,7 +182,7 @@ async function withModelGuides(text) {
 // 보내기 스크립트에도 넣어 준다. 대화가 읽은 지침이 옛것이면(jobs.json 의 guide 가 다르면) 스크립트가 보내지 않고 다시
 // 읽게 한다 — 에이전트는 처음 읽은 지침을 기억하고 다시 받을지는 제 판단이라, 이미 하던 대화가 낡은 규칙으로 보내지 않게.
 // 쓰는 법이 바뀌면 오래 쓴 대화도 다시 읽게 — 시댄스 형식·논리 점검·에셋 틀도 지문에 넣는다
-const VERSIONED = ["start", "house-rules", "interview", "app-rules", "versions", "seedance-prompting", "prompt-logic", "assets"];
+const VERSIONED = ["start", "house-rules", "interview", "app-rules", "versions", "seedance-prompting", "seedance-quality", "image-prompting", "prompt-logic", "assets"];
 async function guideVersion() {
   const texts = await Promise.all(VERSIONED.map((t) => fromRepo(GUIDES[t])));
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texts.join(String.fromCharCode(0))));

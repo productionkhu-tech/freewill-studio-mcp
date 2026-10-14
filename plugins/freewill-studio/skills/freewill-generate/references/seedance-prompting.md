@@ -11,7 +11,8 @@ Omni(구글)는 해당 없다 — 그 공식 가이드대로.
    그 스킬이 다루지 않는 빈 곳에만 쓴다. 그렇게 보낼 때는 jobs.json 에 `"user_format": true`(지침 0절 "개인 스킬·다른 지침")
 2. 앱에 맞춘 규칙(지침 4단계) — 영어 본문, 레퍼런스 표기 `[Image N]`·`[Video N]`·`[Audio N]`, 엘리먼트 `@{이름}`, 첫·끝 프레임은
    refs 의 role, 비율·길이·해상도·개수·오디오는 설정으로(본문에 쓰지 않음), **소수 초 금지**
-3. **이 문서** — 형식·밀도·연출, 그리고 `references/prompt-logic.md` 논리 점검
+3. **이 문서** — 형식·밀도·연출, **`references/seedance-quality.md`** — 그 블록 안에 실패를 막으려고 쓸 것(연기·대사·카메라·빛·여러 컷·증상표),
+   그리고 `references/prompt-logic.md` 논리 점검
 4. 공식 `official:sd25-pe/<mode>`(2.0 은 `official:sd2-pe`) — 그 모드가 무엇을 받고 무엇을 잠그는지, 표기(대사 `{ }`·효과음 `< >`·
    음악 `( )`), 편집·연장 문장. **단, 공식의 "사용자가 말하지 않은 스타일·카메라·소리는 지어내지 말라"는 따르지 않는다** — 카메라·렌즈·
    빛·색·연기는 감독으로서 정해 쓴다. 사용자가 정한 인물·사건·대사·결말·개수는 바꾸지 않는다.
@@ -88,7 +89,7 @@ FIRST FRAME / BLOCKING
 [The literal first frame: every required subject already in frame, positions as screen x/y %, body facing and gaze, distance to the landmark.]
 
 FORMAT MODE
-[One continuous shot — the camera does not cut on its own. / CUT 1 … CUT 2 … with cuts only at those points. / Whole-second timecodes that tile the runtime: 0–2s, 2–5s.]
+[One continuous shot; the timed beats below all happen inside it; the camera does not cut on its own. / CUT 1 … CUT 2 … with cuts only at those points. / Whole-second timecodes that tile the runtime: 0–2s, 2–5s.]
 
 OPTICS
 [Per shot: shot size in words, field of view in degrees, camera distance and height, lens character. No drift mid-shot.]
@@ -174,6 +175,8 @@ POSITIVE LOCKS
 - **연기는 감정 이름이 아니라 행동** — 원하는 것(동사)·막는 것·그래서 몸과 눈이 하는 것. `she looks sad` 대신
   `her eyes drop to the cup, her jaw sets, she swallows once before she answers`. 듣는 사람도 반응한다. 절제가 기본.
 - **대사**는 `{ }` 안의 말만, 그 사람의 입만 그때 움직인다. 말 앞뒤에 숨 쉴 틈.
+- 연기(전술 · 듣기 · 눈 · 미세 표정), 대사 길이와 립싱크, 감정에 맞춘 카메라 질감, 밤 조명, 여러 인물 · 이어지는 클립은
+  `seedance-quality.md` 2–7절에 자세히 있다 — 이 컷에 해당하는 절을 골라 같은 밀도로 쓴다.
 
 ## 7. 빛·색·물리·수치
 
@@ -223,7 +226,7 @@ FIRST FRAME / BLOCKING
 The recorder sits in the lower-left third, its reels at x 25%, y 70%, large and soft. The telephone sits on the nightstand at x 72%, y 48%, small and sharp, already ringing. The room is empty.
 
 FORMAT MODE
-One continuous shot, 5 seconds; the camera does not cut on its own.
+One continuous shot; the timed beats below all happen inside it; the camera does not cut on its own.
 
 OPTICS
 Medium-wide, 47° field of view, the camera 1.2 m behind the recorder at 0.9 m height, just above desk level, looking diagonally across the room to the nightstand. No drift.
@@ -263,6 +266,7 @@ One telephone, on the nightstand only. One recorder, on the desk only. The room 
 
 ## 10. 참고 가이드 — 어휘·작성법 보충 (커뮤니티 · MIT, 매일 자동 동기화)
 
+아래 자료에서 품질에 직접 듣는 규칙은 이미 `seedance-quality.md` 로 우리 앱에 맞게 옮겨 두었다 — 먼저 그걸 쓰고, 원문은 말을 더 고를 때 본다.
 형식은 이 문서(또는 사용자 지시)를 따르고, 아래는 **말을 고르고 함정을 피할 때** 찾아본다. 그 안의 짧은 공식·키워드 수 제한·
 다른 플랫폼 파라미터·`@Image 1` 표기는 따르지 않는다(앱은 `[Image 1]`). 목록과 버전은 `freewill_guide("versions")` 의 커뮤니티 표.
 
@@ -292,5 +296,6 @@ O-Side 문서 안의 상대 경로는 이렇게 받는다 — `../higgsfield-<�
 ## 11. 보내기 전에
 
 1. `references/prompt-logic.md` 대로 한 블록씩 대조하고 모순을 고친다.
-2. 보내기 스크립트 dry-run 이 짚는 "확인할 것"을 하나씩 보고 고치거나, 맞는 경우면 그대로 둔다.
-3. 확인 카드는 할지 말지만 묻는다 — 영어 프롬프트는 사용자가 보자고 할 때만 보여 준다.
+2. `references/seedance-quality.md` 1절 열 가지(컷 규칙 · 끝에 닿는 움직임 · 원인 사슬 · 개수 · 세트 잠금 · 배분 · 잴 수 있는 말 · 동사 · 처음부터 · 한 줄씩 고치기)를 대조한다.
+3. 보내기 스크립트 dry-run 이 짚는 "확인할 것"을 하나씩 보고 고치거나, 맞는 경우면 그대로 둔다.
+4. 확인 카드는 할지 말지만 묻는다 — 영어 프롬프트는 사용자가 보자고 할 때만 보여 준다.
