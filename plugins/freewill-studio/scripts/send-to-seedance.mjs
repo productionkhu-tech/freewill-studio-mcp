@@ -101,8 +101,8 @@ function blocksOf(p) {
   }
   return out;
 }
-// 레퍼런스→영상에서 구도를 그림에 맡기는 문장(10/14 "matching the camera position of [Image 1]") — 그림은 생김새·재질·빛만 맡는다
-const FRAMING_FROM_IMAGE = /\b(?:camera (?:position|placement|angle|height|setup)|framing|composition|viewpoint|point of view|vantage)\s+(?:of|from|in|as in|shown in|seen in)\s+\[Image \d+\]|\bmatch(?:es|ing)?\s+(?:the\s+)?(?:camera|framing|composition|view|angle)\b[^.\n]{0,40}\[Image \d+\]|\b(?:close to|as in|like) the (?:view|angle|framing|composition|shot) of \[Image \d+\]/i;
+// 레퍼런스→영상에서 구도를 그림(파일 [Image N] 이든 엘리먼트 @{이름} 이든)에 맡기는 문장(10/14 "matching the camera position of [Image 1]") — 그림은 생김새·재질·빛만 맡는다
+const FRAMING_FROM_IMAGE = /\b(?:camera (?:position|placement|angle|height|setup)|framing|composition|viewpoint|point of view|vantage)\s+(?:of|from|in|as in|shown in|seen in)\s+(?:\[Image \d+\]|@\{[^}\n]+\})|\bmatch(?:es|ing)?\s+(?:the\s+)?(?:camera|framing|composition|view|angle)\b[^.\n]{0,40}(?:\[Image \d+\]|@\{[^}\n]+\})|\b(?:close to|as in|like) the (?:view|angle|framing|composition|shot) of (?:\[Image \d+\]|@\{[^}\n]+\})/i;
 function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
   const p = String(j.prompt);
   // hard = 앱·BytePlus 가 실패하거나 바인딩이 깨지는 것(사용자 형식이어도 멈춤) · house = 사내 쓰는 법 점검(user_format 이면 확인할 것으로만)
@@ -583,9 +583,41 @@ async function main() {
   const same = goals.filter((x, i) => x.g && goals.some((y, k) => k !== i && y.g === x.g && y.p !== x.p));
   if (same.length) problems.push(`여러 작업의 목표 문장(【Generation Goal】·SCENE CONTEXT)이 똑같다(${same.length}건) — 장면마다 주 대상·주 사건을 그 장면 내용으로 쓴다(공통 문장을 끼워 넣지 않는다)`);
   if (jobs.some(userFormat)) log(`  사용자 형식(user_format) ${jobs.filter(userFormat).length}건 — 사내 쓰는 법 점검은 막지 않고 아래 "확인할 것"으로만 보여 준다`);
+
+  // 어셋 라이브러리 — 인물·장소·소품은 엘리먼트 @{이름} 이 기본(지침 6단계 시댄스 0). 지금 프로젝트에 연결된 컬렉션의 엘리먼트를
+  // 보여 주고, 프롬프트의 @{이름} 이 거기 있는지 보내기 전에 본다(없으면 앱이 보낼 때 막는다). 프로젝트 하나에 컬렉션은 하나.
+  const elementModes = ["multimodal_reference", "edit_video"];
+  const modeOf = (j) => j.mode ?? defaults.mode;
+  const mentions = (j) => [...new Set([...String(j.prompt).matchAll(/@\{([^}\n]+)\}/g)].map((m) => m[1].trim()))];
+  const seedanceJob = (j) => /seedance/.test(j.model ?? defaults.model ?? "");
+  let library = null;
+  if (jobs.some((j) => seedanceJob(j) && (elementModes.includes(modeOf(j)) || mentions(j).length))) {
+    try {
+      const raw = await sendCommand(spec.manual, "collections.list", {});
+      const bound = (Array.isArray(raw) ? raw : raw?.collections || []).filter((c) => (c.boundTo || []).includes(project));
+      library = new Map(bound.flatMap((c) => (c.elements || []).map((e) => [e.name, { ...e, collection: c.name }])));
+      log(library.size
+        ? `  "${project}" 에 연결된 컬렉션 「${bound.map((c) => c.name).join("」「")}」의 엘리먼트 ${library.size}개: ${[...library.values()].map((e) => `@{${e.name}}`).join(" ")}`
+        : `  "${project}" 에 연결된 엘리먼트 없음 — 다시 쓸 인물·장소·소품은 collection.create → elements.add → collection.bind 뒤 @{이름} 으로(지침 6단계 시댄스 0)`);
+    } catch (e) {
+      log(`  참고: 어셋 라이브러리를 못 읽음 — ${e.message} (앱 26.10.305 이상이면 --do collections.list)`);
+    }
+  }
+  for (const j of jobs) {
+    const names = mentions(j);
+    if (names.length && seedanceJob(j) && !elementModes.includes(modeOf(j))) {
+      problems.push(`${nameOf(j)}: 엘리먼트 @{${names[0]}} 는 레퍼런스→영상·영상 편집 모드에서만 된다 — 이 모드에선 그림 파일(refs)로`);
+    }
+    if (library) for (const n of names.filter((n) => !library.has(n))) {
+      problems.push(`${nameOf(j)}: @{${n}} 가 "${project}" 에 연결된 컬렉션에 없다 — 이름을 고치거나 elements.add 로 등록(연결된 게 없으면 collection.bind)`);
+    }
+  }
   const notes = jobs.flatMap((j, i) => [
     ...logicNotes(j, { model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration) }),
     ...(userFormat(j) ? lints[i].house.map((h) => `(사내 형식 기준) ${h}`) : []),
+    ...(seedanceJob(j) && modeOf(j) === "multimodal_reference" && j.refs.some((r) => !r.role && KINDS.Image.test(r.path))
+      ? [`그림 파일 ${j.refs.filter((r) => !r.role && KINDS.Image.test(r.path)).length}장을 [Image N] 으로 붙였다 — 다시 쓸 인물·장소·소품이면 어셋 라이브러리 엘리먼트로 등록해 @{이름} 으로 부른다(지침 6단계 시댄스 0)`]
+      : []),
   ].map((n) => `${nameOf(j)}: ${n}`));
   const noteText = notes.length ? `\n  확인할 것 (논리 점검 — references/prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}` : "";
   if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}${noteText}`);

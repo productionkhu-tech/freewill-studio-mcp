@@ -31,7 +31,11 @@ Omni(구글)는 해당 없다 — 그 공식 가이드대로.
 
 ## 2. 레퍼런스 — 역할을 범위로 묶는다 (레퍼런스→영상)
 
-그림마다 한 줄: **무엇인지 + 그 그림에서 쓸 것 + (시트면) 배경·칸·글자는 배치일 뿐 + 개수.**
+**인물·장소·소품은 어셋 라이브러리 엘리먼트 `@{이름}` 으로 부르는 게 기본이다**(지침 6단계 시댄스 0 — 등록·연결 방법).
+한 번 등록하면 컷·작업이 바뀌어도 같은 이름으로 다시 부르고, 번호가 섞이지 않으며, 앱이 그 엘리먼트의 그림(시트·여러 방향)을 알아서 붙인다.
+그림 파일 `[Image N]` 은 그 컷에만 한 번 쓰는 그림(구도 참고·블로킹 맵), 빠른 시험, 엘리먼트가 안 되는 모드일 때만 — 줄 쓰는 법은 같다.
+
+레퍼런스마다 한 줄: **무엇인지 + 그 그림에서 쓸 것 + (시트면) 배경·칸·글자는 배치일 뿐 + 개수.**
 
 | 종류 | 그림이 맡는 것 | 글이 맡는 것 |
 |---|---|---|
@@ -41,29 +45,29 @@ Omni(구글)는 해당 없다 — 그 공식 가이드대로.
 | 영상 레퍼런스 | 정한 것만(움직임·카메라 움직임·리듬 중) | 나머지 전부 |
 
 ```
-[Image 1] is Mina, a Korean woman in her early thirties, slim, chin-length black bob, navy trench coat over a white shirt. Use her face, hair and wardrobe from the sheet's front full-body panel; the sheet's grey backdrop and panel layout are layout only. 100% matches the reference.
-[Image 2], [Image 3] and [Image 4] are three views of one single underground car park: board-marked concrete, pale green epoxy floor, square columns with striped corner guards, fluorescent tubes. Use them for the space's layout, materials and light; the framing of every shot is written below, not taken from these views.
-[Image 5] is the dashboard camera: matte black body, one round lens in a gunmetal ring, a slim windshield mount. Exactly one camera exists in the frame; the sheet's views and dividing line are layout only. 100% matches the reference.
+@{hero_mina} is Mina, a Korean woman in her early thirties, slim, chin-length black bob, navy trench coat over a white shirt. Use her face, hair and wardrobe from the sheet's front full-body panel; do not take the sheet's grey backdrop or panel layout. 100% matches the reference.
+@{loc_carpark} is one single underground car park seen from several directions: board-marked concrete, pale green epoxy floor, square columns with striped corner guards, fluorescent tubes. Use it for the space's layout, materials and light; the framing of every shot is written below, not taken from its views. Do not use the cars or people in it.
+@{prop_dashcam} is the dashboard camera: matte black body, one round lens in a gunmetal ring, a slim windshield mount. Exactly one camera exists in the frame; the sheet's views and dividing line are layout only. 100% matches the reference.
 [Video 1] is used only for the camera move — a slow handheld walk-in; not for the people, clothing or location in it.
-The reference images supply identity, materials, colour and light; the shot sizes, camera positions and timing written here supply the framing.
+The references supply identity, materials, colour and light; the shot sizes, camera positions and timing written here supply the framing.
 ```
+(여기서 `[Video 1]` 은 이 컷에만 쓰는 움직임 참고라 파일로 붙였다 — 엘리먼트와 섞어 써도 된다.)
 
-- **쓸 것과 쓰지 않을 것을 한 문장에** — `[Image 4] is the workbench and window light. Do not use the people in the image.`
+- **쓸 것과 쓰지 않을 것을 한 문장에** — `@{loc_workshop} is the workbench and window light. Do not use the people in it.`
   그림에 새어 나올 수 있는 것(다른 사람, 시트의 회색 배경·칸, 마네킹)은 그 줄에서 바로 뺀다.
 - **충실도를 같이** — 그대로(face, build, wardrobe 전부) / 일부만(`the jacket and the scar; hairstyle may change`) /
   다른 대상에 옮기기(`apply this fabric's weave to Mina's coat only` — 옮겨 갈 대상을 꼭 이름으로) / 느낌만(색·분위기).
-- **동작·컷 문장에서는 `[Image N]` 대신 이름 + 눈에 보이는 특징 하나로** — `Mina, in the navy trench coat, crosses to the door.`
-  핸들을 문장 주어로 쓰면 같은 인물이 둘로 나오기 쉽다(시댄스 2.5). `[Image N]` 은 ACTIVE REFERENCES 의 역할 줄에만.
+- **동작·컷 문장에서는 `@{이름}`·`[Image N]` 대신 사람 이름 + 눈에 보이는 특징 하나로** — `Mina, in the navy trench coat, crosses to the door.`
+  핸들을 문장 주어로 쓰면 같은 인물이 둘로 나오기 쉽다(시댄스 2.5). 핸들은 ACTIVE REFERENCES 의 역할 줄에만 한 번씩.
 - 인물 외모 글은 짧게 — 나이·역할·체형, 지금 상태, 꼭 살아야 할 특징 한두 개. 긴 외모 글은 그림과 싸운다. 작은 글자·로고·색처럼
   빠지기 쉬운 건 글로도 한 번 적는다.
-- **레퍼런스가 많으면 다섯 단계로** — ① 대상마다 한 줄씩 이름 붙이기(`[Image 1] … [Image 4] define four characters` 처럼 한 줄에 묶지 않는다)
+- **레퍼런스가 많으면 다섯 단계로** — ① 대상마다 한 줄씩(`[Image 1] … [Image 4] define four characters` 처럼 한 줄에 묶지 않는다 — 엘리먼트면 이름이 이미 하나씩이다)
   ② 종류별로 묶기(인물 · 소품 · 장소 · 움직임·소리) + `Do not interchange these characters' appearances, positions or dialogue.`
   ③ 여러 컷에 나오는 인물은 프로필 한 덩어리(옷 = 어느 그림, 늘 드는 소품, 나오는 장소) ④ 컷마다 그 컷에 쓰는 것만 다시 고르기
   ⑤ 소품은 한 사람 것(`belongs only to Mina`), 인원·옷·방향이 컷마다 같은지 확인.
 - **그 컷에 안 나오는 대상의 그림은 넣지 않는다** — 넣으면 모델이 화면에 억지로 넣는다. 여러 컷이면 컷 문단에서 그 컷에 나오는 것만 부른다.
 - 같은 대상의 여러 그림(장소 4방향, 6면 시트)은 하나로 묶고 개수를 잠근다 — `jointly define one …`, `exactly one …, never a copy`.
 - 그림의 구도를 따르라고 쓰지 않는다 — `matching the camera position of [Image 1]` 같은 문장은 다른 컷까지 그 구도로 끌고 가거나 무시된다.
-- 어셋 라이브러리에 올린 엘리먼트는 `@{이름}` 으로 부르고, 줄 쓰는 법은 같다.
 
 ## 3. 형식 — 블록 순서
 
@@ -188,7 +192,7 @@ POSITIVE LOCKS
 
 ## 9. 예 — 같은 장면, 전과 후
 
-설정: 시댄스 2.5 · 레퍼런스→영상 · 21:9 · 5초 · 그림 6장(모텔 방 4방향, 전화기 6면 시트, 녹음기 6면 시트)
+설정: 시댄스 2.5 · 레퍼런스→영상 · 21:9 · 5초 · 모텔 방 4방향 그림, 전화기 6면 시트, 녹음기 6면 시트
 
 **전** (실제로 보낸 것의 일부)
 ```
@@ -198,18 +202,19 @@ Shot 3, slow dolly-in toward the nightstand beside the bed, ending close to the 
 ```
 - 5초에 컷 3개 — 컷마다 2초가 안 돼 사건이 다 되다 만다.
 - 카메라 자리를 그림에 맡겼다 — 구도가 끌려가거나 무시된다.
+- 다시 쓸 방·소품을 그림 파일 6장(`[Image 1]`~`[Image 6]`)으로 붙였다 — 엘리먼트로 등록하면 이름으로 부르고 다음 컷에도 그대로 쓴다.
 - 화각·카메라 높이·빛 방향·색온도가 없다 — 모델이 무난한 평균으로 채운다.
 
-**후** (같은 설정, 원테이크)
+**후** (같은 설정, 원테이크 — 세 가지를 엘리먼트로 등록하고 `@{이름}` 으로, `refs` 는 비움)
 ```
 SCENE CONTEXT
 A 1970s neo-noir thriller, night, heavy rain. In an empty motel room a mustard rotary telephone rings on the nightstand while, on the writing desk across the room, a reel-to-reel tape recorder switches itself on and starts taping a call nobody answers.
 
 ACTIVE REFERENCES
-[Image 1], [Image 2], [Image 3] and [Image 4] are four views of one single motel room: walnut wall panelling, patterned carpet, venetian blinds, a long writing desk under the window and a small nightstand at the head of the bed. Use them for the room's layout, materials and light; the framing below is written here, not taken from these views.
-[Image 5] is the telephone: glossy mustard-yellow body, cream handset resting in the cradle, clear rotary dial over a cream number ring, coiled cream cord. Exactly one telephone exists; the sheet's six views and grey backdrop are layout only. 100% matches the reference.
-[Image 6] is the tape recorder: brushed-aluminium top plate, walnut cheeks, two clear reels of brown tape, chrome head block, two cream VU meters, a row of black piano keys. Exactly one recorder exists; the sheet's six views and grey backdrop are layout only. 100% matches the reference.
-The reference images supply identity, materials and light; the shot size, camera position and timing written here supply the framing.
+@{loc_motel_room} is one single motel room seen from four directions: walnut wall panelling, patterned carpet, venetian blinds, a long writing desk under the window and a small nightstand at the head of the bed. Use it for the room's layout, materials and light; the framing below is written here, not taken from its views.
+@{prop_rotary_phone} is the telephone: glossy mustard-yellow body, cream handset resting in the cradle, clear rotary dial over a cream number ring, coiled cream cord. Exactly one telephone exists; the sheet's six views and grey backdrop are layout only. 100% matches the reference.
+@{prop_reel_recorder} is the tape recorder: brushed-aluminium top plate, walnut cheeks, two clear reels of brown tape, chrome head block, two cream VU meters, a row of black piano keys. Exactly one recorder exists; the sheet's six views and grey backdrop are layout only. 100% matches the reference.
+The references supply identity, materials and light; the shot size, camera position and timing written here supply the framing.
 
 LOCATION MAP
 Foreground, screen-left: the end of the writing desk under the window, the recorder on it. Midground: about 3 m of patterned carpet. Background, screen-right: the nightstand at the head of the bed, the telephone on it. The rain-streaked window is behind the desk on screen-left; red neon from a sign outside falls through the blinds in horizontal stripes.

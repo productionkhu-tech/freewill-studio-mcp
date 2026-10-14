@@ -125,7 +125,9 @@ PRESERVE EXACTLY: [face, hair, wardrobe, pose, camera angle, background, light a
 영상 프롬프트 쓰는 법 전체는 `references/seedance-prompting.md` — 그림은 생김새, 구도는 글(2절).
 
 - **시트는 생성 원본 그대로** 레퍼런스로 넣는다 — 패널을 잘라 내거나 손댄 시트는 BytePlus 실사 인물 필터에 걸리기 쉽다. 그림 비율은 0.39~2.5 안.
-- 어셋 라이브러리에 엘리먼트로 올리면(이름 · 분류 character / location / prop · 설명) 프롬프트에서 `@{이름}` 으로 부른다(6단계 "앱 기능").
+- **영상에 넣을 에셋은 어셋 라이브러리 엘리먼트로 등록해 `@{이름}` 으로 부르는 게 기본이다**(지침 6단계 시댄스 0) — 이름 · 분류
+  character / location / prop · 설명 한 줄 · 이미지(시트 원본 그대로, 장소는 여러 방향 그림까지 한 엘리먼트에). 이름은 `hero_mina` ·
+  `lot_hotel_garage` · `prop_dashcam` 처럼 짧은 영어로. 그림 파일을 직접 붙이는 건 한 번 쓰고 말 그림일 때만.
 - 영상 프롬프트에는 이렇게: 시트의 칸·구분선·라벨은 배치일 뿐 물건이 아니라고, 그 소품은 화면에 하나뿐이라고 — `The sheet's panels, dividing line and labels are layout only and never appear as objects; only ONE [object] exists in the frame.` 인물은 나이 · 역할 · 지금 상태 · 눈에 띄는 특징만 짧게, 나머지는 레퍼런스가 맡는다.
 - 그 컷에 나오지 않는 에셋은 넣지 않는다 — 넣으면 모델이 화면에 억지로 넣는다.
 - 배경 그림을 구도까지 따르게 하려면 첫 프레임으로, 장소의 생김새·분위기만 쓰려면 레퍼런스로(모드는 3단계에서 정한다).
