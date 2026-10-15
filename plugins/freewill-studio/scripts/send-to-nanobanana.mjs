@@ -27,11 +27,13 @@
 //                                                    지켜본 뒤 새 그림을 그 폴더로 복사(<작업 이름>_A.png · _목록.tsv) —
 //                                                    앱 저장 폴더의 원본은 그대로 둔다(옮기면 앱 갤러리에서 사라진다)
 //   node send-to-nanobanana.mjs jobs.json --keep     탭 입력값을 되돌리지 않음
-//   node send-to-nanobanana.mjs --tab "K" jobs.json  지금 탭 이름이 K 일 때만 보냄
+//   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다) — 앱의 생성 기능은 화면에 떠 있는
+//                                                    탭에만 들어가서, K 가 화면에 없으면 사람이 K 를 누를 때까지 기다렸다 이어서 넣는다
 //
 // jobs.json:
 //   {
 //     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
+//     "tab": "보낼 탭 이름 — 사용자가 이 작업용으로 만들어 둔 탭(팀·프로젝트가 골라져 있어야 한다). 비우면 지금 화면의 탭",
 //     "defaults": { "model": "gpt-image-2.5-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
 //     "jobs": [
@@ -210,19 +212,19 @@ async function waitForRoom(need) {
   }
 }
 
-// Generate 는 지금 띄운 탭에 들어간다. 기다리는 사이 사람이 다른 탭으로 갔으면 돌아올 때까지 기다린다.
-async function waitForTab(tab) {
+// Generate 는 지금 띄운 탭에 들어간다. 정한 탭이 화면에 없으면(처음부터, 또는 기다리는 사이 사람이 다른 탭으로 갔으면) 누를 때까지 기다린다.
+async function waitForTab(tab, limitMs = 30 * 60 * 1000) {
   const started = Date.now();
   let hinted = false;
   for (;;) {
     const now = await activeTab();
     if (now?.pid === tab.pid) return;
     if (!hinted) {
-      log(`  기다리는 중 — 앱에서 "${tab.name}" 탭으로 돌아오면 이어서 넣는다(지금 "${now?.name ?? "?"}")`);
+      log(`  기다리는 중 — 앱에서 "${tab.name}" 탭을 누르면(화면에 띄우면) 바로 이어서 넣는다(지금 화면 "${now?.name ?? "?"}")`);
       hinted = true;
     }
-    if (Date.now() - started > 30 * 60 * 1000) throw new Error(`"${tab.name}" 탭으로 30분 동안 돌아오지 않음`);
-    await sleep(3000);
+    if (Date.now() - started > limitMs) throw new Error(`"${tab.name}" 탭이 ${Math.round(limitMs / 60000)}분 동안 화면에 뜨지 않음 — 그 사이 넣지 않은 작업은 보내지 않았다`);
+    await sleep(2000);
   }
 }
 
@@ -279,13 +281,36 @@ async function main() {
   if (!token && netCode && netCode !== "ECONNREFUSED") fail(`나노바나나에 연결 못 함 (${netCode}) — ${BLOCKED}`);
   if (!token) fail("나노바나나가 꺼져 있다 — 앱을 켜 달라고 할 것");
 
-  // 2) 어느 탭으로 들어가는지, 팀·프로젝트가 골라져 있는지
-  const tab = await activeTab();
+  // 2) 어느 탭으로 들어가는지, 팀·프로젝트가 골라져 있는지.
+  // 앱의 생성(/api/generate)·레퍼런스 기능은 화면에 떠 있는 탭에만 들어간다 — 탭을 지정하는 칸이 없다. 탭 전환 API 는 있지만
+  // 앱 화면은 바깥에서 바뀐 걸 모른다(사람이 누를 때만 화면을 다시 그린다). 몰래 바꾸면 화면엔 옛 탭이 보이는데 그 상태로 친 글·넣은
+  // 그림이 다른 탭으로 들어간다. 그래서 바꾸지 않고, 정한 탭(jobs.json "tab" · --tab)이 화면에 없으면 사람이 누를 때까지 기다린다
+  // (10/15 사용자 "탭을 항상 클릭해 줘야 하는 이유는?" — 앱이 탭을 지정해 생성하게 바뀌면 이 기다림도 없앤다).
+  const want = TAB || String(spec.tab || "");
+  let tab = await activeTab();
   if (!tab) fail("지금 탭을 알 수 없음");
-  if (TAB && tab.name !== TAB) fail(`지금 탭은 "${tab.name}" — "${TAB}" 탭을 띄워 달라고 할 것`);
-  const billing = await get("/api/billing/state");
-  if (!(billing?.confirmed && billing.project_id)) fail(`"${tab.name}" 탭에 팀·프로젝트가 안 골라져 있다 — 앱에서 먼저 고르게 할 것`);
+  const screenTab = tab.name;
+  let billing = null;
+  if (want && tab.name !== want) {
+    const tabs = (await get("/api/projects"))?.projects || [];
+    const target = tabs.find((p) => p.name === want);
+    if (!target) fail(`나노바나나에 "${want}" 탭이 없다(지금 탭: ${tabs.map((p) => `"${p.name}"`).join(", ")}) — 이름을 확인하거나 앱에서 만들어 달라고 할 것`);
+    if (!(target.billing_team_id && target.billing_project_id)) fail(`"${want}" 탭에 팀·프로젝트가 안 골라져 있다 — 앱에서 그 탭을 열고 고르게 할 것`);
+    if (DRY) {
+      billing = { team_id: target.billing_team_id, project_id: target.billing_project_id };
+      tab = target;
+    } else {
+      log(`"${want}" 탭이 화면에 떠 있어야 넣을 수 있다(앱의 생성 기능은 화면에 떠 있는 탭에만 들어간다) — 지금 화면은 "${screenTab}" 탭`);
+      await waitForTab(target, 10 * 60 * 1000);
+      tab = await activeTab();
+    }
+  }
+  billing = billing || await get("/api/billing/state");
+  if (!(billing?.project_id && billing.confirmed !== false)) fail(`"${tab.name}" 탭에 팀·프로젝트가 안 골라져 있다 — 앱에서 먼저 고르게 할 것`);
   log(`탭 "${tab.name}" · ${billing.team_id} / ${billing.project_id} 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"}`);
+  if (DRY && tab.name !== screenTab) {
+    log(`  참고: 지금 화면은 "${screenTab}" 탭 — 보낼 때 "${tab.name}" 탭이 화면에 없으면 사용자에게 그 탭을 한 번 눌러 달라고 하고 기다린다(누르면 바로 이어서 넣는다)`);
+  }
   // 프롬프트 본문은 영어 — 따옴표 안(그림 속 글자)만 그 언어로. 일부러 한국어면 "prompt_language": "ko" (시댄스와 같은 규칙)
   const korean = jobs.filter((j) => (j.prompt_language ?? defaults.prompt_language) !== "ko" &&
     /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(String(j.prompt).replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|「[^」\n]*」|『[^』\n]*』/g, "")));
@@ -323,7 +348,8 @@ async function main() {
   log(`  이번 ${total}장 · ${quota} · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
     `(동시 ${MAX_IN_FLIGHT}장까지 — 넘으면 앞의 것이 끝나야 다음 작업을 넣는다)`);
   if (DRY) {
-    log(`  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`);
+    log(tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
+      : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
     for (const [i, j] of jobs.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
       log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)} · 레퍼런스 ${(j.refs || []).length}장`);

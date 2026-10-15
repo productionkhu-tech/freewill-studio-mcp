@@ -37,8 +37,9 @@
 //   {
 //     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
 //     "manual": "읽은 설명서 버전 (--manual 이 알려 준 값 그대로) — 앱이 바뀌었으면 앱이 받지 않는다",
-//     "project": "앱 사이드바에 열린 프로젝트 이름 (확인 카드에 보여 준 것 — 다르면 앱이 안 보냄, 생략하면 지금 값)",
-//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 다르면 앱이 안 보냄, 생략하면 지금 값)",
+//     "project": "보낼 사이드바 프로젝트 이름 (사용자가 이 작업용으로 만들어 둔 것 — 안 열려 있으면 스크립트가 연다(project.open,
+//                 사이드바 클릭과 같음). dry-run 도 연다(그 프로젝트의 과금을 카드에 보여 주려고). 생략하면 지금 열린 것)",
+//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 그 프로젝트를 연 뒤 과금이 이것과 다르면 안 보냄, 생략하면 그 프로젝트 값)",
 //     "defaults": { "model": "dreamina-seedance-2-5-260628", "mode": "multimodal_reference",
 //                   "ratio": "16:9", "duration": 10, "resolution": "720p", "draft": true,
 //                   "output_count": 1, "generate_audio": true },
@@ -582,13 +583,32 @@ async function main() {
   }
 
   // 1) 앱 상태 — 설명서가 그대로인지, 켜져 있는지, 프로젝트·과금이 골라져 있는지, 작성 칸이 있는지
-  const s = await appStatus(spec.manual);
+  let s = await appStatus(spec.manual);
   if (!s.screenAlive) fail("시댄스 서버는 켜져 있지만 앱 화면이 응답하지 않는다 — 앱 창이 열려 있는지 확인해 달라고 할 것");
   if (s.manualStale) await staleStop(s.notice || "앱이 업데이트됐다");
-  if (!s.project) fail("앱에 열린 프로젝트가 없다 — 앱에서 프로젝트(사이드바)를 열어 달라고 할 것");
+  // 사용자가 이 작업용으로 만들어 둔 프로젝트(jobs.json "project")가 안 열려 있으면 연다 — 사이드바 클릭과 같은 앱 명령(project.open).
+  // 과금 프로젝트는 사이드바 프로젝트마다 정해 두는 것이라 열면 같이 따라온다 — 연 뒤에 확인 카드의 과금(billing)과 같은지 본다.
+  // (10/15 사용자 "프로젝트 세팅이랑 과금 다 정해 주고 탭도 만들어 줬는데 항상 클릭해 줘야 하는 이유는?")
+  if (spec.project && spec.project !== s.project) {
+    const before = s.project || "없음";
+    let names = null;
+    try {
+      const pl = await sendCommand(spec.manual, "projects.list", {});
+      names = (Array.isArray(pl) ? pl : pl?.projects || []).map((p) => p.name);
+    } catch (e) {
+      if (e instanceof Stop && e.quiet) throw e;   // 앱이 업데이트됨 — 새 설명서를 이미 보여 줬다
+      fail(`앱에 열린 프로젝트는 "${before}" — 확인한 "${spec.project}" 와 다르다. 프로젝트를 열어 주는 명령을 못 썼다(${e.message}) — ` +
+        `앱이 26.10.305 전이면 사용자가 앱에서 "${spec.project}" 를 열게 할 것`);
+    }
+    if (!names.includes(spec.project)) fail(`시댄스 사이드바에 "${spec.project}" 프로젝트가 없다 — 이름을 사이드바 그대로 적거나, 새로 만들지 사용자에게 물을 것(지침 6단계 작업 정리)`);
+    await sendCommand(spec.manual, "project.open", { project: spec.project });
+    s = await appStatus(spec.manual);
+    if (s.project !== spec.project) fail(`"${spec.project}" 를 열지 못했다(지금 "${s.project || "없음"}") — 앱 화면을 확인해 달라고 할 것`);
+    log(`시댄스에서 "${spec.project}" 프로젝트를 열었다 — 사이드바 클릭과 같음(그전 화면 "${before}")`);
+  }
+  if (!s.project) fail("앱에 열린 프로젝트가 없다 — jobs.json 에 \"project\"(사이드바 이름)를 적으면 스크립트가 연다. 모르면 사용자에게 물을 것");
   if (!s.billing) fail(`"${s.project}" 에 과금 프로젝트가 안 골라져 있다 — 앱 설정 패널 맨 위 "프로젝트" 드롭다운에서 고르게 할 것`);
-  if (spec.project && spec.project !== s.project) fail(`앱에 열린 프로젝트는 "${s.project}" — 확인한 "${spec.project}" 와 다르다. 사용자에게 확인할 것`);
-  if (spec.billing && spec.billing !== s.billing) fail(`앱의 과금 프로젝트는 "${s.billing}" — 확인한 "${spec.billing}" 와 다르다. 사용자에게 확인할 것`);
+  if (spec.billing && spec.billing !== s.billing) fail(`"${s.project}" 의 과금 프로젝트는 "${s.billing}" — 확인한 "${spec.billing}" 와 다르다. 사용자에게 확인할 것`);
   const project = spec.project || s.project;
   const billing = spec.billing || s.billing;
   log(`프로젝트 "${project}" · 과금 "${billing}" 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"} · 설명서 ${spec.manual}`);
