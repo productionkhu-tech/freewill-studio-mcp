@@ -611,7 +611,5 @@
       "higgsfield-youtube-thumbnail"
     ]
   },
-  "failing": {
-    "seedream": "**seedream** 페이지에 MDContent 가 없음 — BytePlus 문서 형식이 바뀌었는지 확인"
-  }
+  "failing": {}
 }
