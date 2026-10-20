@@ -183,6 +183,10 @@
     (`CUT 2 — over Jun's shoulder, still on the window side; Mina, screen-left, faces screen-right`).
   - 움직임도 같다 — 왼쪽에서 오른쪽으로 달리던 사람은 다음 컷에서도 왼쪽 → 오른쪽. 쫓는 쪽과 쫓기는 쪽은 같은 방향으로 간다.
   - 시선을 맞춘다 — 둘의 클로즈업을 이을 때 A 는 렌즈의 화면 오른쪽 옆을, B 는 화면 왼쪽 옆을 같은 높이로 본다. 둘 다 같은 쪽을 보면 서로 안 보는 것처럼 읽힌다.
+- **한 줄 선언으로는 부족하다 — 컷마다 경계물이 화면 어느 끝에 걸리는지까지 적는다.** "A 편은 늘 화면 왼쪽" 을 한 번 적어도 컷마다 무너진다
+  (특히 한쪽만 보이는 컷 · 빠른 연속 컷). 두 편을 가르는 경계물(네트 · 중앙선 · 테이블 · 문 · 길)이 그 컷 화면의 어느 끝에 걸리는지,
+  보이는 편이 어느 쪽인지 컷마다 쓴다. 이렇게 적자 비로소 맞게 나왔다는 현장 기록이 있다:
+  `CUT 4 — only the home half is visible; the net runs down the right edge of the frame; the home side fills screen-left.`
 - **넘을 때는 일부러, 넘는 방법까지 쓴다.** ① 한 컷 안에서 카메라가 선을 건너는 모습을 보여 준다(`the camera arcs across the line in view`)
   ② 축 위 정면 컷(뉴트럴 — 렌즈를 향해 오거나 멀어지는)을 사이에 둔다 ③ 인서트로 한 번 끊는다 ④ 인물이 화면 안에서 방향을 바꾼다
   ⑤ 혼란 · 힘의 역전을 노리고 그냥 넘는다 — 그때는 의도를 한 줄로 적는다(`The camera jumps the line here on purpose: the power has shifted to Jun.`).
@@ -279,6 +283,8 @@
 
 ## 10. 결과가 이상할 때 — 증상 → 원인 → 고치기
 
+**먼저 내가 쓴 문장을 의심한다** — 그 구간에 해당하는 동사 · 모든 컷에 붙인 공통 문구 · 효과 말부터 본다. 단어 하나가 그림을 바꾼다(GUIDE 7단계).
+
 | 증상 | 흔한 원인 | 고치기 |
 |---|---|---|
 | 흐리고 떨리고 녹아내린다 | 5초에 행동 박자가 셋 이상, 한 문장에 여러 축 | 박자를 컷으로 나누고 문장 하나에 축 하나 — 줄이지 말고 정리 |
@@ -306,6 +312,11 @@
 | 색이 화면 전체로 번진다 | 색 이름만 씀 | 1절 6의 배분 + 자기 점검 문장(`if the frame turns yellow, the frame is wrong`) |
 | 화면 전체가 뭉개진다 | 맨말 품질어(grain · hazy · blurry) | 어느 면이 언제, 안개는 % · m |
 | 밤인데 낮처럼 밝다 | `night` 한 단어 | 화면 속 광원만, 하늘은 거의 검게(6절) |
+| 들고 있어야 할 물건이 손을 떠나 공중에 뜬다 | 던지는 뜻의 동사(hurl · fling · toss · throw) | 쥔 채 하는 동사로(`raises it overhead`, `holds it aloft`) + `it never leaves her hands` |
+| 동작 중간에 멈춘다(물건 · 손이 정지) | 모든 컷에 붙인 공통 문구의 정지 · 홀드 규칙 | 공통 문구는 모든 컷에 맞는 말만 — 정지는 정한 한 곳에만, 그 컷에 |
+| 사람이 과하게 날뛰어 옷 · 소품이 날아간다 | 몸 전체를 크게 쓰는 동사(jumping · leaping · flailing) | 실제 한 동작을 크기까지(`bounces once on her toes`) |
+| 빼 달라고 한 효과가 생긴다 | 효과 말이 남아 있음(부정문이어도) | 효과 말 자체를 지운다 — 부정문도 그 말을 부른다 |
+| 컷마다 편 · 진영의 좌우가 바뀐다 | "늘 왼쪽" 한 줄 선언뿐 | 5절 — 컷마다 경계물이 화면 어느 끝에 걸리는지 · 보이는 편이 어느 쪽인지 |
 
 더 자세한 표는 `official:higgsfield-troubleshoot` · `official:higgsfield-seedance/FAILURE-MODES` · `official:higgsfield/skills/shared/house-rulings`.
 
