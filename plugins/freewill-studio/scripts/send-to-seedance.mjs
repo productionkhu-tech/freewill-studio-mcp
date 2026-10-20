@@ -29,6 +29,8 @@
 //   node send-to-seedance.mjs jobs.json --save-to <폴더>
 //                                                   지켜보다 끝난 영상을 받아 그 폴더로 옮김(<작업 이름>_A.mp4 · _목록.tsv)
 //   node send-to-seedance.mjs --status <id> [<id>]  보낸 요청의 지금 상태
+//   node send-to-seedance.mjs --save-final <초안 파일> <본편 카드 id>
+//                                                   본편(card.final 1080p)을 받아 초안 옆에 같은 번호로(_480 → _1080)
 //   node send-to-seedance.mjs --do <명령> [JSON 인자 | @인자파일.json]
 //                                                   앱 기능 명령(26.10.305~) — 프로젝트 · 어셋 라이브러리 · 카드 ·
 //                                                   과금 목록. 명령 목록은 설명서에. 결과는 JSON 으로 출력한다.
@@ -41,8 +43,11 @@
 //     "project": "보낼 사이드바 프로젝트 이름 (사용자가 이 작업용으로 만들어 둔 것 — 안 열려 있으면 스크립트가 연다(project.open,
 //                 사이드바 클릭과 같음, dry-run 도). 생략하면 지금 열린 것)",
 //     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 앱 전체에 하나, 앱을 켤 때마다 사람이 고른다. 다르면 안 보냄, 생략하면 지금 값)",
-//     "work": "작업 폴더 (있으면 dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의 '보낼 것'에 그림으로 뜬다,
-//              보낸 뒤엔 jobs.json 을 05_프롬프트 에 남긴다)",
+//     "work": "작업 폴더(사용자가 알려 준 프로젝트 폴더) — dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의
+//              '보낼 것'에 그림으로 뜨고, 끝나면 영상을 받아 씬·컷 폴더에 놓는다(지켜보기를 켜지 않아도 기다렸다 놓는다)",
+//     "code": "프로젝트 코드(예: ABC) — 파일 이름 맨 앞. 한 번 적으면 _작업설정.json 에 남는다",
+//     작업마다 "scene": "S010", "cut": "C0010" → <작업>\S010\C0010\ABC_S010_C0010_V001_480.mov (번호는 그 컷에서 이어서, 꼬리는 해상도)
+//              여러 컷을 한 번에 뽑은 영상은 첫 컷에 두고 "covers": "C0010~C0040", A/B안은 "version": "A" (목록에 남김)
 //     "defaults": { "model": "dreamina-seedance-2-5-260628", "mode": "multimodal_reference",
 //                   "ratio": "16:9", "duration": 10, "resolution": "720p", "draft": true,
 //                   "output_count": 1, "generate_audio": true, "output_format": "mov" },
@@ -78,6 +83,7 @@ const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const STATUS = flag("--status");
 const MANUAL = flag("--manual");
 const DO = flag("--do");
+const SAVE_FINAL = flag("--save-final");
 const positional = args.filter((a, i) => !a.startsWith("--") && !(saveAt >= 0 && i === saveAt + 1));
 // --manual 로 읽은 설명서 버전을 기억해 두는 곳(--do 가 쓴다). 앱 주소마다 따로 — 시험 서버와 섞이지 않게.
 const STATE_FILE = path.join(os.tmpdir(), `freewill-seedance-manual-${SD.replace(/[^a-z0-9]+/gi, "_")}.json`);
@@ -87,6 +93,66 @@ const readJsonArg = (raw) => {
   const txt = raw.startsWith("@") ? fs.readFileSync(raw.slice(1), "utf8") : raw;
   return JSON.parse(txt.replace(new RegExp("^" + String.fromCharCode(0xfeff)), ""));
 };
+
+// ---------- 작업 폴더에 놓기 (사용자 10/21 "씬 폴더 → 컷 폴더, OK 는 컷 폴더 바로 아래, 보류는 보류 폴더, 탈락은 버림") ----------
+// 씬·컷: <작업>\S010\C0010\<코드>_S010_C0010_V001_480.mov — 그 컷에서 번호를 이어 붙인다(다시 만든 것 · A/B안도 이어서, 어느 안인지는 목록에).
+// 에셋: <작업>\01_에셋\<인물|로케이션|프랍|참고>\<작업 이름>_A.mov. 검수 뒤 OK 는 그 자리, 보류는 그 안 보류\, 탈락은 지운다(앱 원본은 앱에 남는다).
+// 어느 파일이 어디서 왔는지는 <작업>\_검수\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다.
+const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각"];
+const ASSET_KINDS = ["인물", "로케이션", "프랍", "참고"];
+const readJsonSafe = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch { return {}; } };
+const workCode = (spec, work) => String(spec.code || readJsonSafe(path.join(work, "_작업설정.json")).code || "").trim();
+// 이 작업의 결과가 놓일 곳 — { rel, prefix?, scene, cut, range, version } 또는 고칠 점(문자열)
+function placeOf(spec, j, work) {
+  const d = spec.defaults || {};
+  const scene = String(j.scene ?? d.scene ?? "").trim(), cut = String(j.cut ?? d.cut ?? "").trim();
+  const asset = String(j.asset ?? d.asset ?? "").trim();
+  const version = String(j.version ?? d.version ?? "").trim();
+  if (scene || cut) {
+    const code = workCode(spec, work);
+    if (!/^[A-Za-z0-9]+$/.test(code)) return "프로젝트 코드가 없다 — jobs.json \"code\"(예: \"ABC\")를 적을 것(한 번 적으면 _작업설정.json 에 남는다)";
+    if (!/^S\d{3}$/.test(scene) || !/^C\d{4}$/.test(cut)) return `씬·컷은 "S010" · "C0010" 꼴로(지금 "${scene}" · "${cut}")`;
+    return { rel: `${scene}/${cut}`, prefix: `${code}_${scene}_${cut}_`, scene, cut, range: String(j.covers ?? "").trim(), version };
+  }
+  if (asset) {
+    if (!ASSET_KINDS.includes(asset)) return `asset 은 ${ASSET_KINDS.join(" · ")} 중 하나(지금 "${asset}")`;
+    return { rel: `01_에셋/${asset}`, asset, version };
+  }
+  return `둘 자리가 없다 — 작업마다 "scene"·"cut"(예: "S010" · "C0010") 또는 "asset"(${ASSET_KINDS.join(" · ")})을 적을 것. 애매하면 사용자에게 묻는다`;
+}
+function readWorkList(work) {
+  const p = path.join(work, "_검수", "목록.tsv");
+  if (!fs.existsSync(p)) return [];
+  const lines = fs.readFileSync(p, "utf8").split(/\r?\n/).filter((l) => l.trim());
+  const head = (lines.shift() || "").split("\t");
+  return lines.map((l) => Object.fromEntries(l.split("\t").map((v, i) => [head[i] || `c${i}`, v])));
+}
+function appendWorkList(work, rows) {
+  if (!rows.length) return;
+  fs.mkdirSync(path.join(work, "_검수"), { recursive: true });
+  const p = path.join(work, "_검수", "목록.tsv");
+  const clean = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
+  fs.appendFileSync(p, `${fs.existsSync(p) ? "" : `${LIST_HEAD.join("\t")}\n`}${rows.map((r) => LIST_HEAD.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
+}
+// 그 컷에서 다음 번호 — 목록(지운 탈락까지)과 폴더(보류 포함)를 다 본다
+function nextNumber(work, pl, kind) {
+  const re = new RegExp(`^${pl.prefix}${kind}(\\d{3})`);
+  let max = 0;
+  for (const r of readWorkList(work)) { const m = re.exec(r["파일"] || ""); if (m) max = Math.max(max, Number(m[1])); }
+  for (const d of [path.join(work, pl.rel), path.join(work, pl.rel, "보류")]) {
+    if (fs.existsSync(d)) for (const f of fs.readdirSync(d)) { const m = re.exec(f); if (m) max = Math.max(max, Number(m[1])); }
+  }
+  return max + 1;
+}
+// 놓을 파일 이름 — 씬·컷은 <코드>_S010_C0010_I001(+_480 같은 꼬리), 에셋은 작업 이름 + 다음 글자(A, B …)
+function placeName(work, pl, kind, ext, jobName, suffix = "") {
+  if (pl.prefix) return `${pl.prefix}${kind}${String(nextNumber(work, pl, kind)).padStart(3, "0")}${suffix}${ext}`;
+  const base = String(jobName || "job").replace(/[\\/:*?"<>|]+/g, "_").trim();
+  for (let t = 0; ; t++) {
+    const name = `${base}_${t < 26 ? String.fromCharCode(65 + t) : `Z${t - 25}`}${suffix}${ext}`;
+    if (![path.join(work, pl.rel, name), path.join(work, pl.rel, "보류", name)].some((p) => fs.existsSync(p))) return name;
+  }
+}
 
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -295,7 +361,7 @@ const MAX_IN_FLIGHT = 6;   // 그 프로젝트에서 동시에 진행 중인(대
 const PER_REQUEST = 3;     // 요청 하나의 영상 수 최대(앱 한 번 최대)
 const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]);
 // 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
-const COSTLY = { "card.final": 1, "card.regenerate": PER_REQUEST };
+const COSTLY = { "card.final": 1, "card.regenerate": 1 };   // 26.10.2004~ 재생성은 늘 1편
 
 // 커넥터 — 사용 기록과 하루 한도. 표는 커넥터가 내려줄 때 채운다(이 줄의 모양을 바꾸지 말 것).
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
@@ -534,7 +600,7 @@ async function waitTaken(id) {
     if (j.status !== "pending" && j.status !== "taken") return j;
     // 새 앱: 대상 프로젝트에 프로젝트 코드가 없으면 앱이 가져가지 않고 기다린다(10분) — 사람이 고르면 바로 보낸다
     if (j.needsBilling && hinted !== "billing") {
-      log(`  기다리는 중 — "${j.project || "대상"}" 프로젝트에 프로젝트 코드가 없다. 사용자에게 시댄스에서 그 프로젝트의 '프로젝트 코드'를 골라 달라고 할 것` +
+      log("  기다리는 중 — 시댄스에 프로젝트 코드가 안 골라져 있다. 사용자에게 시댄스 설정 패널 맨 위 '프로젝트 코드'를 골라 달라고 할 것" +
         "(고르는 대로 보낸다, 10분 안에 안 고르면 취소 — 에이전트는 고르지 않는다)");
       hinted = "billing";
     }
@@ -608,6 +674,7 @@ async function main() {
     log(JSON.stringify(result, null, 2));
     return;
   }
+  if (SAVE_FINAL) return saveFinal(positional);
   if (STATUS) {
     if (!positional.length) fail("--status 뒤에 요청 id 를 주세요");
     await appStatus();
@@ -627,6 +694,17 @@ async function main() {
     for (const r of j.refs) {
       if (!r?.path || !fs.existsSync(r.path) || !fs.statSync(r.path).isFile()) fail(`레퍼런스 파일이 없음: ${r?.path}`);
       r.path = path.resolve(r.path);   // 앱 서버는 자기 폴더 기준으로 읽으므로 절대 경로로
+    }
+  }
+  // 작업 폴더(사용자가 알려 준 프로젝트 폴더) — 영상을 씬·컷(또는 에셋 종류) 폴더에 놓는다. 자리를 못 정한 작업이 있으면 보내기 전에 멈춘다.
+  const WORKDIR = spec.work ? path.resolve(String(spec.work)) : "";
+  if (WORKDIR) {
+    if (!fs.existsSync(WORKDIR)) fail(`작업 폴더가 없다: ${WORKDIR} — 사용자가 알려 준 프로젝트 폴더인지 확인할 것`);
+    const probs = jobs.map((j) => [j, placeOf(spec, j, WORKDIR)]).filter(([, p]) => typeof p === "string");
+    if (probs.length) fail(`결과를 놓을 자리를 정할 것 (작업 폴더 ${WORKDIR}):\n${probs.map(([j, p]) => `  - ${j.name || "(이름 없음)"}: ${p}`).join("\n")}`);
+    const setFile = path.join(WORKDIR, "_작업설정.json");
+    if (spec.code && readJsonSafe(setFile).code !== String(spec.code).trim()) {
+      fs.writeFileSync(setFile, JSON.stringify({ ...readJsonSafe(setFile), code: String(spec.code).trim() }, null, 2));
     }
   }
 
@@ -668,8 +746,8 @@ async function main() {
       log(`  참고: jobs.json 에 "project" 가 없어 지금 열린 "${target.name}" 으로 보낸다 — 이 작업용 프로젝트가 따로 있으면 "project" 에 적을 것`);
     }
     if (!target.billing?.name) {
-      fail(`"${target.name}" 프로젝트에 프로젝트 코드(과금)가 안 골라져 있다 — 사용자에게 시댄스에서 그 프로젝트의 설정 패널 '프로젝트 코드'를 ` +
-        "골라 달라고 할 것(에이전트가 고르지 않는다). 고른 뒤 dry-run 을 다시 돌려 확인 카드에 그 코드를 보여 준다");
+      fail("시댄스에 프로젝트 코드(과금)가 안 골라져 있다 — 사용자에게 시댄스 설정 패널 맨 위 '프로젝트 코드'를 골라 달라고 할 것" +
+        "(26.10.2004~ 앱 전체에 하나 · 에이전트가 고르지 않는다). 고른 뒤 dry-run 을 다시 돌려 확인 카드에 그 코드를 보여 준다");
     }
     if (spec.billing && spec.billing !== target.billing.name) {
       fail(`"${target.name}" 프로젝트의 프로젝트 코드는 "${target.billing.name}" — 확인한 "${spec.billing}" 와 다르다. 보내지 않는다 — 사용자에게 어느 쪽인지 확인할 것`);
@@ -812,7 +890,7 @@ async function main() {
   log(`  이번 최대 ${total}개 · ${q} · 지금 "${project}" 에서 진행 중 ` +
     `${await inFlight(spec.manual, project, [], target?.id || "")}개 (동시 ${MAX_IN_FLIGHT}개까지 — 2판 3덩이, 넘으면 앞의 것이 끝나는 대로 이어서)`);
   const planJobs = jobs.map((j) => ({ name: j.name || "", model: settingsOf(j).model ?? "", mode: settingsOf(j).mode ?? "", prompt: String(j.prompt),
-    refs: j.refs, elements: mentions(j), settings: settingsOf(j) }));
+    refs: j.refs, elements: mentions(j), settings: settingsOf(j), ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) }));
   if (DRY) {
     for (const [i, j] of jobs.entries()) {
       const st = settingsOf(j);
@@ -824,6 +902,11 @@ async function main() {
         const kind = Object.keys(KINDS).find((k) => KINDS[k].test(r.path)) || "File";
         seen[kind] = (seen[kind] || 0) + 1;
         log(`     ${r.role || `[${kind} ${seen[kind]}]`} ${path.basename(r.path)} — ${String(r.why ?? "").trim() || "(이유 없음)"}`);
+      }
+      if (WORKDIR) {
+        const pl = placeOf(spec, j, WORKDIR);
+        log(`     → 놓을 곳 ${pl.rel}/${placeName(WORKDIR, pl, "V", `.${st.output_format || "mov"}`, j.name, resTail(st))}${videosOf(j) > 1 ? ` 부터 ${videosOf(j)}개` : ""}` +
+          `${pl.range ? ` · 범위 ${pl.range}` : ""}${pl.version ? ` · ${pl.version}안` : ""}`);
       }
     }
     writePlan(spec, { app: "seedance", project, billing, jobs: planJobs });
@@ -883,7 +966,7 @@ async function main() {
       process.exitCode = 1;
       break;
     }
-    sent.push({ id: r.id, name: j.name || `job_${i + 1}` });
+    sent.push({ id: r.id, name: j.name || `job_${i + 1}`, j, st });
     log(`  보냄 ${sent.length}/${jobs.length} ${j.name || ""} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
       ` · 오늘 ${rsv.used - need + (cards.length || need)}/${rsv.limit}개`);
     for (const c of cards) if (c.status === "failed") log(`    카드 ${cardLine(c)}`);
@@ -892,7 +975,7 @@ async function main() {
   writePlan(spec, { app: "seedance", project, billing, jobs: planJobs }, { sent: true, jobsFile: file });
 
   // 3) 지켜보기 — 카드 상태만 읽는다(앱 화면이 올려 준 것)
-  if (!WATCH) {
+  if (!WATCH && !WORKDIR) {
     log(`앱에 생성 중 카드가 떠 있을 것. 나중에 상태: node send-to-seedance.mjs --status ${sent.map((x) => x.id).join(" ")}`);
     return;
   }
@@ -912,7 +995,8 @@ async function main() {
   }
   if (open.length) log(`아직 안 끝난 요청 ${open.length}건 — 앱 화면에서 계속 진행된다`);
   await showStatus(sent.map((x) => x.id));
-  if (SAVE_TO) await saveResults(sent, spec.manual);
+  if (WORKDIR) await placeResults(sent, spec, WORKDIR);
+  else if (SAVE_TO) await saveResults(sent, spec.manual);
 }
 
 // 끝난 카드를 받아(card.download — 앱이 다운로드 폴더에 저장한다) 작업 폴더로 옮긴다: <작업 이름>_A.mp4, _B … 같은 이름이 있으면 _2.
@@ -942,6 +1026,67 @@ async function saveResults(sent, manual) {
   const list = path.join(SAVE_TO, "_목록.tsv");
   if (rows.length) fs.appendFileSync(list, `${fs.existsSync(list) ? "" : "작업\t테이크\t카드\ttask\t파일\n"}${rows.join("\n")}\n`);
   log(rows.length ? `영상 ${rows.length}개를 ${SAVE_TO} 로 옮겼다(다운로드 폴더에는 안 남김) · 목록 _목록.tsv` : "옮긴 영상 없음 — 끝난 카드가 없거나 받지 못했다");
+}
+
+// 작업 폴더 — 끝난 카드를 받아(card.download) 씬·컷 폴더에 이름 규칙대로 옮긴다: <코드>_S010_C0010_V001_480.mov
+// (꼬리는 해상도 — 초안 480 · 본편 1080). 다운로드 폴더에는 남기지 않는다. 어느 카드가 어느 파일인지는 _검수/목록.tsv 에.
+const resTail = (st) => (st?.draft ? "_480" : /^(\d+)p$/i.test(String(st?.resolution || "")) ? `_${String(st.resolution).replace(/p$/i, "")}` : st?.resolution ? `_${st.resolution}` : "");
+async function placeResults(sent, spec, work) {
+  const rows = [];
+  for (const x of sent) {
+    const pl = placeOf(spec, x.j, work);   // 보내기 전에 확인했다
+    const dir = path.join(work, pl.rel);
+    fs.mkdirSync(dir, { recursive: true });   // 씬 · 컷 폴더 — 있으면 그대로
+    const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
+    const done = (j.messages || []).filter((c) => c.status === "succeeded");
+    for (const [k, c] of done.entries()) {
+      let r;
+      try { r = await sendCommand(spec.manual, "card.download", { id: c.id }); }
+      catch (e) { log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
+      const src = r?.path || r?.file || r?.saved;
+      if (!src || !fs.existsSync(src)) { log(`  못 받음 ${x.name} · 카드 ${c.id} — 앱이 저장 경로를 안 줬다`); continue; }
+      const tail = resTail(x.st);
+      const name = placeName(work, pl, "V", path.extname(src) || ".mov", x.name, tail);
+      const dest = path.join(dir, name);
+      try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); }
+      rows.push({ 폴더: pl.rel, 파일: name, 작업: x.name, 테이크: String.fromCharCode(65 + k), 모델: x.st?.model || "", 카드: c.id, task: c.taskId || "",
+        씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", 해상도: tail.slice(1), "받은 시각": new Date().toISOString() });
+      log(`  ${pl.rel}/${name}`);
+    }
+  }
+  appendWorkList(work, rows);
+  log(rows.length ? `영상 ${rows.length}개를 작업 폴더에 놓았다(다운로드 폴더에는 안 남김) · 목록 _검수/목록.tsv — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`
+    : "놓은 영상 없음 — 끝난 카드가 없거나 받지 못했다");
+}
+
+// 본편(card.final 1080p)을 받아 초안 옆에 같은 번호로 — ABC_S010_C0010_V001_480.mov → ABC_S010_C0010_V001_1080.mov
+async function saveFinal([draft, cardId]) {
+  if (!draft || !cardId) fail("쓰는 법: --save-final <초안 파일> <본편 카드 id>");
+  const draftPath = path.resolve(draft);
+  if (!fs.existsSync(draftPath)) fail(`초안 파일이 없다: ${draftPath}`);
+  const manual = rememberedManual();
+  if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual");
+  const r = await sendCommand(manual, "card.download", { id: cardId });
+  const src = r?.path || r?.file || r?.saved;
+  if (!src || !fs.existsSync(src)) fail(`본편 카드 ${cardId} 를 못 받음 — 아직 안 끝났거나 앱이 저장 경로를 안 줬다`);
+  const ext = path.extname(src) || path.extname(draftPath) || ".mov";
+  const stem = path.basename(draftPath, path.extname(draftPath));
+  const name = `${/_480$/.test(stem) ? stem.replace(/_480$/, "_1080") : `${stem}_1080`}${ext}`;
+  // 본편은 컷 폴더 바로 아래(OK 자리) — 초안이 보류 폴더에 있었어도
+  const draftDir = path.dirname(draftPath);
+  const dir = path.basename(draftDir) === "보류" ? path.dirname(draftDir) : draftDir;
+  const dest = path.join(dir, name);
+  if (fs.existsSync(dest)) fail(`이미 있다: ${dest} — 덮어쓰지 않는다`);
+  try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); }
+  // 작업 폴더(_검수 가 있는 위 폴더)를 찾아 목록에 남긴다
+  let work = dir;
+  for (let i = 0; i < 4 && !fs.existsSync(path.join(work, "_검수")); i++) work = path.dirname(work);
+  if (fs.existsSync(path.join(work, "_검수"))) {
+    const prev = readWorkList(work).find((x) => x["파일"] === path.basename(draftPath)) || {};
+    appendWorkList(work, [{ ...prev, 폴더: path.relative(work, dir).split(path.sep).join("/"), 파일: name, 카드: cardId, task: "", 해상도: "1080",
+      "받은 시각": new Date().toISOString() }]);
+  }
+  log(`본편을 받아 ${dest} 로 옮겼다(다운로드 폴더에는 안 남김)`);
 }
 
 main().catch((e) => {

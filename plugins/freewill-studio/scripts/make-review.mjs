@@ -4,7 +4,9 @@
 // 검수는 로컬 서버 주소로 연다(--serve) — 저장을 누르면 그 자리에서 파일을 OK/·보류/·탈락/ 으로 옮기고 회차를 남긴다(JSON 내려받기 없음, 사용자 10/20).
 // 서버는 작업마다 하나 — 이미 떠 있으면 그 주소를 다시 쓴다. 45분 동안 아무도 안 열면 스스로 꺼진다.
 // 페이지를 파일로 열었을 때 서버가 떠 있으면 그 주소로 넘어가고, 꺼져 있으면 저장은 다운로드 폴더의 JSON 으로 받아 --apply 로 반영한다.
-// 지우는 일은 없다 — 탈락도 탈락/ 으로 옮기기만 한다(예전 저장본의 "NG" 는 탈락으로 읽는다).
+// 씬·컷 배치(사용자 10/21 — 보내기 스크립트가 _검수/목록.tsv 에 적은 작업): OK 는 컷 폴더 바로 아래 그대로, 보류는 그 안 보류/,
+// 탈락은 지운다("다운받을 이유가 없음" — 우리 사본만 지우고 앱 원본은 앱에 남는다). 예전 판(폴더마다 _목록.tsv · OK/ · 탈락/)은
+// 그대로 읽고 옮긴다(예전 저장본의 "NG" 는 탈락으로 읽는다).
 //
 //   node make-review.mjs <작업 폴더> [--title "작업 이름"] [--force]   → <작업 폴더>/<작업 이름>.html 을 다시 쓴다
 //   node make-review.mjs <작업 폴더> --serve                         → 저장되는 주소(작업마다 하나). 꺼져 있으면 띄울 명령 한 줄을 알려 준다
@@ -46,6 +48,7 @@ const ROUNDS = path.join(REVIEW_DIR, "회차.json");
 const PLAN = path.join(REVIEW_DIR, "보낼것.json");
 const SERVER_FILE = path.join(REVIEW_DIR, "서버.json");
 const WORK_SETTINGS = path.join(work, "_작업설정.json");
+const WORK_LIST = path.join(REVIEW_DIR, "목록.tsv");   // 씬·컷 배치의 목록(보내기 스크립트가 쓴다)
 const ME_SETTINGS = path.join(os.homedir(), ".freewill-studio", "settings.json");
 const STATUSES = ["OK", "보류", "탈락"];
 const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
@@ -69,6 +72,14 @@ function readTsv(p) {
   return lines.map((l) => Object.fromEntries(l.split("\t").map((v, i) => [head[i] || `c${i}`, v])));
 }
 const rel = (p) => path.relative(work, p).split(path.sep).join("/");
+// 씬·컷 배치인가 — 그러면 OK 는 제자리, 보류는 보류/, 탈락은 지운다
+const isFlat = () => fs.existsSync(WORK_LIST) || Boolean(readJson(WORK_SETTINGS).code);
+// 지난 회차까지 정한 상태(마지막 것) — 씬·컷 배치에선 OK 와 미정이 같은 자리라 기록으로 가른다
+function decidedStatus() {
+  const m = new Map();
+  for (const r of readRounds()) for (const [k, v] of Object.entries(r.takes || {})) m.set(k, v?.status || "");
+  return m;
+}
 
 // 작업 이름 = 페이지 파일 이름. 한 번 정하면 _작업설정.json 에 남겨 다음에도 같은 파일을 고친다.
 function workTitle() {
@@ -79,9 +90,10 @@ function workTitle() {
 }
 
 // 지금 그 파일이 어디 있는지 — 받은 자리(미정) · OK/ · 보류/ · 탈락/ (예전 판의 _후보/<폴더>/ 도 탈락으로 본다)
-function locate(folder, file) {
+function locate(folder, file, decided = null) {
   const base = path.join(work, folder);
-  const spots = [[path.join(base, file), ""], [path.join(base, "OK", file), "OK"], [path.join(base, "보류", file), "보류"],
+  const here = decided && decided.get(`${folder}/${file}`) === "OK" ? "OK" : "";
+  const spots = [[path.join(base, file), here], [path.join(base, "OK", file), "OK"], [path.join(base, "보류", file), "보류"],
     [path.join(base, "탈락", file), "탈락"], [path.join(work, "_후보", folder, file), "탈락"]];
   const hit = spots.find(([p]) => fs.existsSync(p));
   return hit ? { abs: hit[0], status: hit[1] } : null;
@@ -101,13 +113,28 @@ function listFolders(dir = work, depth = 0, out = []) {
 
 function scan() {
   const takes = [];
+  const dec = isFlat() ? decidedStatus() : null;
+  // 씬·컷 배치 — 목록 한 곳(_검수/목록.tsv)
+  if (fs.existsSync(WORK_LIST)) {
+    const seen = new Set();
+    for (const r of readTsv(WORK_LIST)) {
+      const folder = r["폴더"], file = r["파일"];
+      if (!folder || !file || seen.has(`${folder}/${file}`)) continue;
+      seen.add(`${folder}/${file}`);
+      const where = locate(folder, file, dec);
+      if (!where) continue;   // 탈락으로 지웠거나 사람이 옮김
+      takes.push({ key: `${folder}/${file}`, folder, cut: r["작업"] || file, take: r["테이크"] || "", card: r["카드"] || "", task: r["task"] || "",
+        model: r["모델"] || "", file, abs: where.abs, status: where.status, video: VIDEO.test(file),
+        range: r["범위"] || "", version: r["안"] || "", res: r["해상도"] || "" });
+    }
+  }
   for (const folder of listFolders()) {
     const seen = new Set();
     for (const r of readTsv(path.join(work, folder, "_목록.tsv"))) {
       const file = r["파일"];
       if (!file || seen.has(file)) continue;
       seen.add(file);
-      const where = locate(folder, file);
+      const where = locate(folder, file, dec);
       if (!where) continue;   // 사람이 지웠거나 다른 데로 옮김
       takes.push({ key: `${folder}/${file}`, folder, cut: r["작업"] || file, take: r["테이크"] || "", card: r["카드"] || "", task: r["task"] || "",
         model: r["모델"] || "", file, abs: where.abs, status: where.status, video: VIDEO.test(file) });
@@ -116,8 +143,10 @@ function scan() {
   return takes;
 }
 
-// 폴더 이름을 사람 말로 — 01_에셋/인물 → 에셋 · 인물
+// 폴더 이름을 사람 말로 — 01_에셋/인물 → 에셋 · 인물, S010/C0010 → S010 · C0010
 const folderLabel = (f) => f.split("/").map((s) => s.replace(/^\d+_/, "").replace(/_/g, " ")).join(" · ");
+// 테이크 이름 — 씬·컷 배치는 파일 번호(I003 · V001_480), 예전 판은 A · B
+const takeLabel = (t) => (/_([IV]\d{3}(?:_[0-9A-Za-z]+)?)\.[^.]+$/.exec(t.file) || [])[1] || t.take || t.file;
 
 // 보낸 jobs.json 들 — 작업 이름 → 프롬프트·설정
 function readPrompts() {
@@ -180,7 +209,17 @@ function moveFile(from, to) {
   return false;
 }
 
+function removeFile(p) {
+  for (let i = 0; i < 6; i++) {
+    try { fs.rmSync(p, { force: true }); if (!fs.existsSync(p)) return true; } catch {}
+    const until = Date.now() + 150 * (i + 1);
+    while (Date.now() < until) { /* 잠깐 */ }
+  }
+  return false;
+}
+
 function apply(saved, savedName) {
+  const flat = isFlat();
   const takes = scan();
   const byKey = new Map(takes.map((t) => [t.key, t]));
   const moved = [], stuck = [], okCards = [], roundTakes = {};
@@ -189,12 +228,20 @@ function apply(saved, savedName) {
     if (!t) continue;
     const raw = d?.status === "NG" ? "탈락" : d?.status;   // 예전 저장본
     const status = STATUSES.includes(raw) ? raw : "";
-    const target = status ? path.join(work, t.folder, status, t.file) : path.join(work, t.folder, t.file);
-    if (path.resolve(target) !== path.resolve(t.abs)) {
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      if (moveFile(t.abs, target)) { moved.push(`${status || "미정"} ← ${key}`); t.abs = target; t.status = status; }
+    if (flat && status === "탈락") {
+      // 탈락은 지운다 — 우리 사본만(앱 원본은 앱에 남는다). 열려 있으면 못 지우고 알린다
+      if (removeFile(t.abs)) { moved.push(`탈락(지움) ← ${key}`); t.status = "탈락"; }
       else stuck.push(key);
-    } else t.status = status;
+    } else {
+      // 씬·컷 배치: OK · 미정은 컷 폴더 바로 아래, 보류는 보류/ — 예전 판: 상태 이름 폴더
+      const target = flat ? path.join(work, t.folder, ...(status === "보류" ? ["보류"] : []), t.file)
+        : status ? path.join(work, t.folder, status, t.file) : path.join(work, t.folder, t.file);
+      if (path.resolve(target) !== path.resolve(t.abs)) {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        if (moveFile(t.abs, target)) { moved.push(`${status || "미정"} ← ${key}`); t.abs = target; t.status = status; }
+        else stuck.push(key);
+      } else t.status = status;
+    }
     const memo = String(d?.memo || "").trim();
     if (status || memo) roundTakes[key] = { status: t.status, memo };
     if (t.status === "OK" && t.card) okCards.push(t.card);
@@ -287,7 +334,7 @@ function render(served) {
 ${cutHist(ckey, mine)}
 <div class="takes">${mine.map((t) => `<div class="take" data-key="${esc(t.key)}" data-status="${esc(t.status)}" data-new="${isNew(t) ? 1 : ""}">
 ${t.video ? `<video src="${mediaUrl(t.abs, served)}" preload="metadata" muted playsinline></video>` : `<img src="${mediaUrl(t.abs, served)}" alt="${esc(t.key)}" loading="lazy">`}
-<div class="tf"><b>${esc(t.take || t.file)}${isNew(t) ? `<span class="newb">새로</span>` : ""}</b><span class="seg">${STATUSES.map((s) => `<button type="button" data-s="${s}">${s}</button>`).join("")}</span></div>
+<div class="tf"><b>${esc(takeLabel(t))}${isNew(t) ? `<span class="newb">새로</span>` : ""}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}${t.range ? ` <span class="chip">${esc(t.range)}</span>` : ""}</b><span class="seg">${STATUSES.map((s) => `<button type="button" data-s="${s}">${s}</button>`).join("")}</span></div>
 ${takeHist(t.key)}<textarea class="memo" placeholder="${round > 1 ? `${round}차 메모` : "이 테이크 메모"}"></textarea></div>`).join("")}</div>
 <textarea class="cmemo" placeholder="${round > 1 ? `${round}차 컷 메모 — 이번에 고칠 것` : "이 컷 메모 — 무엇을 고칠지"}"></textarea>
 ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre></details>` : ""}
@@ -313,7 +360,7 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
       return `<figure class="ref el">${pic ? `<img src="${mediaUrl(pic, served)}" loading="lazy" alt="">` : `<div class="miss">앱 라이브러리</div>`}<figcaption>@{${esc(n)}}</figcaption></figure>`;
     }).join("");
     return `<article class="job"><div class="cut-head"><h4>${esc(j.name || "")}</h4><span class="chip">${esc([j.model, j.mode].filter(Boolean).join(" · "))}</span>` +
-      `<span class="chip">레퍼런스 ${(j.refs || []).length + (j.elements || []).length}개</span></div>` +
+      `${j.place ? `<span class="chip">→ ${esc(j.place)}</span>` : ""}<span class="chip">레퍼런스 ${(j.refs || []).length + (j.elements || []).length}개</span></div>` +
       `<div class="refs">${refs + els || `<div class="none">레퍼런스 없음 — 글로만</div>`}</div>` +
       (j.prompt ? `<details><summary>프롬프트</summary><pre>${esc(j.prompt)}</pre></details>` : "") + `</article>`;
   }).join("") : `<p class="intro">보낼 작업이 없다 — 보내기 스크립트를 jobs.json 의 "work" 로 dry-run 하면 여기에 레퍼런스가 그림으로 뜬다.</p>`;
@@ -343,7 +390,8 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
 <main>
 <section id="한눈에"><h2>한눈에</h2><table class="ov"><thead><tr><th>폴더</th><th>OK</th><th>보류</th><th>미정</th><th>새로</th><th>탈락</th><th></th></tr></thead><tbody>${overview || `<tr><td colspan="7">받은 결과가 없다 — 보내기 스크립트 --save-to 로 이 작업 폴더의 종류별 폴더에 받는다.</td></tr>`}</tbody></table>
 <p class="intro">${round}차 검수 — 테이크마다 <b>OK</b>(쓸 것) · <b>보류</b>(다시 볼 것) · <b>탈락</b>(안 쓸 것)을 고르고 메모를 적은 뒤 저장한다.
-${served ? "저장하면 그 자리에서 파일이 폴더 안 OK/ · 보류/ · 탈락/ 으로 옮겨지고 기록에 남는다." : "이 페이지는 파일로 열려 있어 저장하면 다운로드 폴더에 JSON 이 생긴다 — 에이전트에게 '검수 페이지 열어 줘'라고 하면 바로 저장되는 주소로 열어 준다."}
+${served ? (isFlat() ? "저장하면 그 자리에서 OK 는 컷 폴더에 그대로, 보류는 보류 폴더로 옮겨지고 탈락은 지워진다(앱 원본은 앱에 남는다). 기록에도 남는다."
+  : "저장하면 그 자리에서 파일이 폴더 안 OK/ · 보류/ · 탈락/ 으로 옮겨지고 기록에 남는다.") :"이 페이지는 파일로 열려 있어 저장하면 다운로드 폴더에 JSON 이 생긴다 — 에이전트에게 '검수 페이지 열어 줘'라고 하면 바로 저장되는 주소로 열어 준다."}
 ${rounds.length ? ` 지난 ${rounds.length}회차의 메모는 컷 아래 <b>지난 피드백</b>으로 옮겨 두었고 입력칸은 이번 ${round}차 것만 적는다. 처음엔 <b>볼 것</b>(새로 · 미정 · 보류)만 보인다.` : ""}</p></section>
 <section id="검수"><h2>검수</h2>${review || "<p class=\"intro\">받은 컷이 없다.</p>"}</section>
 <section id="보낼것"><h2>보낼 것</h2>${planHtml}</section>
