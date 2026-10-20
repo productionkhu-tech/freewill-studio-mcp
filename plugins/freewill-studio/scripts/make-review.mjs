@@ -302,9 +302,11 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
     const refs = (j.refs || []).map((r) => {
       const p = typeof r === "string" ? r : r.path;
       const role = typeof r === "string" ? "" : r.role || "";
+      const why = typeof r === "string" ? "" : String(r.why || "").trim();
       const ok = p && fs.existsSync(p);
+      // 그림 밑에 넣는 이유(why) — 무엇을 가져오고 무엇이 끌려오지 않게 했는지(사용자 10/20 "생각 없이 넣지 말고")
       return `<figure class="ref">${ok ? (VIDEO.test(p) ? `<video src="${mediaUrl(path.resolve(p), served)}" preload="metadata" muted></video>` : `<img src="${mediaUrl(path.resolve(p), served)}" loading="lazy" alt="">`) : `<div class="miss">파일 없음</div>`}` +
-        `<figcaption>${esc(role || path.basename(p || ""))}</figcaption></figure>`;
+        `<figcaption><b>${esc(path.basename(p || ""))}</b>${role ? ` · ${esc(role)}` : ""}<span class="why${why ? "" : " nowhy"}">${why ? esc(why) : "넣는 이유가 없다"}</span></figcaption></figure>`;
     }).join("");
     const els = (j.elements || []).map((n) => {
       const pic = elementPicture(takes, n);
@@ -398,6 +400,7 @@ details{margin-top:8px}summary{cursor:pointer;color:#5b616e;font-size:13px}pre{w
 .hist{font-size:12px;color:#5b616e;padding:5px 10px;border-top:1px dashed #e3e6eb;background:#f6f7f9}
 .refs{display:flex;gap:10px;flex-wrap:wrap}.ref{margin:0;width:180px}.ref img,.ref video{width:180px;height:120px;object-fit:contain;background:#111;border-radius:6px;display:block}
 .ref figcaption{font-size:12px;color:#3d434f;margin-top:4px;word-break:break-all}.ref.el figcaption{color:#1f4fb8;font-weight:600}
+.ref .why{display:block;color:#3d434f;word-break:keep-all;margin-top:2px}.ref .nowhy{color:#c62828;font-weight:600}
 .miss{width:180px;height:120px;border:1px dashed #c8ccd4;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9aa0aa;font-size:12px}.none{color:#9aa0aa;font-size:13px}
 .round ul{margin:4px 0 0;padding-left:18px;font-size:13px}.takes-log{color:#5b616e}.st{font-weight:600}.st-OK{color:#1f8a4c}.st-보류{color:#c98a00}.st-탈락{color:#c62828}
 .pr{background:#fff;border:1px solid #e3e6eb;border-radius:6px;padding:8px 12px;margin:8px 0}

@@ -46,13 +46,16 @@
 //                   "ratio": "16:9", "duration": 10, "resolution": "720p", "draft": true,
 //                   "output_count": 1, "generate_audio": true, "output_format": "mov" },
 //     "jobs": [
-//       { "name": "cut_01", "prompt": "The woman in [Image 1] walks ...", "refs": ["C:/path/a.png"] },
+//       { "name": "cut_01", "prompt": "The woman in [Image 1] walks ...",
+//         "refs": [{ "path": "C:/path/a.png", "why": "her face and coat only — the pose comes from the text" }] },
 //       { "name": "cut_02", "prompt": "...", "mode": "image_to_video_first_last",
-//         "refs": [{ "path": "C:/a.png", "role": "first_frame" }, { "path": "C:/b.png", "role": "last_frame" }] }
+//         "refs": [{ "path": "C:/a.png", "role": "first_frame", "why": "…" }, { "path": "C:/b.png", "role": "last_frame", "why": "…" }] }
 //     ]
 //   }
 // 설정 키와 값의 범위는 설명서에. 안 준 값은 앱의 지금 설정을 따른다(모델·모드를 바꾸면 그 조합의 기본값).
 // 레퍼런스 순서가 프롬프트의 [Image N]·[Video N]·[Audio N] 번호다(종류별로 센다). 첫·끝 프레임은 role 로 정한다.
+// 레퍼런스마다 "why" — 그 그림·영상에서 가져올 것과, 같이 끌려올 수 있는 것을 어떻게 막는지 한 줄(사용자 10/20 "넣을 때 고민하라 — 생각 없이
+// 넣지 말고"). 없으면 멈춘다(user_format 이면 확인만). 작업 페이지 '보낼 것'에 그림과 같이 뜬다.
 // 프롬프트는 보내기 전에 점검한다(lintPrompt) — 본문은 영어, 앱 표기 [Image N], 첫·끝 프레임 모드엔 [Image N] 없음.
 // 일부러 한국어 프롬프트로 보내려면 작업(또는 defaults)에 "prompt_language": "ko".
 // 사용자가 개인 스킬·자기 프롬프트·다른 형식을 정했으면 "user_format": true — 사내 쓰는 법 점검(끝 프레임·대사 없음 문장·
@@ -677,6 +680,16 @@ async function main() {
       else problems.push(`${nameOf(j)}: ${msg}`);
     }
   }
+  // 레퍼런스는 넣을 때마다 따져 본다 — 가져올 것 · 같이 끌려올 것과 막는 법을 why 한 줄로(사용자 10/20 "생각 없이 넣지 말고")
+  for (const j of jobs) {
+    const miss = j.refs.filter((r) => !String(r.why ?? "").trim());
+    if (!miss.length) continue;
+    const msg = `레퍼런스 ${miss.map((r) => path.basename(r.path)).join(", ")} 에 넣는 이유(why)가 없다 — refs 를 {"path","why"} 로 적는다: ` +
+      `그 그림·영상에서 가져올 것, 같이 끌려올 수 있는 것(다른 인물·글자·구도·그림체, 영상이면 움직임·카메라·속도·컷 리듬)과 막는 법을 한 줄로. ` +
+      `이유를 못 쓰면 빼고 글이나 엘리먼트 @{이름} 으로(seedance-prompting 2절)`;
+    if (userFormat(j)) log(`  확인: ${nameOf(j)} — ${msg}`);
+    else problems.push(`${nameOf(j)}: ${msg}`);
+  }
   if (jobs.some(userFormat)) log(`  사용자 형식(user_format) ${jobs.filter(userFormat).length}건 — 사내 쓰는 법 점검은 막지 않고 아래 "확인할 것"으로만 보여 준다`);
 
   // 어셋 라이브러리 — 인물·장소·소품은 엘리먼트 @{이름} 이 기본(지침 6단계 시댄스 0). 지금 프로젝트에 연결된 컬렉션의 엘리먼트를
@@ -737,6 +750,13 @@ async function main() {
       const st = settingsOf(j);
       log(`  ${i + 1}. ${j.name || ""} · ${Object.entries(st).map(([k, v]) => `${k}=${v}`).join(" ") || "(앱 지금 설정 그대로)"} · 레퍼런스 ${j.refs.length}개` +
         `${mentions(j).length ? ` · 엘리먼트 ${mentions(j).map((n) => `@{${n}}`).join(" ")}` : ""}`);
+      // 레퍼런스마다 무엇을 왜 — 확인 카드에 그대로 옮긴다
+      const seen = {};
+      for (const r of j.refs) {
+        const kind = Object.keys(KINDS).find((k) => KINDS[k].test(r.path)) || "File";
+        seen[kind] = (seen[kind] || 0) + 1;
+        log(`     ${r.role || `[${kind} ${seen[kind]}]`} ${path.basename(r.path)} — ${String(r.why ?? "").trim() || "(이유 없음)"}`);
+      }
     }
     writePlan(spec, { app: "seedance", project, billing, jobs: planJobs });
     return;

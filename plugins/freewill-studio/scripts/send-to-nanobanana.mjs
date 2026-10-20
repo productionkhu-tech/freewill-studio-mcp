@@ -38,7 +38,7 @@
 //     "defaults": { "model": "gpt-image-2.5-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
 //     "jobs": [
-//       { "name": "char_01", "prompt": "...", "refs": ["C:/path/a.png"] },
+//       { "name": "char_01", "prompt": "...", "refs": [{ "path": "C:/path/a.png", "why": "her face and hair only — the outfit comes from the text" }] },
 //       { "name": "loc_01", "prompt": "...", "model": "seedream-5-0-pro-260628", "resolution": "2K" }
 //     ]
 //   }
@@ -292,7 +292,17 @@ async function main() {
   const jobs = (spec.jobs || []).filter((j) => j && String(j.prompt || "").trim());
   if (!jobs.length) fail("보낼 작업이 없음 (prompt 가 빈 작업은 뺀다)");
   if (FREEWILL_GUIDE && spec.guide !== FREEWILL_GUIDE) fail(GUIDE_STALE(spec.guide));
-  for (const j of jobs) for (const fp of j.refs || []) if (!fs.existsSync(fp)) fail(`레퍼런스 파일이 없음: ${fp}`);
+  // refs 는 {"path","why"} — why 는 그 그림에서 가져올 것과 같이 끌려올 수 있는 것을 어떻게 막는지 한 줄(사용자 10/20 "생각 없이 넣지 말고")
+  for (const j of jobs) {
+    const list = (j.refs || []).map((r) => (typeof r === "string" ? { path: r } : r || {}));
+    j.refs = list.map((r) => r.path);
+    j.refWhy = list.map((r) => String(r.why ?? "").trim());
+    for (const fp of j.refs) if (!fp || !fs.existsSync(fp)) fail(`레퍼런스 파일이 없음: ${fp}`);
+  }
+  const noWhy = jobs.flatMap((j) => j.refs.filter((_, i) => !j.refWhy[i]).map((fp) => `${j.name || "(이름 없음)"}: ${path.basename(fp)}`));
+  if (noWhy.length) fail(`레퍼런스마다 넣는 이유(why)를 적을 것 — refs 를 {"path","why"} 로: 그 그림에서 가져올 것(얼굴·옷·공간·소품·구도)과 ` +
+    `같이 끌려올 수 있는 것(다른 인물·글자·구도·그림체·조명)을 어떻게 막는지 한 줄. 이유를 못 쓰면 빼고 글로 쓴다(image-prompting 2절)\n` +
+    noWhy.map((x) => `  - ${x}`).join("\n"));
 
   // 1) 앱이 켜져 있는지, 보안 토큰
   let html = "";
@@ -372,13 +382,14 @@ async function main() {
   // 작업 페이지의 '보낼 것' — 작업마다 모델·레퍼런스(그림으로 뜬다)
   const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: `${billing.team_id} / ${billing.project_id}`,
     jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}`,
-      prompt: String(j.prompt), refs: (j.refs || []).map((p) => ({ path: path.resolve(p) })) })) });
+      prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })) })) });
   if (DRY) {
     log(tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
     for (const [i, j] of jobs.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
-      log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)} · 레퍼런스 ${(j.refs || []).length}장`);
+      log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)} · 레퍼런스 ${j.refs.length}장`);
+      j.refs.forEach((p, k) => log(`     [Image ${k + 1}] ${path.basename(p)} — ${j.refWhy[k]}`));   // 확인 카드에 그대로 옮긴다
     }
     writePlan(spec, planOf(), {});
     return;
