@@ -34,6 +34,7 @@
 //   {
 //     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
 //     "tab": "보낼 탭 이름 — 사용자가 이 작업용으로 만들어 둔 탭(팀·프로젝트가 골라져 있어야 한다). 비우면 지금 화면의 탭",
+//     "work": "작업 폴더 — 있으면 dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의 '보낼 것'에 그림으로 뜬다",
 //     "defaults": { "model": "gpt-image-2.5-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
 //     "jobs": [
@@ -237,6 +238,27 @@ async function setRefs(paths) {
   return null;
 }
 
+// 작업 페이지(make-review)의 '보낼 것' — 보내기 전에 레퍼런스를 그림으로 본다(사용자 10/20 "돌리기 전에 어떤 레퍼런스 쓸 건지 시각적으로").
+// jobs.json 에 "work"(작업 폴더)가 있을 때만. 보낸 뒤에는 '보냄'으로 바꾸고, 보낸 jobs.json 을 그 작업 폴더의 05_프롬프트 에 남긴다.
+function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
+  if (!spec.work) return;
+  const work = path.resolve(String(spec.work));
+  if (!fs.existsSync(work)) { log(`  참고: 작업 폴더가 없다(${work}) — 보낼 것을 남기지 않았다`); return; }
+  try {
+    const dir = path.join(work, "_검수");
+    fs.mkdirSync(dir, { recursive: true });
+    const now = new Date().toISOString();
+    fs.writeFileSync(path.join(dir, "보낼것.json"), JSON.stringify({ ...plan, at: now, sent, ...(sent ? { sentAt: now } : {}) }, null, 1));
+    if (sent && jobsFile) {
+      const pd = path.join(work, "05_프롬프트");
+      fs.mkdirSync(pd, { recursive: true });
+      const to = path.join(pd, path.basename(jobsFile));
+      if (path.resolve(to) !== path.resolve(jobsFile)) fs.copyFileSync(jobsFile, to);
+    }
+    log(`  작업 페이지 '보낼 것'${sent ? "을 보냄으로 바꿨다(jobs.json 은 05_프롬프트 에)" : "에 레퍼런스를 올렸다 — 페이지에서 그림으로 보여 준 뒤 확인 카드로"}: ${path.join(dir, "보낼것.json")}`);
+  } catch (e) { log(`  참고: 보낼 것을 못 남김 — ${e.message}`); }
+}
+
 // 이미지 프롬프트에서 글로 짚을 수 있는 것(references/image-prompting.md · prompt-logic.md) — 막지 않고 "확인할 것"으로 보여 준다.
 // 사용자의 잘 쓴 프롬프트(외주 프롬프트북 시트·스틸)에 대 보고 괜히 걸리던 것은 뺐다 — '8K' 디테일 묘사, 액션 스틸의 motion blur
 function imageNotes(j, aspect) {
@@ -347,6 +369,10 @@ async function main() {
   }
   log(`  이번 ${total}장 · ${quota} · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
     `(동시 ${MAX_IN_FLIGHT}장까지 — 넘으면 앞의 것이 끝나야 다음 작업을 넣는다)`);
+  // 작업 페이지의 '보낼 것' — 작업마다 모델·레퍼런스(그림으로 뜬다)
+  const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: `${billing.team_id} / ${billing.project_id}`,
+    jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}`,
+      prompt: String(j.prompt), refs: (j.refs || []).map((p) => ({ path: path.resolve(p) })) })) });
   if (DRY) {
     log(tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
@@ -354,6 +380,7 @@ async function main() {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
       log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)} · 레퍼런스 ${(j.refs || []).length}장`);
     }
+    writePlan(spec, planOf(), {});
     return;
   }
 
@@ -442,6 +469,7 @@ async function main() {
   }
   if (sent && !KEEP) log(`  "${tab.name}" 탭 입력칸은 작업마다 원래대로 돌려놓았다`);
   if (!sent) return;
+  writePlan(spec, planOf(), { sent: true, jobsFile: file });
 
   // 6) 지켜보기 — 탭 요약만 읽는다
   if (!WATCH) {

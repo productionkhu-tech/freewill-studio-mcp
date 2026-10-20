@@ -1,8 +1,10 @@
 // 앱 스크립트 통신 검사.
 //
-// 커넥터가 내려주는 스크립트(read-local-apps · send-to-*)는 테스터 PC 에서 그대로 node 로 실행된다.
+// 커넥터가 내려주는 스크립트(read-local-apps · send-to-* · make-*)는 테스터 PC 에서 그대로 node 로 실행된다.
 // 그래서 이 PC 의 앱(127.0.0.1), 우리 GitHub 릴리스 페이지, 이 커넥터(사용 기록·하루 한도) 말고는 어디와도
-// 통신하지 못하게 한다.
+// 통신하지 못하게 한다. 다른 프로그램도 실행하지 못한다.
+// node:http 는 이 PC 안에서만 듣는 서버(작업 페이지의 검수 저장)에만 쓴다 — 바깥으로 요청하는 http.request·get 은 막고,
+// listen 은 127.0.0.1 에서만.
 // 워커는 내려주기 직전에, Actions(check-scripts.yml)는 푸시마다 같은 검사를 돌린다.
 //
 // 실수나 단순한 변조를 막는 장치다. 주소를 글자 단위로 쪼개 숨기는 식의 의도적인 변조까지 잡지는 못한다 —
@@ -15,10 +17,11 @@ const ALLOWED_URLS = [
   /^https:\/\/freewill-mcp\.production-khu\.workers\.dev(?:\/|$)/,
 ];
 
-const ALLOWED_IMPORTS = new Set(["node:fs", "node:os", "node:path", "node:url", "node:util", "node:crypto"]);
+const ALLOWED_IMPORTS = new Set(["node:fs", "node:os", "node:path", "node:url", "node:util", "node:crypto", "node:http"]);
 
 const FORBIDDEN = [
   [/child_process/, "다른 프로그램 실행(child_process)"],
+  [/\bhttp\s*\.\s*(?:request|get)\b|\bimport\s*\{[^}]*\b(?:request|get|Agent)\b[^}]*\}\s*from\s*["']node:http["']/, "http 로 바깥 요청(http.request·get) — 요청은 fetch 로"],
   [/\beval\s*\(/, "eval"],
   [/\bnew\s+Function\s*\(/, "new Function"],
   [/\bimport\s*\(/, "동적 import"],
@@ -35,6 +38,9 @@ export function checkScript(code) {
     if (!ALLOWED_IMPORTS.has(mod)) problems.push(`허용 안 된 모듈: ${mod}`);
   }
   for (const [re, label] of FORBIDDEN) if (re.test(code)) problems.push(`허용 안 된 기능: ${label}`);
+  for (const m of code.matchAll(/\.listen\s*\(([^)]*)/g)) {
+    if (!/["']127\.0\.0\.1["']/.test(m[1])) problems.push(`허용 안 된 서버: listen(${m[1].trim()}) — 127.0.0.1 에서만 듣는다`);
+  }
   for (const m of code.matchAll(/\b(?:https?|wss?|ftp):\/\/[^\s"'`)<>\]]+/gi)) {
     if (!ALLOWED_URLS.some((re) => re.test(m[0]))) problems.push(`허용 안 된 주소: ${m[0]}`);
   }

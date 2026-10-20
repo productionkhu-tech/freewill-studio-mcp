@@ -38,11 +38,13 @@
 //     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
 //     "manual": "읽은 설명서 버전 (--manual 이 알려 준 값 그대로) — 앱이 바뀌었으면 앱이 받지 않는다",
 //     "project": "보낼 사이드바 프로젝트 이름 (사용자가 이 작업용으로 만들어 둔 것 — 안 열려 있으면 스크립트가 연다(project.open,
-//                 사이드바 클릭과 같음). dry-run 도 연다(그 프로젝트의 과금을 카드에 보여 주려고). 생략하면 지금 열린 것)",
-//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 그 프로젝트를 연 뒤 과금이 이것과 다르면 안 보냄, 생략하면 그 프로젝트 값)",
+//                 사이드바 클릭과 같음, dry-run 도). 생략하면 지금 열린 것)",
+//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 앱 전체에 하나, 앱을 켤 때마다 사람이 고른다. 다르면 안 보냄, 생략하면 지금 값)",
+//     "work": "작업 폴더 (있으면 dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의 '보낼 것'에 그림으로 뜬다,
+//              보낸 뒤엔 jobs.json 을 05_프롬프트 에 남긴다)",
 //     "defaults": { "model": "dreamina-seedance-2-5-260628", "mode": "multimodal_reference",
 //                   "ratio": "16:9", "duration": 10, "resolution": "720p", "draft": true,
-//                   "output_count": 1, "generate_audio": true },
+//                   "output_count": 1, "generate_audio": true, "output_format": "mov" },
 //     "jobs": [
 //       { "name": "cut_01", "prompt": "The woman in [Image 1] walks ...", "refs": ["C:/path/a.png"] },
 //       { "name": "cut_02", "prompt": "...", "mode": "image_to_video_first_last",
@@ -524,6 +526,27 @@ async function waitTaken(id) {
   }
 }
 
+// 작업 페이지(make-review)의 '보낼 것' — 보내기 전에 레퍼런스를 그림으로 본다(사용자 10/20 "돌리기 전에 어떤 레퍼런스 쓸 건지 시각적으로").
+// jobs.json 에 "work"(작업 폴더)가 있을 때만. 보낸 뒤에는 '보냄'으로 바꾸고, 보낸 jobs.json 을 그 작업 폴더의 05_프롬프트 에 남긴다.
+function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
+  if (!spec.work) return;
+  const work = path.resolve(String(spec.work));
+  if (!fs.existsSync(work)) { log(`  참고: 작업 폴더가 없다(${work}) — 보낼 것을 남기지 않았다`); return; }
+  try {
+    const dir = path.join(work, "_검수");
+    fs.mkdirSync(dir, { recursive: true });
+    const now = new Date().toISOString();
+    fs.writeFileSync(path.join(dir, "보낼것.json"), JSON.stringify({ ...plan, at: now, sent, ...(sent ? { sentAt: now } : {}) }, null, 1));
+    if (sent && jobsFile) {
+      const pd = path.join(work, "05_프롬프트");
+      fs.mkdirSync(pd, { recursive: true });
+      const to = path.join(pd, path.basename(jobsFile));
+      if (path.resolve(to) !== path.resolve(jobsFile)) fs.copyFileSync(jobsFile, to);
+    }
+    log(`  작업 페이지 '보낼 것'${sent ? "을 보냄으로 바꿨다(jobs.json 은 05_프롬프트 에)" : "에 레퍼런스를 올렸다 — 페이지에서 그림으로 보여 준 뒤 확인 카드로"}: ${path.join(dir, "보낼것.json")}`);
+  } catch (e) { log(`  참고: 보낼 것을 못 남김 — ${e.message}`); }
+}
+
 async function main() {
   if (MANUAL) {
     await appStatus();
@@ -587,7 +610,7 @@ async function main() {
   if (!s.screenAlive) fail("시댄스 서버는 켜져 있지만 앱 화면이 응답하지 않는다 — 앱 창이 열려 있는지 확인해 달라고 할 것");
   if (s.manualStale) await staleStop(s.notice || "앱이 업데이트됐다");
   // 사용자가 이 작업용으로 만들어 둔 프로젝트(jobs.json "project")가 안 열려 있으면 연다 — 사이드바 클릭과 같은 앱 명령(project.open).
-  // 과금 프로젝트는 사이드바 프로젝트마다 정해 두는 것이라 열면 같이 따라온다 — 연 뒤에 확인 카드의 과금(billing)과 같은지 본다.
+  // 과금 프로젝트는 앱 전체에 하나다(앱을 켤 때마다 고르고 저장되지 않는다) — 연 뒤에도 확인 카드의 과금(billing)과 같은지 본다.
   // (10/15 사용자 "프로젝트 세팅이랑 과금 다 정해 주고 탭도 만들어 줬는데 항상 클릭해 줘야 하는 이유는?")
   if (spec.project && spec.project !== s.project) {
     const before = s.project || "없음";
@@ -607,7 +630,7 @@ async function main() {
     log(`시댄스에서 "${spec.project}" 프로젝트를 열었다 — 사이드바 클릭과 같음(그전 화면 "${before}")`);
   }
   if (!s.project) fail("앱에 열린 프로젝트가 없다 — jobs.json 에 \"project\"(사이드바 이름)를 적으면 스크립트가 연다. 모르면 사용자에게 물을 것");
-  if (!s.billing) fail(`"${s.project}" 에 과금 프로젝트가 안 골라져 있다 — 앱 설정 패널 맨 위 "프로젝트" 드롭다운에서 고르게 할 것`);
+  if (!s.billing) fail(`시댄스에 과금 프로젝트가 안 골라져 있다 — 사용자에게 앱 설정 패널 맨 위 "프로젝트" 드롭다운에서 골라 달라고 할 것(앱을 켤 때마다 다시 고른다 — 에이전트가 고르지 않는다)`);
   if (spec.billing && spec.billing !== s.billing) fail(`"${s.project}" 의 과금 프로젝트는 "${s.billing}" — 확인한 "${spec.billing}" 와 다르다. 사용자에게 확인할 것`);
   const project = spec.project || s.project;
   const billing = spec.billing || s.billing;
@@ -645,6 +668,15 @@ async function main() {
   const goals = jobs.filter((j) => !userFormat(j)).map((j) => ({ p: String(j.prompt), g: (String(j.prompt).match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1] ?? blocksOf(j.prompt)["SCENE CONTEXT"] ?? "").trim() }));
   const same = goals.filter((x, i) => x.g && goals.some((y, k) => k !== i && y.g === x.g && y.p !== x.p));
   if (same.length) problems.push(`여러 작업의 목표 문장(【Generation Goal】·SCENE CONTEXT)이 똑같다(${same.length}건) — 장면마다 주 대상·주 사건을 그 장면 내용으로 쓴다(공통 문장을 끼워 넣지 않는다)`);
+  // 시댄스 2.5 출력 형식 — 안 적으면 앱의 지금 설정(사람이 mp4 로 바꿔 뒀을 수 있다)을 따른다. 사용자가 mp4 라고 하지 않았으면 mov(편집용)
+  // (사용자 10/20 "mp4 뽑으라고 미리 말하지 않는 이상 mov — 이 부분은 물어봐야지") — 작업을 시작할 때 한 번 묻고 defaults 에 적는다
+  if (keys.includes("output_format")) {
+    for (const j of jobs.filter((x) => /seedance-2-5/.test(x.model ?? defaults.model ?? "") && settingsOf(x).output_format === undefined)) {
+      const msg = "output_format 이 없다 — 앱의 지금 설정을 따르게 된다. 시댄스 2.5 는 mov(편집용 · 앱 기본)가 기본이고 사용자가 mp4 라고 했을 때만 mp4 — 작업을 시작할 때 한 번 물어 defaults 에 적는다(지침 3단계)";
+      if (userFormat(j)) log(`  확인: ${nameOf(j)} — ${msg}`);
+      else problems.push(`${nameOf(j)}: ${msg}`);
+    }
+  }
   if (jobs.some(userFormat)) log(`  사용자 형식(user_format) ${jobs.filter(userFormat).length}건 — 사내 쓰는 법 점검은 막지 않고 아래 "확인할 것"으로만 보여 준다`);
 
   // 어셋 라이브러리 — 인물·장소·소품은 엘리먼트 @{이름} 이 기본(지침 6단계 시댄스 0). 지금 프로젝트에 연결된 컬렉션의 엘리먼트를
@@ -698,11 +730,15 @@ async function main() {
   const q = await quota(total, `최대 ${total}개`);
   log(`  이번 최대 ${total}개 · ${q} · 지금 "${project}" 에서 진행 중 ` +
     `${await inFlight(spec.manual, project)}개 (동시 ${MAX_IN_FLIGHT}개까지 — 넘으면 앞의 것이 끝나야 다음을 보낸다)`);
+  const planJobs = jobs.map((j) => ({ name: j.name || "", model: settingsOf(j).model ?? "", mode: settingsOf(j).mode ?? "", prompt: String(j.prompt),
+    refs: j.refs, elements: mentions(j), settings: settingsOf(j) }));
   if (DRY) {
     for (const [i, j] of jobs.entries()) {
       const st = settingsOf(j);
-      log(`  ${i + 1}. ${j.name || ""} · ${Object.entries(st).map(([k, v]) => `${k}=${v}`).join(" ") || "(앱 지금 설정 그대로)"} · 레퍼런스 ${j.refs.length}개`);
+      log(`  ${i + 1}. ${j.name || ""} · ${Object.entries(st).map(([k, v]) => `${k}=${v}`).join(" ") || "(앱 지금 설정 그대로)"} · 레퍼런스 ${j.refs.length}개` +
+        `${mentions(j).length ? ` · 엘리먼트 ${mentions(j).map((n) => `@{${n}}`).join(" ")}` : ""}`);
     }
+    writePlan(spec, { app: "seedance", project, billing, jobs: planJobs });
     return;
   }
 
@@ -765,6 +801,7 @@ async function main() {
     for (const c of cards) if (c.status === "failed") log(`    카드 ${cardLine(c)}`);
   }
   if (!sent.length) return;
+  writePlan(spec, { app: "seedance", project, billing, jobs: planJobs }, { sent: true, jobsFile: file });
 
   // 3) 지켜보기 — 카드 상태만 읽는다(앱 화면이 올려 준 것)
   if (!WATCH) {

@@ -31,6 +31,10 @@
 | Seedream | `image 1`, `image 2` |
 | GPT Image | 말로만 — `the first reference image, the woman's portrait` (`[Image N]` 태그가 안 먹는다) |
 
+- **넣기 전에 판단한다 — 맡을 일이 없으면 넣지 않는다**(사용자 10/20 "판단 없이 막 넣는 느낌 — 방해되는 건 넣으면 안 됨").
+  레퍼런스마다 "이 그림에서 무엇을 가져오는지" 한 줄로 말할 수 없으면 뺀다. 첫 생성은 깨끗한 원본 한 장에서(생성물을 되먹이면 쌓일수록 더러워진다),
+  재질 · 빛 · 배경은 글로. 끌려올 게 있는 그림(다른 인물 · 글자 · 그림체가 다른 참고 · 다른 구도)은 넣지 않는다 — 시드림은 그림체 참고 그림도
+  얼굴 검열에 걸린다. 보내기 전에 작업 페이지 '보낼 것'에서 그림으로 보여 준다(`work-folder.md` 4절).
 - **그림마다 역할 하나, 범위까지** — `Use the first image for her face and hair only, the second for the jacket only, the third for the room's layout and light.`
   로고는 따로 한 장(`the third image is the strict logo identity and placement reference`).
 - **고정된 대상은 장면 프롬프트에서 다시 묘사하지 않는다** — 다시 쓰면 매번 새로 해석한다("모든 컷이 제품을 다시 그리는" 가장 흔한 원인). 이름과 역할만.
