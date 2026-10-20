@@ -447,9 +447,9 @@ async function sendCommand(manual, name, cargs) {
 
 // 열린 프로젝트에서 아직 안 끝난(대기·생성 중) 영상 — 카드 하나가 영상 하나다. 명령이 없는 앱(26.10.304)이면
 // 이번에 보낸 요청의 카드만 센다.
-async function inFlight(manual, project, ownIds = []) {
+async function inFlight(manual, project, ownIds = [], projectId = "") {
   try {
-    const r = await sendCommand(manual, "cards.list", { project, limit: 100 });
+    const r = await sendCommand(manual, "cards.list", { ...(projectId ? { projectId } : { project }), limit: 100 });
     return (r?.cards || []).filter((c) => !DONE.has(c.status)).length;
   } catch (e) {
     if (e instanceof Stop && e.quiet) throw e;   // 앱이 업데이트됨 — 새 설명서를 이미 보여 줬다
@@ -528,6 +528,12 @@ async function waitTaken(id) {
     const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
     if (j.http !== 200) return { status: "failed", error: j.error || "요청이 사라짐(앱을 다시 켰나?)" };
     if (j.status !== "pending" && j.status !== "taken") return j;
+    // 새 앱: 대상 프로젝트에 프로젝트 코드가 없으면 앱이 가져가지 않고 기다린다(10분) — 사람이 고르면 바로 보낸다
+    if (j.needsBilling && hinted !== "billing") {
+      log(`  기다리는 중 — "${j.project || "대상"}" 프로젝트에 프로젝트 코드가 없다. 사용자에게 시댄스에서 그 프로젝트의 '프로젝트 코드'를 골라 달라고 할 것` +
+        "(고르는 대로 보낸다, 10분 안에 안 고르면 취소 — 에이전트는 고르지 않는다)");
+      hinted = "billing";
+    }
     if (!hinted && Date.now() - started > 8000) {
       const s = await appStatus();
       const why = !s.screenAlive ? "앱 화면이 응답하지 않음(창이 닫혔거나 멈춤)"
@@ -624,10 +630,51 @@ async function main() {
   let s = await appStatus(spec.manual);
   if (!s.screenAlive) fail("시댄스 서버는 켜져 있지만 앱 화면이 응답하지 않는다 — 앱 창이 열려 있는지 확인해 달라고 할 것");
   if (s.manualStale) await staleStop(s.notice || "앱이 업데이트됐다");
-  // 사용자가 이 작업용으로 만들어 둔 프로젝트(jobs.json "project")가 안 열려 있으면 연다 — 사이드바 클릭과 같은 앱 명령(project.open).
-  // 과금 프로젝트는 앱 전체에 하나다(앱을 켤 때마다 고르고 저장되지 않는다) — 연 뒤에도 확인 카드의 과금(billing)과 같은지 본다.
+  // 새 앱(26.10.2002~, features "send-any-project"): 열린 프로젝트를 바꾸지 않고 지정한 프로젝트(projectId)로 보낸다 — 작성 칸·설정·
+  // 레퍼런스 칸도 그대로, 카드만 그 프로젝트에 생긴다(사용자 10/20 "탭 이동 없이"). 과금('프로젝트 코드')은 왼쪽 프로젝트마다 저장되고,
+  // 그 프로젝트의 코드로 과금된다 — 코드가 없거나 확인 카드와 다르면 보내지 않고 사람에게 묻는다((가) 과금은 사람만).
+  const anyProject = (s.features || []).includes("send-any-project");
+  let target = null;   // { id, name, group, billing: { name, id } | null, allowedModels, fourK }
+  if (anyProject) {
+    let list = [];
+    try {
+      const pl = await sendCommand(spec.manual, "projects.list", {});
+      list = Array.isArray(pl) ? pl : pl?.projects || [];
+    } catch (e) {
+      if (e instanceof Stop && e.quiet) throw e;
+      fail(`시댄스 프로젝트 목록을 못 읽음 — ${e.message}`);
+    }
+    if (spec.projectId) {
+      target = list.find((p) => p.id === spec.projectId);
+      if (!target) fail(`시댄스에 id "${spec.projectId}" 프로젝트가 없다(지웠거나 다른 PC) — 사이드바 이름으로 다시 찾을 것`);
+    } else if (spec.project) {
+      const same = list.filter((p) => p.name === spec.project);
+      if (!same.length) {
+        fail(`시댄스 사이드바에 "${spec.project}" 프로젝트가 없다 — 이름을 사이드바 그대로 적거나, 사용자에게 만들어 달라고 할 것. 사용자가 "만들어"라고 하면 ` +
+          `--do project.create 에 {"name","group","open":false} (화면은 안 바뀐다 — 새 프로젝트는 프로젝트 코드가 비어 있어 사람이 골라야 한다)`);
+      }
+      if (same.length > 1) {
+        fail(`"${spec.project}" 프로젝트가 ${same.length}개다(${same.map((p) => `그룹 "${p.group || "없음"}" — id ${p.id}`).join(" · ")}) — 어느 쪽인지 사용자에게 묻고 ` +
+          `jobs.json 에 "projectId" 를 적을 것`);
+      }
+      target = same[0];
+    } else {
+      target = list.find((p) => p.current) || null;
+      if (!target) fail("보낼 프로젝트가 없다 — jobs.json 에 \"project\"(사이드바 이름)를 적을 것. 모르면 사용자에게 물을 것");
+      log(`  참고: jobs.json 에 "project" 가 없어 지금 열린 "${target.name}" 으로 보낸다 — 이 작업용 프로젝트가 따로 있으면 "project" 에 적을 것`);
+    }
+    if (!target.billing?.name) {
+      fail(`"${target.name}" 프로젝트에 프로젝트 코드(과금)가 안 골라져 있다 — 사용자에게 시댄스에서 그 프로젝트의 설정 패널 '프로젝트 코드'를 ` +
+        "골라 달라고 할 것(에이전트가 고르지 않는다). 고른 뒤 dry-run 을 다시 돌려 확인 카드에 그 코드를 보여 준다");
+    }
+    if (spec.billing && spec.billing !== target.billing.name) {
+      fail(`"${target.name}" 프로젝트의 프로젝트 코드는 "${target.billing.name}" — 확인한 "${spec.billing}" 와 다르다. 보내지 않는다 — 사용자에게 어느 쪽인지 확인할 것`);
+    }
+  }
+  // 옛 앱: 사용자가 이 작업용으로 만들어 둔 프로젝트(jobs.json "project")가 안 열려 있으면 연다 — 사이드바 클릭과 같은 앱 명령(project.open).
+  // 연 뒤에도 확인 카드의 과금(billing)과 같은지 본다.
   // (10/15 사용자 "프로젝트 세팅이랑 과금 다 정해 주고 탭도 만들어 줬는데 항상 클릭해 줘야 하는 이유는?")
-  if (spec.project && spec.project !== s.project) {
+  if (!anyProject && spec.project && spec.project !== s.project) {
     const before = s.project || "없음";
     let names = null;
     try {
@@ -644,14 +691,19 @@ async function main() {
     if (s.project !== spec.project) fail(`"${spec.project}" 를 열지 못했다(지금 "${s.project || "없음"}") — 앱 화면을 확인해 달라고 할 것`);
     log(`시댄스에서 "${spec.project}" 프로젝트를 열었다 — 사이드바 클릭과 같음(그전 화면 "${before}")`);
   }
-  if (!s.project) fail("앱에 열린 프로젝트가 없다 — jobs.json 에 \"project\"(사이드바 이름)를 적으면 스크립트가 연다. 모르면 사용자에게 물을 것");
-  if (!s.billing) fail(`시댄스에 과금 프로젝트가 안 골라져 있다 — 사용자에게 앱 설정 패널 맨 위 "프로젝트" 드롭다운에서 골라 달라고 할 것(앱을 켤 때마다 다시 고른다 — 에이전트가 고르지 않는다)`);
-  if (spec.billing && spec.billing !== s.billing) fail(`"${s.project}" 의 과금 프로젝트는 "${s.billing}" — 확인한 "${spec.billing}" 와 다르다. 사용자에게 확인할 것`);
-  const project = spec.project || s.project;
-  const billing = spec.billing || s.billing;
-  log(`프로젝트 "${project}" · 과금 "${billing}" 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"} · 설명서 ${spec.manual}`);
-  if (Array.isArray(s.allowedModels)) log(`  이 과금 프로젝트로 쓸 수 있는 모델: ${s.allowedModels.join(", ") || "(없음)"}${s.fourK ? " · 4K 가능" : ""}`);
-  if (s.composer === false) log("  참고: 앱이 갤러리 화면이다 — 채팅 화면으로 돌아와야 받는다");
+  if (!anyProject) {
+    if (!s.project) fail("앱에 열린 프로젝트가 없다 — jobs.json 에 \"project\"(사이드바 이름)를 적으면 스크립트가 연다. 모르면 사용자에게 물을 것");
+    if (!s.billing) fail(`시댄스에 과금 프로젝트가 안 골라져 있다 — 사용자에게 앱 설정 패널 맨 위 "프로젝트" 드롭다운에서 골라 달라고 할 것(에이전트가 고르지 않는다)`);
+    if (spec.billing && spec.billing !== s.billing) fail(`"${s.project}" 의 과금 프로젝트는 "${s.billing}" — 확인한 "${spec.billing}" 와 다르다. 사용자에게 확인할 것`);
+  }
+  const project = anyProject ? target.name : spec.project || s.project;
+  const billing = anyProject ? target.billing.name : spec.billing || s.billing;
+  const allowedModels = anyProject ? target.allowedModels : s.allowedModels;
+  const fourK = anyProject ? target.fourK : s.fourK;
+  log(`프로젝트 "${project}" · 과금 "${billing}" 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"} · 설명서 ${spec.manual}` +
+    `${anyProject && project !== s.project ? ` — 열린 프로젝트("${s.project || "없음"}")는 그대로 둔다` : ""}`);
+  if (Array.isArray(allowedModels)) log(`  이 프로젝트 코드로 쓸 수 있는 모델: ${allowedModels.join(", ") || "(없음)"}${fourK ? " · 4K 가능" : ""}`);
+  if (!anyProject && s.composer === false) log("  참고: 앱이 갤러리 화면이다 — 채팅 화면으로 돌아와야 받는다");
   if (s.pending) log(`  참고: 앱이 아직 받지 않은 요청이 ${s.pending}건 있다`);
 
   // 설정 키는 설명서에서 읽는다 — 앱에 새 설정이 생기면 그대로 넘어간다.
@@ -668,7 +720,7 @@ async function main() {
   if (unknown.length) log(`  참고: 설명서에 없는 키는 보내지 않는다 — ${unknown.join(", ")}`);
   for (const j of jobs) {
     const model = j.model ?? defaults.model;
-    if (model && Array.isArray(s.allowedModels) && !s.allowedModels.includes(model)) {
+    if (model && Array.isArray(allowedModels) && !allowedModels.includes(model)) {
       log(`  주의: ${j.name || ""} 의 모델 ${model} 은 이 과금 프로젝트에 권한이 없다 — 앱이 막는다. 다른 모델을 사용자에게 물을 것`);
     }
   }
@@ -754,7 +806,7 @@ async function main() {
   const total = jobs.reduce((a, j) => a + videosOf(j), 0);
   const q = await quota(total, `최대 ${total}개`);
   log(`  이번 최대 ${total}개 · ${q} · 지금 "${project}" 에서 진행 중 ` +
-    `${await inFlight(spec.manual, project)}개 (이번 보내기는 한 번에 ${MAX_IN_FLIGHT}개씩 — 이미 돌고 있는 영상과 상관없이 보내고, 끝나는 대로 다음 묶음)`);
+    `${await inFlight(spec.manual, project, [], target?.id || "")}개 (이번 보내기는 한 번에 ${MAX_IN_FLIGHT}개씩 — 이미 돌고 있는 영상과 상관없이 보내고, 끝나는 대로 다음 묶음)`);
   const planJobs = jobs.map((j) => ({ name: j.name || "", model: settingsOf(j).model ?? "", mode: settingsOf(j).mode ?? "", prompt: String(j.prompt),
     refs: j.refs, elements: mentions(j), settings: settingsOf(j) }));
   if (DRY) {
@@ -796,7 +848,7 @@ async function main() {
           throw e;
         }
         const r = await post("/api/agent/jobs", {
-          manual: spec.manual, name: j.name || `job_${i + 1}`, prompt: String(j.prompt), project, billing,
+          manual: spec.manual, name: j.name || `job_${i + 1}`, prompt: String(j.prompt), project, billing, ...(target ? { projectId: target.id } : {}),
           settings: st, refs: j.refs,
         });
         if (r.http === 409 && r.stale) { await rsv.settle(0); return { stale: r.error }; }
