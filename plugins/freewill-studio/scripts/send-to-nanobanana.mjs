@@ -39,6 +39,7 @@
 //   {
 //     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
 //     "tab": "보낼 탭 이름 — 사용자가 이 작업용으로 만들어 둔 탭(팀·프로젝트가 골라져 있어야 한다). 비우면 지금 화면의 탭",
+//     "billing": "확인 카드에 보여 준 과금 — dry-run 의 '과금 TA팀 · [26P47]…' 이름 그대로. 보낼 때 그 탭 과금과 다르면 멈춘다",
 //     "work": "작업 폴더 — 있으면 dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의 '보낼 것'에 그림으로 뜬다",
 //     "defaults": { "model": "gpt-image-2.5-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
@@ -301,6 +302,15 @@ async function connect() {
   if (!token) fail("나노바나나가 꺼져 있다 — 앱을 켜 달라고 할 것");
 }
 const isDirect = (pr) => pr?.agent_pid === true || (pr?.features || []).includes("agent_pid");
+// 확인 카드·출력에는 앱 화면 그대로 "팀 · 프로젝트 이름" — id(ta팀 / PJ-…)는 사람이 모르고, 다른 프로젝트 id 와 헷갈린다
+// (사용자 10/20 "프로젝트를 사용자 입장이랑 다르게 말하네" — PJ-… 로 말해 KBS 과금을 KIXX 로 착각할 뻔). 목록을 못 읽으면 id 그대로.
+async function billingName(b) {
+  let cat = null;
+  try { cat = await get("/api/billing/catalog"); } catch {}
+  const team = cat?.teams?.find((x) => x.id === b.team_id)?.name || b.team_id;
+  const proj = cat?.projects?.find((x) => x.id === b.project_id)?.name || b.project_id;
+  return `${team} · ${proj}`;
+}
 
 // 사용자가 "만들어"라고 한 탭을 화면을 안 바꾸고 만든다(새 앱만). 과금은 사람이 그 탭 옆 "!" 로 고른다.
 async function createTab(name) {
@@ -387,7 +397,13 @@ async function main() {
     billing = billing || await get("/api/billing/state");
     if (!(billing?.project_id && billing.confirmed !== false)) fail(`"${tab.name}" 탭에 팀·프로젝트가 안 골라져 있다 — 앱에서 먼저 고르게 할 것`);
   }
-  log(`탭 "${tab.name}" · ${billing.team_id} / ${billing.project_id} 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"}` +
+  const billLabel = await billingName(billing);
+  // 확인 카드에 보여 준 과금(jobs.json "billing" — dry-run 의 "과금 …" 이름)과 지금 그 탭 과금이 다르면 보내지 않는다.
+  // 카드와 보내기 사이에 사람이 탭 과금을 바꾸면 카드와 다른 곳으로 기록된다(10/20 석영 탭이 그사이 KBS → USA_CPT 로 바뀐 일).
+  if (spec.billing && ![billLabel, billing.project_id].includes(String(spec.billing).trim())) {
+    fail(`"${tab.name}" 탭의 과금이 지금 "${billLabel}" — 확인 카드의 "${spec.billing}" 와 다르다. 보내지 않는다 — 사용자에게 어느 쪽이 맞는지 묻고 카드를 다시`);
+  }
+  log(`탭 "${tab.name}" · 과금 ${billLabel} 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"}` +
     `${direct && tab.name !== screenTab ? ` — 화면 탭("${screenTab}")은 그대로 둔다` : ""}`);
   if (DRY && !direct && tab.name !== screenTab) {
     log(`  참고: 지금 화면은 "${screenTab}" 탭 — 보낼 때 "${tab.name}" 탭이 화면에 없으면 사용자에게 그 탭을 한 번 눌러 달라고 하고 기다린다(누르면 바로 이어서 넣는다)`);
@@ -430,7 +446,7 @@ async function main() {
   log(`  이번 ${total}장 · ${quota} · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
     `(동시 ${MAX_IN_FLIGHT}장까지 — 넘으면 앞의 것이 끝나야 다음 작업을 넣는다)`);
   // 작업 페이지의 '보낼 것' — 작업마다 모델·레퍼런스(그림으로 뜬다)
-  const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: `${billing.team_id} / ${billing.project_id}`,
+  const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: billLabel,
     jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}`,
       prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })) })) });
   if (DRY) {
