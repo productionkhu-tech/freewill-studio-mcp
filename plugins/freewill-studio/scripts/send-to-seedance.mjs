@@ -523,10 +523,24 @@ async function showStatus(ids) {
 // 화면이 받아서 보낼 때까지(sent) 또는 실패할 때까지. 서버는 10분 안에 못 받은 요청을 스스로 닫는다.
 async function waitTaken(id) {
   let hinted = false;
+  let graceUntil = 0;
   const started = Date.now();
   for (;;) {
     const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
     if (j.http !== 200) return { status: "failed", error: j.error || "요청이 사라짐(앱을 다시 켰나?)" };
+    // '화면 응답 없음'으로 닫힌 요청은 그 화면이 아직 올리는 중일 수 있다(나눠 보기에서 다른 칸을 누르면 신호가 끊긴다 — 26.10.2002 검토).
+    // 서버는 늦게 온 '보냄' 을 받아 준다. 바로 다시 보내면 두 번 과금되니 8분 더 지켜본다.
+    if (j.status === "failed" && /응답이 없습니다/.test(String(j.error || "")) && (!graceUntil || Date.now() < graceUntil)) {
+      if (!graceUntil) {
+        graceUntil = Date.now() + 8 * 60 * 1000;
+        log("  앱이 '화면 응답 없음'으로 닫았다 — 그 화면이 아직 레퍼런스를 올리는 중일 수 있어 8분 더 지켜본다(그동안 다시 보내지 않는다)");
+      }
+      await sleep(5000);
+      continue;
+    }
+    if (j.status === "failed" && graceUntil) {
+      return { ...j, error: `${j.error || ""} — 8분 더 지켜봤지만 늦은 '보냄' 도 없었다. 다시 보내기 전에 cards.list 로 그 프로젝트에 같은 작업 카드가 생겼는지 먼저 볼 것(두 번 과금 방지)` };
+    }
     if (j.status !== "pending" && j.status !== "taken") return j;
     // 새 앱: 대상 프로젝트에 프로젝트 코드가 없으면 앱이 가져가지 않고 기다린다(10분) — 사람이 고르면 바로 보낸다
     if (j.needsBilling && hinted !== "billing") {
