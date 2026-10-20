@@ -17,9 +17,9 @@
 // 하루 한도를 묻는다 — 표가 없거나 만료됐거나 커넥터에 닿지 않으면 보내지 않는다. 프롬프트·그림은 보내지 않는다.
 //
 // 한도 (MCP 로 보내는 것 — 대량 생성을 생각 없이 돌리는 걸 막는다. 앱에서 직접 만드는 건 막지 않는다):
-//   - 한 번에 3개씩 — 이 보내기가 넣은 영상 중 진행 중인 것이 3개를 넘지 않게, 끝나는 대로 다음 묶음을 보낸다.
-//     앱에 이미 돌고 있는 다른 영상(사람 · 다른 보내기)은 세지 않는다 — 2개가 돌고 있어도 3개는 보낸다(사용자 10/20
-//     "4~5개씩 보내지 말라는 거지 3개씩은 보내도 된다"). 과금되는 명령(card.final · card.regenerate)은 한 번에 3개까지.
+//   - 그 프로젝트에서 동시에 진행 중인 영상 6개까지 — 2판짜리 요청 3덩이(사용자 10/21 "3덩이씩 동시에 돌려. 영상 6개까지 괜찮음").
+//     다른 보내기·사람이 넣은 것도 같이 센다. 넘으면 앞의 것이 끝나는 대로 이어서 보낸다. 요청 하나는 1~3개(앱 한 번 최대).
+//     (10/20 "4~5개씩 보내지 말라는 거지 3개씩은 보내도 된다 — 2개가 돌고 있어도" → 10/21 6개로 넓힘). 과금되는 명령은 한 번에 3개까지.
 //   - 한 사람 하루 200개(커넥터가 센다). 넘으면 보내지 않고 멈춘다.
 //
 //   node send-to-seedance.mjs --manual              앱의 사용 설명서와 그 버전 (처음 한 번, 그리고 앱이 바뀌었다고 할 때)
@@ -291,10 +291,11 @@ async function withSendLock(name, fn) {
 
 // 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
-const MAX_IN_FLIGHT = 3;   // 이 보내기가 한 번에 진행시키는 영상(앱에 이미 돌고 있는 다른 영상은 세지 않는다)
+const MAX_IN_FLIGHT = 6;   // 그 프로젝트에서 동시에 진행 중인(대기 포함) 영상 — 2판 3덩이(사용자 10/21)
+const PER_REQUEST = 3;     // 요청 하나의 영상 수 최대(앱 한 번 최대)
 const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]);
 // 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
-const COSTLY = { "card.final": 1, "card.regenerate": MAX_IN_FLIGHT };
+const COSTLY = { "card.final": 1, "card.regenerate": PER_REQUEST };
 
 // 커넥터 — 사용 기록과 하루 한도. 표는 커넥터가 내려줄 때 채운다(이 줄의 모양을 바꾸지 말 것).
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
@@ -462,24 +463,13 @@ async function inFlight(manual, project, ownIds = [], projectId = "") {
   }
 }
 
-// 이 보내기가 넣은 영상 중 아직 안 끝난 것. 앱에 이미 돌고 있는 다른 영상(사람이 만든 것 · 다른 보내기)은 세지 않는다
-// (사용자 10/20 "4~5개씩 보내지 말라는 거지 3개씩은 보내도 된다 — 2개가 돌고 있어도 3개씩은 보내도 된다").
-async function inFlightOwn(ownIds = []) {
-  let n = 0;
-  for (const id of ownIds) {
-    const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
-    n += (j.messages || []).filter((c) => !DONE.has(c.status)).length;
-  }
-  return n;
-}
-
-async function waitForRoom(manual, project, need, ownIds) {
+async function waitForRoom(manual, project, need, ownIds, projectId = "") {
   let last = -1, changedAt = Date.now();
   for (;;) {
-    const n = await inFlightOwn(ownIds);
+    const n = await inFlight(manual, project, ownIds, projectId);
     if (n + need <= MAX_IN_FLIGHT) return;
     if (n !== last) {
-      log(`  기다리는 중 — 이번에 보낸 영상 중 ${n}개가 진행 중(한 번에 ${MAX_IN_FLIGHT}개씩). 끝나는 대로 다음 묶음을 보낸다`);
+      log(`  기다리는 중 — "${project}" 에서 진행 중인 영상 ${n}개(동시 ${MAX_IN_FLIGHT}개까지 — 2판 3덩이). 끝나는 대로 이어서 보낸다`);
       last = n;
       changedAt = Date.now();
     }
@@ -812,15 +802,15 @@ async function main() {
   // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
   const videosOf = (j) => {
     const n = Number(settingsOf(j).output_count);
-    return n >= 1 ? Math.min(Math.round(n), MAX_IN_FLIGHT) : MAX_IN_FLIGHT;
+    return n >= 1 ? Math.min(Math.round(n), PER_REQUEST) : PER_REQUEST;
   };
   if (jobs.some((j) => !(Number(settingsOf(j).output_count) >= 1))) {
-    log(`  참고: output_count 를 안 적은 작업은 앱 설정을 따르므로 ${MAX_IN_FLIGHT}개로 잡고 센다(적어 두면 더 빨리 보낼 수 있다)`);
+    log(`  참고: output_count 를 안 적은 작업은 앱 설정을 따르므로 ${PER_REQUEST}개로 잡고 센다(적어 두면 더 빨리 보낼 수 있다)`);
   }
   const total = jobs.reduce((a, j) => a + videosOf(j), 0);
   const q = await quota(total, `최대 ${total}개`);
   log(`  이번 최대 ${total}개 · ${q} · 지금 "${project}" 에서 진행 중 ` +
-    `${await inFlight(spec.manual, project, [], target?.id || "")}개 (이번 보내기는 한 번에 ${MAX_IN_FLIGHT}개씩 — 이미 돌고 있는 영상과 상관없이 보내고, 끝나는 대로 다음 묶음)`);
+    `${await inFlight(spec.manual, project, [], target?.id || "")}개 (동시 ${MAX_IN_FLIGHT}개까지 — 2판 3덩이, 넘으면 앞의 것이 끝나는 대로 이어서)`);
   const planJobs = jobs.map((j) => ({ name: j.name || "", model: settingsOf(j).model ?? "", mode: settingsOf(j).mode ?? "", prompt: String(j.prompt),
     refs: j.refs, elements: mentions(j), settings: settingsOf(j) }));
   if (DRY) {
@@ -849,9 +839,9 @@ async function main() {
     const st = settingsOf(j);
     let out = null;
     while (!out) {
-      await waitForRoom(spec.manual, project, need, sent.map((x) => x.id));
+      await waitForRoom(spec.manual, project, need, sent.map((x) => x.id), target?.id || "");
       out = await withSendLock("seedance", async () => {
-        if ((await inFlightOwn(sent.map((x) => x.id))) + need > MAX_IN_FLIGHT) return null;
+        if ((await inFlight(spec.manual, project, sent.map((x) => x.id), target?.id || "")) + need > MAX_IN_FLIGHT) return null;
         let rsv;
         try {
           rsv = await reserve(need, {
