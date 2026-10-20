@@ -103,6 +103,21 @@ $tabPid = (Get-NB "/api/projects").active
 $before = Get-NB "/api/settings"
 ```
 
+**새 앱(v2026-10-2001~ — `(Get-NB "/api/projects").agent_pid` 가 true)** 은 탭을 pid 로 지정해 한 요청으로 보낸다.
+화면 탭과 그 탭의 입력칸을 건드리지 않으니 아래 1~3 번(입력칸 담아 두기 · 되돌리기) 대신 이렇게 한다.
+```powershell
+$tabs = (Get-NB "/api/projects").projects
+$tabPid = ($tabs | Where-Object { $_.name -eq "K" }).pid          # 같은 이름이 둘이면 멈추고 묻는다
+$bill = Get-NB "/api/billing/state?pid=$tabPid"                  # confirmed 가 아니면 멈춤 → 사람이 탭 옆 ! 로 고른다
+$r = Send-NB "/api/generate" @{ pid = $tabPid; prompt = "프롬프트"
+       settings = @{ model = "gpt-image-2.5-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
+       ref_paths = @("C:\경로\ref1.png") }                        # 거절이면 error(needs_billing · bad_aspect+allowed · ref_*)
+Get-NB "/api/batch?pid=$tabPid&batch_id=$($r.batch_id)"         # finished 가 true 면 images 에 파일 경로
+```
+사내 규칙 2 의 한도(동시 10장 · 사용 기록 먼저)는 그대로 지킨다.
+
+**옛 앱**:
+
 1. `Get-NB "/api/billing/state"` — `confirmed` 가 아니면 멈추고 앱에서 팀·프로젝트를 고르게 한다.
 2. 작업마다 (같은 탭이 계속 떠 있는지 `/api/projects` 의 `active` 로 확인하면서). **사내 규칙 2 의 한도는 여기서도 지킨다** —
    넣기 전에 `(Get-NB "/api/projects").projects` 의 `outstanding` 을 모두 더해, 이번 작업 장수를 더한 값이 10 을 넘으면

@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// 실행 중인 나노바나나 앱으로 생성 작업을 보낸다 — 사람이 Generate 를 누르는 것과 같은 경로.
+// 실행 중인 나노바나나 앱으로 생성 작업을 보낸다 — 앱 자체의 주소로, 앱이 평소대로 만들고 기록한다.
 //
-// 앱 코드를 따로 불러와 생성하면(헤드리스) 앱 화면은 아무것도 모른다. 이 스크립트는 앱 자체의
-// 주소로 지금 화면에 띄운 탭에 프롬프트·설정·레퍼런스를 넣고 Generate 를 누른다. 그래서
-// 앱에 스켈레톤이 뜨고, 완성되면 갤러리에 들어오고, 과금도 앱이 평소대로 기록한다.
+// 앱 코드를 따로 불러와 생성하면(헤드리스) 앱 화면은 아무것도 모른다. 이 스크립트는 앱 자체의 주소로 보낸다.
+// 그래서 앱 탭에 진행 표시가 뜨고, 완성되면 그 탭 갤러리에 들어오고, 과금도 앱이 평소대로 기록한다.
 //
-// 앱은 작업마다 그 순간의 설정을 따로 저장해 두므로(스냅샷), 여러 작업을 연달아 넣어도 각자
-// 제 설정으로 생성된다. 다 넣고 나면 탭 입력값을 원래대로 돌려놓는다.
+// 앱 v2026-10-2001 부터(앱이 /api/projects 의 agent_pid 로 알린다): 보낼 탭(pid)과 그 작업의 프롬프트·설정·레퍼런스를
+// 한 요청에 실어 보낸다 — 화면의 탭도, 그 탭의 입력칸도 바뀌지 않는다(사용자 10/20 "탭 이동 없이"). 결과는 묶음 id 로 찾는다.
+// 그 전 앱: 탭을 지정할 수 없어 정한 탭이 화면에 떠 있을 때 그 탭 입력칸에 넣고 Generate → 입력칸을 원래대로 돌려놓는다
+// (탭이 화면에 없으면 사람이 누를 때까지 기다린다). 앱은 작업마다 그 순간의 설정을 스냅샷으로 저장해 각자 제 설정으로 생성된다.
+//
+// 팀·프로젝트(과금)는 사람만 고른다 — 확인 안 된 탭이면 보내지 않고 골라 달라고 한다(새 앱은 탭 옆 "!" · 우클릭으로 탭을 안 옮기고 고른다).
 //
 // 읽기에 /api/status 와 /api/events 는 절대 쓰지 않는다 — status 는 읽는 순간 앱의 '창 닫기
 // 요청' 신호를 지우고, events 는 꺼내 가는 큐라 앱 화면의 팝업을 가로챈다. 진행 상황은
@@ -26,9 +29,11 @@
 //   node send-to-nanobanana.mjs jobs.json --save-to <폴더>
 //                                                    지켜본 뒤 새 그림을 그 폴더로 복사(<작업 이름>_A.png · _목록.tsv) —
 //                                                    앱 저장 폴더의 원본은 그대로 둔다(옮기면 앱 갤러리에서 사라진다)
-//   node send-to-nanobanana.mjs jobs.json --keep     탭 입력값을 되돌리지 않음
-//   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다) — 앱의 생성 기능은 화면에 떠 있는
-//                                                    탭에만 들어가서, K 가 화면에 없으면 사람이 K 를 누를 때까지 기다렸다 이어서 넣는다
+//   node send-to-nanobanana.mjs jobs.json --keep     (옛 앱) 탭 입력값을 되돌리지 않음
+//   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다). 새 앱은 화면을 안 바꾸고 바로,
+//                                                    옛 앱은 K 가 화면에 없으면 사람이 K 를 누를 때까지 기다렸다 이어서 넣는다
+//   node send-to-nanobanana.mjs --create-tab "K"     (새 앱, 사용자가 "만들어"라고 했을 때만) 화면을 안 바꾸고 K 탭을 만든다 —
+//                                                    팀·프로젝트는 사람이 그 탭 옆 "!" 로 고른다
 //
 // jobs.json:
 //   {
@@ -53,7 +58,8 @@ const NB = process.env.FREEWILL_NB_URL || "http://127.0.0.1:5656";
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const opt = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : null; };
-const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--tab" && args[i - 1] !== "--save-to");
+const file = args.find((a, i) => !a.startsWith("--") && !["--tab", "--save-to", "--create-tab"].includes(args[i - 1]));
+const CREATE_TAB = opt("--create-tab");
 const SAVE_TO = opt("--save-to");
 const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const KEEP = flag("--keep");
@@ -284,7 +290,33 @@ function imageNotes(j, aspect) {
   return notes;
 }
 
+// 앱이 켜져 있는지, 보안 토큰
+async function connect() {
+  let html = "";
+  let netCode = "";
+  try { html = await (await fetch(`${NB}/`, { signal: AbortSignal.timeout(3000) })).text(); }
+  catch (e) { netCode = e?.cause?.code || (e?.name === "TimeoutError" ? "시간 초과" : e?.name || "오류"); }
+  token = html.match(/<meta name="nb-csrf" content="([^"]+)"/)?.[1] || "";
+  if (!token && netCode && netCode !== "ECONNREFUSED") fail(`나노바나나에 연결 못 함 (${netCode}) — ${BLOCKED}`);
+  if (!token) fail("나노바나나가 꺼져 있다 — 앱을 켜 달라고 할 것");
+}
+const isDirect = (pr) => pr?.agent_pid === true || (pr?.features || []).includes("agent_pid");
+
+// 사용자가 "만들어"라고 한 탭을 화면을 안 바꾸고 만든다(새 앱만). 과금은 사람이 그 탭 옆 "!" 로 고른다.
+async function createTab(name) {
+  if (!name) fail("--create-tab 에 탭 이름을 줄 것");
+  await connect();
+  const pr = await get("/api/projects");
+  if (!isDirect(pr)) fail("이 나노바나나는 탭을 화면 안 바꾸고 만들 수 없다(v2026-10-2001 전) — 사용자에게 앱에서 + 로 만들어 달라고 할 것(앱을 껐다 켜면 새 버전이 깔린다)");
+  if ((pr.projects || []).some((p) => p.name === name)) { log(`"${name}" 탭이 이미 있다 — 만들지 않았다`); return; }
+  const r = await post("/api/projects/new", { title: name, activate: false });
+  if (!r.ok) fail(`탭을 못 만듦: ${r.error || r.raw || "알 수 없음"}`);
+  log(`"${name}" 탭을 만들었다(${r.pid}) — 화면 탭은 그대로. 사용자에게 탭 줄의 "${name}" 옆 "!"(또는 우클릭 "팀·프로젝트…")로 ` +
+    "팀·프로젝트를 골라 달라고 할 것(에이전트가 고르지 않는다)");
+}
+
 async function main() {
+  if (CREATE_TAB !== null) return createTab(String(CREATE_TAB || "").trim());
   if (!file) fail("작업 파일(jobs.json)을 주세요");
   let spec;
   try { spec = JSON.parse(fs.readFileSync(file, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch (e) { fail(`작업 파일을 못 읽음 — ${e.message}`); }
@@ -305,25 +337,39 @@ async function main() {
     noWhy.map((x) => `  - ${x}`).join("\n"));
 
   // 1) 앱이 켜져 있는지, 보안 토큰
-  let html = "";
-  let netCode = "";
-  try { html = await (await fetch(`${NB}/`, { signal: AbortSignal.timeout(3000) })).text(); }
-  catch (e) { netCode = e?.cause?.code || (e?.name === "TimeoutError" ? "시간 초과" : e?.name || "오류"); }
-  token = html.match(/<meta name="nb-csrf" content="([^"]+)"/)?.[1] || "";
-  if (!token && netCode && netCode !== "ECONNREFUSED") fail(`나노바나나에 연결 못 함 (${netCode}) — ${BLOCKED}`);
-  if (!token) fail("나노바나나가 꺼져 있다 — 앱을 켜 달라고 할 것");
+  await connect();
 
   // 2) 어느 탭으로 들어가는지, 팀·프로젝트가 골라져 있는지.
-  // 앱의 생성(/api/generate)·레퍼런스 기능은 화면에 떠 있는 탭에만 들어간다 — 탭을 지정하는 칸이 없다. 탭 전환 API 는 있지만
-  // 앱 화면은 바깥에서 바뀐 걸 모른다(사람이 누를 때만 화면을 다시 그린다). 몰래 바꾸면 화면엔 옛 탭이 보이는데 그 상태로 친 글·넣은
-  // 그림이 다른 탭으로 들어간다. 그래서 바꾸지 않고, 정한 탭(jobs.json "tab" · --tab)이 화면에 없으면 사람이 누를 때까지 기다린다
-  // (10/15 사용자 "탭을 항상 클릭해 줘야 하는 이유는?" — 앱이 탭을 지정해 생성하게 바뀌면 이 기다림도 없앤다).
   const want = TAB || String(spec.tab || "");
-  let tab = await activeTab();
+  const pr0 = await get("/api/projects");
+  const tabs0 = pr0?.projects || [];
+  // 새 앱(v2026-10-2001~, agent_pid): 탭을 pid 로 지정해 보낸다 — 화면 탭도 그 탭 입력칸도 안 바뀐다(사용자 10/20 "탭 이동 없이")
+  const direct = isDirect(pr0);
+  let tab = tabs0.find((p) => p.pid === pr0?.active) || null;
   if (!tab) fail("지금 탭을 알 수 없음");
   const screenTab = tab.name;
   let billing = null;
-  if (want && tab.name !== want) {
+  if (direct) {
+    if (want) {
+      const same = tabs0.filter((p) => p.name === want);
+      if (!same.length) {
+        fail(`나노바나나에 "${want}" 탭이 없다(지금 탭: ${tabs0.map((p) => `"${p.name}"`).join(", ")}) — 이름을 확인하거나, 사용자에게 ` +
+          `그 탭을 만들어 달라고 할 것. 사용자가 "만들어"라고 하면 --create-tab "${want}" 로 만든다(화면은 안 바뀐다)`);
+      }
+      if (same.length > 1) fail(`나노바나나에 "${want}" 탭이 ${same.length}개다 — 어느 탭인지 사용자에게 물을 것(탭 이름을 바꿔 구분)`);
+      tab = same[0];
+    } else {
+      log(`  참고: jobs.json 에 "tab" 이 없어 지금 화면 탭 "${tab.name}" 으로 보낸다 — 이 작업용 탭이 따로 있으면 "tab" 에 적을 것`);
+    }
+    billing = await get(`/api/billing/state?pid=${encodeURIComponent(tab.pid)}`);
+    if (!(billing?.ok !== false && billing?.confirmed && billing.team_id && billing.project_id)) {
+      fail(`"${tab.name}" 탭의 팀·프로젝트가 확인되지 않았다 — 사용자에게 나노바나나 탭 줄의 "${tab.name}" 옆 "!"(또는 탭 우클릭 ` +
+        `"팀·프로젝트…")로 골라 달라고 할 것. 탭을 옮기지 않아도 된다. 에이전트가 고르지 않는다(앱을 다시 켜면 탭마다 한 번 다시 확인한다)`);
+    }
+  } else if (want && tab.name !== want) {
+    // 옛 앱: 생성(/api/generate)·레퍼런스 기능이 화면에 떠 있는 탭에만 들어간다 — 탭을 지정하는 칸이 없다. 탭 전환 API 는 있지만
+    // 앱 화면은 바깥에서 바뀐 걸 모른다(사람이 누를 때만 화면을 다시 그린다). 몰래 바꾸면 화면엔 옛 탭이 보이는데 그 상태로 친 글·넣은
+    // 그림이 다른 탭으로 들어간다. 그래서 바꾸지 않고, 정한 탭이 화면에 없으면 사람이 누를 때까지 기다린다.
     const tabs = (await get("/api/projects"))?.projects || [];
     const target = tabs.find((p) => p.name === want);
     if (!target) fail(`나노바나나에 "${want}" 탭이 없다(지금 탭: ${tabs.map((p) => `"${p.name}"`).join(", ")}) — 이름을 확인하거나 앱에서 만들어 달라고 할 것`);
@@ -337,10 +383,13 @@ async function main() {
       tab = await activeTab();
     }
   }
-  billing = billing || await get("/api/billing/state");
-  if (!(billing?.project_id && billing.confirmed !== false)) fail(`"${tab.name}" 탭에 팀·프로젝트가 안 골라져 있다 — 앱에서 먼저 고르게 할 것`);
-  log(`탭 "${tab.name}" · ${billing.team_id} / ${billing.project_id} 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"}`);
-  if (DRY && tab.name !== screenTab) {
+  if (!direct) {
+    billing = billing || await get("/api/billing/state");
+    if (!(billing?.project_id && billing.confirmed !== false)) fail(`"${tab.name}" 탭에 팀·프로젝트가 안 골라져 있다 — 앱에서 먼저 고르게 할 것`);
+  }
+  log(`탭 "${tab.name}" · ${billing.team_id} / ${billing.project_id} 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"}` +
+    `${direct && tab.name !== screenTab ? ` — 화면 탭("${screenTab}")은 그대로 둔다` : ""}`);
+  if (DRY && !direct && tab.name !== screenTab) {
     log(`  참고: 지금 화면은 "${screenTab}" 탭 — 보낼 때 "${tab.name}" 탭이 화면에 없으면 사용자에게 그 탭을 한 번 눌러 달라고 하고 기다린다(누르면 바로 이어서 넣는다)`);
   }
   // 프롬프트 본문은 영어 — 따옴표 안(그림 속 글자)만 그 언어로. 일부러 한국어면 "prompt_language": "ko" (시댄스와 같은 규칙)
@@ -352,7 +401,8 @@ async function main() {
   }
 
   // 3) 이번에 넣을 장수와 한도 — 하루 한도에 걸리면 하나도 보내지 않는다
-  const base = await get("/api/settings");
+  // 비운 설정 칸은 보낼 탭의 지금 값을 따른다(새 앱은 그 탭 값을 읽기만 하고 쓰지 않는다)
+  const base = await get(direct ? `/api/settings?pid=${encodeURIComponent(tab.pid)}` : "/api/settings");
   const notes = jobs.flatMap((j) => imageNotes(j, j.aspect ?? defaults.aspect ?? base.aspect).map((n) => `${j.name || "(이름 없음)"}: ${n}`));
   if (notes.length) log(`  확인할 것 (references/image-prompting.md · prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}`);
   const countOf = (j) => Math.max(1, Math.round(Number(j.count ?? defaults.count ?? base.count) || 1));
@@ -384,7 +434,8 @@ async function main() {
     jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}`,
       prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })) })) });
   if (DRY) {
-    log(tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
+    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
+      : tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
     for (const [i, j] of jobs.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
@@ -395,10 +446,53 @@ async function main() {
     return;
   }
 
-  // 4) 작업마다 — 같은 PC 의 다른 보내기(예: Claude 와 Codex 가 동시에)와 겹치지 않게 PC 잠금 안에서
-  //    [자리·탭 확인 → 기록 → 입력칸 담아 두기 → 레퍼런스·설정·프롬프트 → Generate → 입력칸 되돌리기] 를 한 번에 한다.
-  //    그래서 동시 10장 한도를 둘이 같이 지키고, 서로의 입력칸을 덮지 않으며, 작업 사이에는 탭이 늘 사람 것이다.
-  const galleryBefore = new Set(((await get(`/api/gallery?pid=${encodeURIComponent(tab.pid)}`))?.items || []).map((i) => i.filepath));
+  // 4) 작업마다 — 같은 PC 의 다른 보내기(예: Claude 와 Codex 가 동시에)와 겹치지 않게 PC 잠금 안에서 한 작업씩 넣는다.
+  //    그래서 동시 10장 한도를 둘이 같이 지킨다.
+  //    새 앱: [자리 확인 → 기록 → 탭 pid 와 그 작업의 값을 한 요청으로] — 화면 탭·입력칸은 건드리지 않는다. 결과는 묶음 id 로.
+  //    옛 앱: [자리·탭 확인 → 기록 → 입력칸 담아 두기 → 레퍼런스·설정·프롬프트 → Generate → 입력칸 되돌리기] — 서로의 입력칸을
+  //    덮지 않고, 작업 사이에는 탭이 늘 사람 것이다.
+  const enc = encodeURIComponent(tab.pid);
+  const galleryBefore = direct ? null : new Set(((await get(`/api/gallery?pid=${enc}`))?.items || []).map((i) => i.filepath));
+  const directError = (gr, j, i) => {
+    const who = j.name || `job_${i + 1}`;
+    if (gr.needs_billing) return `"${tab.name}" 탭의 팀·프로젝트를 앱이 다시 골라 달라고 한다 — 사용자에게 탭 옆 "!" 로 골라 달라고 할 것(${gr.error || ""})`;
+    if (gr.error === "no_such_tab") return `"${tab.name}" 탭이 그사이 닫혔다 — 사용자에게 물을 것`;
+    if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — 고를 수 있는 값: ${(gr.allowed || []).join(", ")}`;
+    if (gr.error === "unknown_model") return `${who}: 앱이 모르는 모델 ${gr.model} — read-local-apps 가 보여 준 모델 id 로`;
+    if (gr.error === "ref_limit") return `${who}: 이 모델은 레퍼런스 ${gr.limit}장까지(${gr.given}장 보냄)`;
+    if (gr.error === "ref_unreadable") return `${who}: 레퍼런스 ${gr.index}번을 앱이 못 읽음 — ${gr.path}`;
+    if (gr.error === "ref_duplicate") return `${who}: 레퍼런스 ${gr.index}번이 ${gr.same_as}번과 같은 그림 — 하나만`;
+    return `Generate 실패 (${who}): ${gr.error || gr.raw || "알 수 없음"}`;
+  };
+  // 새 앱 — 탭(pid)과 그 작업의 프롬프트·설정·레퍼런스를 한 요청으로. 장수(count)는 늘 보낸다(한도·기록과 맞춘다).
+  async function sendDirect(j, i, need) {
+    if ((await inFlight()) + need > MAX_IN_FLIGHT) return false;
+    const model = j.model ?? defaults.model ?? base.model;
+    const resolution = j.resolution ?? defaults.resolution ?? base.resolution;
+    const rsv = await usageApi("POST", "/usage", {
+      app: "nanobanana", n: need, model, resolution, job: j.name || `job_${i + 1}`,
+      billing: `${billing.team_id} / ${billing.project_id}`, project: tab.name, pc: os.hostname(), user: os.userInfo().username, device: device(),
+    });
+    if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
+    const settings = { count: need };
+    for (const k of SETTING_KEYS) {
+      const v = j[k] ?? defaults[k];
+      if (k !== "count" && v !== undefined && v !== null && v !== "") settings[k] = v;
+    }
+    const body = { pid: tab.pid, prompt: String(j.prompt), settings, ref_paths: j.refs.map((p) => path.resolve(p)) };
+    let gr = { ok: false };
+    try {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        gr = await post("/api/generate", body);
+        if (gr.ok || !/Queue full|Stopping previous batch/i.test(String(gr.error || ""))) break;
+        await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
+      }
+    } finally {
+      if (!gr.ok) await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});
+    }
+    if (!gr.ok) throw new Error(directError(gr, j, i));
+    return { model, resolution, rsv, batch_id: gr.batch_id };
+  }
   let refNoted = false;
   const restoreTab = async (snap, refsTouched) => {
     const before = snap.settings;
@@ -458,15 +552,17 @@ async function main() {
   }
 
   let sent = 0;
+  const batches = [];   // 새 앱 — 보낸 작업마다 묶음 id
   try {
     for (const [i, j] of jobs.entries()) {
       const need = countOf(j);
       let done = false;
       while (!done) {
         await waitForRoom(need);
-        await waitForTab(tab);
-        done = await withSendLock("nanobanana", () => sendOne(j, i, need));
+        if (!direct) await waitForTab(tab);
+        done = await withSendLock("nanobanana", () => (direct ? sendDirect(j, i, need) : sendOne(j, i, need)));
       }
+      if (direct) batches.push({ j, k: i, id: done.batch_id, model: done.model });
       sent++;
       log(`  보냄 ${sent}/${jobs.length} ${j.name || ""} · ${done.model} ${done.resolution} ×${need} · 오늘 ${done.rsv.used}/${done.rsv.limit}장`);
       await sleep(250);
@@ -478,43 +574,68 @@ async function main() {
     }
     process.exitCode = 1;
   }
-  if (sent && !KEEP) log(`  "${tab.name}" 탭 입력칸은 작업마다 원래대로 돌려놓았다`);
+  if (sent && !KEEP && !direct) log(`  "${tab.name}" 탭 입력칸은 작업마다 원래대로 돌려놓았다`);
+  if (sent && direct) log(`  "${tab.name}" 탭으로 보냈다 — 화면 탭("${screenTab}")과 그 탭의 입력칸은 그대로`);
   if (!sent) return;
   writePlan(spec, planOf(), { sent: true, jobsFile: file });
 
-  // 6) 지켜보기 — 탭 요약만 읽는다
+  // 6) 지켜보기
   if (!WATCH) {
-    log(`앱에 스켈레톤이 ${sent}건 분량으로 떠 있을 것. 끝나면 갤러리에 들어온다.`);
+    log(`앱 "${tab.name}" 탭에 ${sent}건 분량이 진행 중일 것. 끝나면 그 탭 갤러리에 들어온다.`);
     return;
   }
-  let last = "";
-  const deadline = Date.now() + 60 * 60 * 1000;
-  while (Date.now() < deadline) {
-    const pr = await get("/api/projects");
-    const t = pr?.projects?.find((p) => p.pid === tab.pid);
-    if (!t) break;
-    const line = `  진행 ${t.done}/${t.total}${t.failed ? ` · 실패 ${t.failed}` : ""} · 남음 ${t.outstanding}`;
-    if (line !== last) { log(line); last = line; }
-    if (!t.generating && !t.outstanding) break;
-    await sleep(4000);
-  }
-  const after = (await get(`/api/gallery?pid=${encodeURIComponent(tab.pid)}`))?.items || [];
-  const fresh = after.filter((i) => !galleryBefore.has(i.filepath));
-  // 작업별로 나눠 적는다 — 갤러리는 그림마다 프롬프트·모델을 갖고 있다. 모델이 같은 작업이 여럿이면 파일 이름만으로는
-  // 어느 작업 것인지 모른다. 같은 프롬프트를 모델만 바꿔 보낸 작업은 모델로 가른다.
-  const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
   const sentJobs = jobs.slice(0, sent);
-  const jobOf = (i) => {
-    const same = sentJobs.filter((j) => norm(j.prompt) === norm(i.prompt));
-    return same.length > 1 ? same.find((j) => (j.model ?? defaults.model ?? base.model) === i.model) || same[0] : same[0];
-  };
-  log(`새로 들어온 이미지 ${fresh.length}장 — 작업별:`);
-  for (const [k, j] of sentJobs.entries()) {
-    const mine = fresh.filter((i) => jobOf(i) === j);
-    log(`  ${j.name || `job_${k + 1}`} — ${mine.length}/${countOf(j)}장`);
-    for (const i of mine) log(`    ${i.filepath}`);
+  let groups = [], other = [], last = "";   // groups[k] = 그 작업의 그림 [{ filepath, model }]
+  const deadline = Date.now() + 60 * 60 * 1000;
+  if (direct) {
+    // 새 앱 — 묶음마다 /api/batch(완료·실패·취소·끝남). 앱을 다시 켜 집계가 사라졌으면 갤러리의 batch_id 로 찾는다.
+    while (Date.now() < deadline) {
+      let all = true, done = 0, failed = 0, count = 0;
+      for (const b of batches) {
+        const r = await get(`/api/batch?pid=${enc}&batch_id=${encodeURIComponent(b.id)}`);
+        if (!r?.ok) { b.lost = true; continue; }
+        b.res = r;
+        done += r.done; failed += r.failed + r.cancelled; count += r.count;
+        if (!r.finished) all = false;
+      }
+      const line = `  진행 ${done}/${count}${failed ? ` · 실패·취소 ${failed}` : ""}`;
+      if (line !== last) { log(line); last = line; }
+      if (all) break;
+      await sleep(4000);
+    }
+    for (const b of batches) {
+      let files = b.res?.images;
+      if (!files) files = ((await get(`/api/gallery?pid=${enc}&strict=1&batch_id=${encodeURIComponent(b.id)}`))?.items || []).map((x) => x.filepath);
+      groups[b.k] = (files || []).map((filepath) => ({ filepath, model: b.model }));
+      for (const e of b.res?.errors || []) log(`  ${b.j.name || `job_${b.k + 1}`} 실패 이유: ${e}`);
+    }
+  } else {
+    // 옛 앱 — 탭 요약만 읽고, 새로 들어온 그림을 프롬프트·모델로 작업에 나눈다
+    while (Date.now() < deadline) {
+      const pr = await get("/api/projects");
+      const t = pr?.projects?.find((p) => p.pid === tab.pid);
+      if (!t) break;
+      const line = `  진행 ${t.done}/${t.total}${t.failed ? ` · 실패 ${t.failed}` : ""} · 남음 ${t.outstanding}`;
+      if (line !== last) { log(line); last = line; }
+      if (!t.generating && !t.outstanding) break;
+      await sleep(4000);
+    }
+    const after = (await get(`/api/gallery?pid=${enc}`))?.items || [];
+    const fresh = after.filter((i) => !galleryBefore.has(i.filepath));
+    // 모델이 같은 작업이 여럿이면 파일 이름만으로는 어느 작업 것인지 모른다. 같은 프롬프트를 모델만 바꿔 보낸 작업은 모델로 가른다.
+    const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+    const jobOf = (i) => {
+      const same = sentJobs.filter((j) => norm(j.prompt) === norm(i.prompt));
+      return same.length > 1 ? same.find((j) => (j.model ?? defaults.model ?? base.model) === i.model) || same[0] : same[0];
+    };
+    groups = sentJobs.map((j) => fresh.filter((i) => jobOf(i) === j));
+    other = fresh.filter((i) => !jobOf(i));
   }
-  const other = fresh.filter((i) => !jobOf(i));
+  log(`새로 들어온 이미지 ${groups.reduce((a, g) => a + (g?.length || 0), 0)}장 — 작업별:`);
+  for (const [k, j] of sentJobs.entries()) {
+    log(`  ${j.name || `job_${k + 1}`} — ${(groups[k] || []).length}/${countOf(j)}장`);
+    for (const i of groups[k] || []) log(`    ${i.filepath}`);
+  }
   if (other.length) {
     log(`  어느 작업인지 모름 ${other.length}장 — 그사이 사람이 이 탭에서 만든 것일 수 있다`);
     for (const i of other) log(`    ${i.filepath}`);
@@ -527,7 +648,7 @@ async function main() {
     fs.mkdirSync(SAVE_TO, { recursive: true });
     const rows = [];
     for (const [k, j] of sentJobs.entries()) {
-      for (const [t, i] of fresh.filter((x) => jobOf(x) === j).entries()) {
+      for (const [t, i] of (groups[k] || []).entries()) {
         if (!fs.existsSync(i.filepath)) { log(`  못 옮김 — 원본이 없음: ${i.filepath}`); continue; }
         const name = safe(j.name || `job_${k + 1}`), take = String.fromCharCode(65 + t), ext = path.extname(i.filepath) || ".png";
         let dest = path.join(SAVE_TO, `${name}_${take}${ext}`);
