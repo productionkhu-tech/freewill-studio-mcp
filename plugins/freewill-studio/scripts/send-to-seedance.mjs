@@ -17,8 +17,9 @@
 // 하루 한도를 묻는다 — 표가 없거나 만료됐거나 커넥터에 닿지 않으면 보내지 않는다. 프롬프트·그림은 보내지 않는다.
 //
 // 한도 (MCP 로 보내는 것 — 대량 생성을 생각 없이 돌리는 걸 막는다. 앱에서 직접 만드는 건 막지 않는다):
-//   - 열린 프로젝트에서 동시에 진행 중인(대기 포함) 영상 3개까지 — 앱의 한 번 최대 개수와 같다. 넘으면 앞의 것이
-//     끝날 때까지 기다렸다가 다음 요청을 넣는다. 과금되는 명령(card.final · card.regenerate)도 같다.
+//   - 한 번에 3개씩 — 이 보내기가 넣은 영상 중 진행 중인 것이 3개를 넘지 않게, 끝나는 대로 다음 묶음을 보낸다.
+//     앱에 이미 돌고 있는 다른 영상(사람 · 다른 보내기)은 세지 않는다 — 2개가 돌고 있어도 3개는 보낸다(사용자 10/20
+//     "4~5개씩 보내지 말라는 거지 3개씩은 보내도 된다"). 과금되는 명령(card.final · card.regenerate)은 한 번에 3개까지.
 //   - 한 사람 하루 200개(커넥터가 센다). 넘으면 보내지 않고 멈춘다.
 //
 //   node send-to-seedance.mjs --manual              앱의 사용 설명서와 그 버전 (처음 한 번, 그리고 앱이 바뀌었다고 할 때)
@@ -290,7 +291,7 @@ async function withSendLock(name, fn) {
 
 // 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
-const MAX_IN_FLIGHT = 3;   // 열린 프로젝트에서 동시에 진행 중인(대기 포함) 영상
+const MAX_IN_FLIGHT = 3;   // 이 보내기가 한 번에 진행시키는 영상(앱에 이미 돌고 있는 다른 영상은 세지 않는다)
 const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]);
 // 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
 const COSTLY = { "card.final": 1, "card.regenerate": MAX_IN_FLIGHT };
@@ -461,13 +462,24 @@ async function inFlight(manual, project, ownIds = []) {
   }
 }
 
+// 이 보내기가 넣은 영상 중 아직 안 끝난 것. 앱에 이미 돌고 있는 다른 영상(사람이 만든 것 · 다른 보내기)은 세지 않는다
+// (사용자 10/20 "4~5개씩 보내지 말라는 거지 3개씩은 보내도 된다 — 2개가 돌고 있어도 3개씩은 보내도 된다").
+async function inFlightOwn(ownIds = []) {
+  let n = 0;
+  for (const id of ownIds) {
+    const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
+    n += (j.messages || []).filter((c) => !DONE.has(c.status)).length;
+  }
+  return n;
+}
+
 async function waitForRoom(manual, project, need, ownIds) {
   let last = -1, changedAt = Date.now();
   for (;;) {
-    const n = await inFlight(manual, project, ownIds);
+    const n = await inFlightOwn(ownIds);
     if (n + need <= MAX_IN_FLIGHT) return;
     if (n !== last) {
-      log(`  기다리는 중 — "${project}" 에서 진행 중인 영상 ${n}개(동시 ${MAX_IN_FLIGHT}개 한도). 끝나는 대로 이어서 보낸다`);
+      log(`  기다리는 중 — 이번에 보낸 영상 중 ${n}개가 진행 중(한 번에 ${MAX_IN_FLIGHT}개씩). 끝나는 대로 다음 묶음을 보낸다`);
       last = n;
       changedAt = Date.now();
     }
@@ -564,7 +576,8 @@ async function main() {
     if (!name) fail("--do 뒤에 명령 이름을 주세요 (설명서의 '명령' 목록)");
     let cargs = {};
     if (raw) { try { cargs = readJsonArg(raw); } catch (e) { fail(`인자 JSON 을 못 읽음 — ${e.message}`); } }
-    // 과금되는 명령도 하루 한도와 동시 진행 한도를 지킨다.
+    // 과금되는 명령도 하루 한도를 지킨다. 한 번에 3개까지(card.final 1 · card.regenerate 최대 3) — 앞에 돌고 있는 영상과 상관없이 보낸다.
+    // 여러 카드를 본편으로 올릴 때는 3개씩 보내고 끝나는 걸 본 뒤 다음 3개(지침 7단계).
     const need = COSTLY[name] || 0;
     let rsv = null;
     if (need) {
@@ -572,7 +585,6 @@ async function main() {
       if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual (그때 버전을 기억해 둔다)");
       await quota(need, name);
       const s = await appStatus(manual);
-      if (s.project) await waitForRoom(manual, s.project, need, []);
       rsv = await reserve(need, { kind: name, project: s.project, billing: s.billing, job: String(cargs?.id || "") });
     }
     let result;
@@ -742,7 +754,7 @@ async function main() {
   const total = jobs.reduce((a, j) => a + videosOf(j), 0);
   const q = await quota(total, `최대 ${total}개`);
   log(`  이번 최대 ${total}개 · ${q} · 지금 "${project}" 에서 진행 중 ` +
-    `${await inFlight(spec.manual, project)}개 (동시 ${MAX_IN_FLIGHT}개까지 — 넘으면 앞의 것이 끝나야 다음을 보낸다)`);
+    `${await inFlight(spec.manual, project)}개 (이번 보내기는 한 번에 ${MAX_IN_FLIGHT}개씩 — 이미 돌고 있는 영상과 상관없이 보내고, 끝나는 대로 다음 묶음)`);
   const planJobs = jobs.map((j) => ({ name: j.name || "", model: settingsOf(j).model ?? "", mode: settingsOf(j).mode ?? "", prompt: String(j.prompt),
     refs: j.refs, elements: mentions(j), settings: settingsOf(j) }));
   if (DRY) {
@@ -763,7 +775,7 @@ async function main() {
   }
 
   // 2) 하나씩 — 자리가 나면 넣고, 앱이 보낼 때까지 기다린다. 하나라도 실패하면 거기서 멈춘다(같은 실수를 반복하지 않게).
-  //    [자리 확인 → 기록 → 넣기 → 앱이 받을 때까지] 는 PC 잠금 안에서 — 같은 PC 의 다른 보내기와 동시 3개 한도를 같이 지킨다.
+  //    [자리 확인 → 기록 → 넣기 → 앱이 받을 때까지] 는 PC 잠금 안에서 — 같은 PC 의 다른 보내기와 한 요청씩 차례로 넣는다.
   const sent = [];
   const unsent = (from) => jobs.slice(from).map((j, k) => j.name || `job_${from + k + 1}`).join(", ");
   for (const [i, j] of jobs.entries()) {
@@ -773,7 +785,7 @@ async function main() {
     while (!out) {
       await waitForRoom(spec.manual, project, need, sent.map((x) => x.id));
       out = await withSendLock("seedance", async () => {
-        if ((await inFlight(spec.manual, project, sent.map((x) => x.id))) + need > MAX_IN_FLIGHT) return null;
+        if ((await inFlightOwn(sent.map((x) => x.id))) + need > MAX_IN_FLIGHT) return null;
         let rsv;
         try {
           rsv = await reserve(need, {
