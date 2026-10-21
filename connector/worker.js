@@ -56,7 +56,7 @@ function providerFor(origin) {
       tokenEndpoint: "/token",
       clientRegistrationEndpoint: "/register",
       clientIdMetadataDocumentEnabled: true,
-      refreshTokenTTL: 7 * 24 * 3600,   // 로그인 유지 7일 — 지나면 다시 구글 로그인
+      refreshTokenTTL: 30 * 24 * 3600,  // 로그인 유지 30일(사용자 10/21 "한 달로") — 지나면 다시 구글 로그인
       // 접근 토큰 12시간(기본 1시간) — 갱신마다 KV 쓰기가 2번이라, 하루 1,000번인 무료 KV 쓰기를 아낀다.
       // 막기 · 연결 끊기는 토큰을 바로 지우므로(revokeGrant) 길어도 늦어지지 않는다.
       accessTokenTTL: 12 * 3600,

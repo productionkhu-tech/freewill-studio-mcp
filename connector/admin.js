@@ -420,7 +420,7 @@ async function accountsTab(ctx) {
 <td data-v="${a.blocked ? 1 : 0}">${a.blocked ? `<span class="warn">막힘</span><small>${esc(a.blocked_by || "")} ${a.blocked_at ? esc(kstTime(a.blocked_at)) : ""}</small>` : "쓰는 중"}</td><td>${actions}</td></tr>`;
   });
   return `<section><h2>계정 (${num(emails.length)})</h2>
-<p class="hint">커넥터에 로그인한 회사 구글 계정. '연결한 앱'은 로그인에 쓴 앱(Claude · ChatGPT · Codex 등, 로그인은 7일 유지). <b>연결 끊기</b>는 지금 연결만 끊고 다시 로그인하면 또 쓴다. <b>막기</b>는 연결을 끊고 다시 연결도, 이미 받은 스크립트로 보내기도 못 하게 한다(퇴사 · 계정 유출 때). 기간 이미지 · 영상 · PC 는 위 기간 기준.</p>
+<p class="hint">커넥터에 로그인한 회사 구글 계정. '연결한 앱'은 로그인에 쓴 앱(Claude · ChatGPT · Codex 등, 로그인은 30일 유지). <b>연결 끊기</b>는 지금 연결만 끊고 다시 로그인하면 또 쓴다. <b>막기</b>는 연결을 끊고 다시 연결도, 이미 받은 스크립트로 보내기도 못 하게 한다(퇴사 · 계정 유출 때). 기간 이미지 · 영상 · PC 는 위 기간 기준.</p>
 <form class="lform acc" method="post" action="/admin/account"${confirmText("이 계정을 막을까요?")}><input name="email" type="email" required placeholder="미리 막을 계정 — 이름@${esc(env.ALLOWED_DOMAIN)}" aria-label="막을 회사 이메일"><button name="action" value="block">막기</button></form>
 ${rows.length ? `<div class="scroll"><table class="sortable" id="accttable" data-size="10" data-search="이름 · 이메일 · 앱 검색"><thead><tr><th class="rn">#</th><th data-k="t" data-pick>계정</th><th data-k="n" data-pick data-desc="최근 연결 순" data-asc="오래된 연결 순">마지막 연결</th><th>연결한 앱</th><th data-k="n" class="n" data-pick>기간 이미지</th><th data-k="n" class="n" data-pick>기간 영상</th><th data-k="n" class="n">PC</th><th data-k="n" data-pick data-desc="최근 사용 순" data-asc="오래된 사용 순">마지막 사용</th><th>계정 상한</th><th data-k="n">상태</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="empty">아직 연결한 계정이 없다.</p>`}</section>`;
 }

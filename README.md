@@ -44,7 +44,7 @@ Higgsfield 처럼 주소 하나만 연결한다. 커넥터가 이 저장소의 *
 https://freewill-mcp.production-khu.workers.dev/mcp
 ```
 
-**회사 구글 계정(@studiofreewill.com)으로 로그인해야 쓴다.** 연결할 때 구글 로그인 창이 뜨고, 로그인은 7일 유지된다
+**회사 구글 계정(@studiofreewill.com)으로 로그인해야 쓴다.** 연결할 때 구글 로그인 창이 뜨고, 로그인은 30일 유지된다
 (지나면 다시 로그인). 회사 밖 계정은 거절된다.
 
 | 어디서 | 연결하는 곳 |
