@@ -19,7 +19,9 @@ export const ASK_TOOL = {
     "확인 카드(\"이대로 생성할까요?\")나 선택지 질문을 사용자 화면에 선택 창(버튼)으로 띄우고, 고른 답을 돌려받는다. " +
     "질문 도구가 없는 클라이언트(Codex 등)용 — Claude 는 자체 AskUserQuestion 을 쓴다. 질문 1~4개, 질문마다 선택지 2~6개" +
     "(multi 면 여러 개 고르기). " +
-    "창을 못 띄우면 그렇다고 돌려주니, 그때는 같은 질문을 대화로 묻는다.",
+    "창을 못 띄우면 그렇다고 돌려주니, 그때는 같은 질문을 대화로 묻는다. " +
+    "Codex 승인 정책이 never(권한 '전체 액세스')면 쓰지 않는다 — Codex 가 창을 띄우지 않고 곧장 거절로 답한다. " +
+    "처음부터 번호 선택지로 묻고, 사용자에게 한 번 \"선택 버튼은 권한 '기본'·'자동 검토'에서 뜸\" 이라고 알린다.",
   inputSchema: {
     type: "object",
     properties: {
@@ -48,6 +50,15 @@ export const ASK_TOOL = {
 
 const NO_FORM =
   "이 대화에서는 선택 창을 띄울 수 없다(클라이언트가 지원하지 않음) — 같은 질문을 대화로(번호 선택지) 묻고 답을 받는다.";
+// 사람이 볼 새도 없이 닫힌 창 — 앱이 폼을 띄우지 않고 바로 거절로 답한 것. Codex 0.163 은 권한이 '전체 액세스'(승인 never)면
+// 선택 창을 띄우지 않고 곧장 decline 한다(10/21 "확인 칸이 안 뜨고 거절됐다며 멈춤" — 기본·자동 검토는 창이 뜸).
+// 사용자는 거절하지 않았다. 대화로 같은 질문을 하고, 이 대화에서는 선택 창을 다시 쓰지 않게 한다.
+const QUICK_MS = 3000;
+const NOT_SHOWN =
+  "선택 창이 사용자에게 보이지 않고 바로 닫혔다 — 사용자는 거절하지 않았다(Codex 권한이 '전체 액세스'면 앱이 창을 띄우지 않고 자동으로 거절한다). " +
+  "같은 질문을 대화로, 같은 선택지를 번호와 함께 묻는다(예: 1) 생성 2) 고치기 3) 취소). 사용자가 고르면 그대로 진행한다. " +
+  "사용자에게 한 줄 알린다: \"선택 버튼을 쓰려면 Codex 권한을 '전체 액세스' 대신 '기본' 또는 '자동 검토'로\". " +
+  "이 대화에서는 freewill_ask 를 다시 쓰지 않는다.";
 
 // 도구 인자 → elicitation 폼. 칸 이름은 q1~q4 · 메모 q9(Codex 가 칸을 이름순으로 정렬해 그리므로 메모가 맨 아래로),
 // 돌려줄 때 질문 제목으로 되돌린다.
@@ -77,13 +88,17 @@ export function askForm(args) {
 }
 
 // 클라이언트의 답(JSON-RPC 응답 그대로, 시간 넘기면 null) → 도구 결과 글
-export function askResult(answer, titles, waitMs = WAIT_MS) {
+export function askResult(answer, titles, waitMs = WAIT_MS, elapsedMs = Infinity) {
   const text = (t) => ({ content: [{ type: "text", text: t }] });
   if (!answer) return text(`${Math.round(waitMs / 60000) || 1}분 안에 답이 없어 창을 닫았다 — 진행하지 말고 같은 질문을 대화로 다시 묻는다.`);
   if (answer.error) return text(`${NO_FORM} (${answer.error.message || answer.error.code})`);
   const { action, content } = answer.result || {};
-  if (action === "decline") return text("사용자가 창에서 거절했다 — 진행하지 않는다. 무엇을 바꿀지 대화로 묻는다.");
-  if (action !== "accept") return text("사용자가 창을 닫았다(취소) — 진행하지 않는다. 필요하면 대화로 다시 묻는다.");
+  if (action !== "accept" && elapsedMs < QUICK_MS) return text(NOT_SHOWN);
+  if (action === "decline") return text("사용자가 창에서 거절을 눌렀다 — 진행하지 않는다. 같은 질문을 대화로 다시 묻고, 바꿀 점이 있으면 받아 고친다.");
+  if (action !== "accept") {
+    return text("선택 창이 닫혔다(사용자가 닫았거나 앱이 띄우지 못함) — 진행하지 않고, 같은 질문을 대화로 같은 선택지와 함께 다시 묻는다. " +
+      "사용자가 '생성'처럼 답하면 그대로 진행한다.");
+  }
   const shown = (v) => (Array.isArray(v) ? v.join(", ") : String(v ?? "")).trim();
   const lines = Object.entries(titles)
     .filter(([k]) => shown(content?.[k]) !== "")
@@ -127,11 +142,16 @@ export function askResponse(request, { id, args, env, props, ctx }) {
     try {
       await room.fetch("https://ask/open", { method: "POST", body: JSON.stringify({ email: props?.email || "" }) });
       await send({ jsonrpc: "2.0", id: `${ID_PREFIX}${askId}`, method: "elicitation/create", params: form.params });
+      const sentAt = Date.now();
       ping = setInterval(() => writer.write(enc.encode(": ping\n\n")).catch(() => {}), PING_MS);
       const r = await room.fetch("https://ask/wait", { method: "POST", body: JSON.stringify({ ms: waitMs }) });
       const { answer } = await r.json();
       clearInterval(ping);
-      await send({ jsonrpc: "2.0", id, result: askResult(answer, form.titles, waitMs) });
+      const elapsed = Date.now() - sentAt;
+      // 어느 앱이 창을 어떻게 다뤘는지 — 워커 로그에서 본다(답 내용은 남기지 않는다)
+      console.log(JSON.stringify({ ask: answer ? answer.result?.action || (answer.error ? "error" : "?") : "timeout", ms: elapsed,
+        ua: String(request.headers.get("User-Agent") || "").slice(0, 120) }));
+      await send({ jsonrpc: "2.0", id, result: askResult(answer, form.titles, waitMs, elapsed) });
     } catch (e) {
       clearInterval(ping);
       await send({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: `${NO_FORM} (${e.message || e})` }] } }).catch(() => {});

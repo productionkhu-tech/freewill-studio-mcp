@@ -172,10 +172,18 @@ async function modeGuide(entry) {
 }
 
 // start 4단계의 자리표를 '앱 모델 → 공식 가이드' 표(official/VERSIONS.md, sync 가 매일 새로 씀)로 바꾼다.
+// 커뮤니티 표의 하위 topic 줄줄이(한 칸에 2천 자 가까이)는 "외 N개" 로 접는다 — start 가 한 번에 받는 크기(PART_CHARS)
+// 안에 들게. 하위 topic 은 도구의 topic 목록과 freewill_guide("versions") 에 그대로 있다.
 const MODEL_GUIDES = /<!-- MODEL_GUIDES:[^>]*-->/;
+function foldSubtopics(table) {
+  return table.replace(/^\| (`official:[^`]+`)(.*?) \| /gm, (whole, first, rest) => {
+    const more = (rest.match(/`official:/g) || []).length;
+    return more ? `| ${first} 외 ${more}개(versions) | ` : whole;
+  });
+}
 async function withModelGuides(text) {
   if (!MODEL_GUIDES.test(text)) return text;
-  const table = (await fromRepo(GUIDES.versions)).replace(/^# .*\r?\n+/, "").trim();
+  const table = foldSubtopics((await fromRepo(GUIDES.versions)).replace(/^# .*\r?\n+/, "").trim());
   return text.replace(MODEL_GUIDES, () => table);
 }
 
