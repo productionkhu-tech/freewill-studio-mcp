@@ -199,6 +199,12 @@ async function guideVersion() {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texts.join(String.fromCharCode(0))));
   return [...new Uint8Array(hash)].slice(0, 5).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+// 사용 기록(/usage/me)이 지금 지침 버전을 같이 알려 준다 — 스크립트가 만료되지 않게 된 뒤(10/22 표를 스크립트가 직접 받음)에도
+// 옛 스크립트를 계속 쓰는 대화가 바뀐 지침을 놓치지 않게. 스크립트는 제 FREEWILL_GUIDE 와 다르면 멈춘다.
+export async function currentGuide(env) {
+  rawBase = env.REPO_RAW || RAW;
+  return guideVersion();
+}
 const versionLine = (v) =>
   `> - **지침 버전 \`${v}\`** — 앱으로 보내는 jobs.json 에 \`"guide": "${v}"\` 를 적는다. 보내기 스크립트가 "지침이 바뀌었다" 고\n` +
   `>   하면 이 지침(start)을 다시 받아 읽고 바뀐 규칙대로 고친다 — 사용자에게 지침 버전 얘기는 하지 않는다.\n`;

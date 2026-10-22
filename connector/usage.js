@@ -9,6 +9,7 @@
 // 관리자가 계정에 상한을 정해 두면(limits) 그 계정으로 보낸 모든 장치의 합계도 그 안이어야 한다.
 
 import { readTicket } from "./auth.js";
+import { currentGuide } from "./mcp.js";
 import { logEvent } from "./events.js";
 
 export const LIMITS = { nanobanana: 1000, seedance: 200 };   // 장치 한 대의 하루 기본 한도
@@ -164,7 +165,8 @@ async function handleUsage(request, env) {
     const id = d.real && !known ? legacyId(d.pc, d.user) : d.id;
     const apps = {};
     for (const app of Object.keys(LIMITS)) apps[app] = await quota(env, t.e, id, app);
-    return json({ ok: true, email: t.e, device: d.id, pc: d.pc, user: d.user, day: kstDay(), apps });
+    const guide = await currentGuide(env).catch(() => null);   // 지금 지침 버전 — 스크립트가 제 것과 다르면 멈춘다
+    return json({ ok: true, email: t.e, device: d.id, pc: d.pc, user: d.user, day: kstDay(), apps, ...(guide ? { guide } : {}) });
   }
   if (request.method !== "POST") return json({ ok: false, error: "POST 로 보낼 것" }, 405);
   const b = await request.json().catch(() => ({}));

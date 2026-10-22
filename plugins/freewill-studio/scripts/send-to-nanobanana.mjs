@@ -88,6 +88,10 @@ const FREEWILL_GUIDE = "";
 const GUIDE_STALE = (had) => `지침이 바뀌었다 (이 대화가 읽은 지침 ${had || "버전 없음"} → 지금 ${FREEWILL_GUIDE}) — ` +
   `freewill_guide("start") 를 다시 받아 읽고 바뀐 규칙대로 프롬프트·확인 카드를 고친 뒤, jobs.json 에 "guide": "${FREEWILL_GUIDE}" 를 ` +
   "적어 다시 실행할 것. 프롬프트·설정이 달라졌으면 확인 카드부터 다시. 사용자에게 지침 버전 얘기는 하지 않는다";
+// 이 스크립트를 받은 뒤 지침이 바뀜 — 커넥터가 사용 기록 답에 지금 버전을 알려 준다(스크립트는 만료되지 않으니 이걸로 옛 스크립트를 걸러 낸다)
+const SCRIPT_OLD = (now) => `이 스크립트를 받은 뒤 지침이 바뀌었다(스크립트 ${FREEWILL_GUIDE} → 지금 ${now}) — freewill_guide("start") 를 다시 받아 읽고 ` +
+  `freewill_script("send-to-nanobanana") 로 스크립트도 새로 받아, 바뀐 규칙대로 프롬프트·확인 카드를 고친 뒤 jobs.json 에 "guide": "${now}" 를 적어 다시 실행할 것. ` +
+  "사용자에게 지침 버전 얘기는 하지 않는다";
 
 let token = "";
 const log = (...m) => console.log(...m);
@@ -554,6 +558,7 @@ async function main() {
     const host = os.hostname();
     const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}&device=${encodeURIComponent(device())}`);
     if (me.http === 401 || me.http === 403) fail(me.error || NO_TICKET);   // 403 = 관리자가 막은 계정
+    if (FREEWILL_GUIDE && me.guide && me.guide !== FREEWILL_GUIDE) fail(SCRIPT_OLD(me.guide));
     const q = me.apps?.nanobanana;
     if (!q) fail(me.error || `사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
     if (q.limit === 0) fail(`${q.scope === "account" ? `${owner.e} 계정은` : `이 PC(${host})는`} 관리자가 MCP 이미지 생성을 막아 두었다 — 관리자에게 물을 것`);

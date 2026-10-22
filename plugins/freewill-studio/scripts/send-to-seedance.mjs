@@ -378,6 +378,10 @@ const FREEWILL_GUIDE = "";
 const GUIDE_STALE = (had) => `지침이 바뀌었다 (이 대화가 읽은 지침 ${had || "버전 없음"} → 지금 ${FREEWILL_GUIDE}) — ` +
   `freewill_guide("start") 를 다시 받아 읽고 바뀐 규칙대로 프롬프트·확인 카드를 고친 뒤, jobs.json 에 "guide": "${FREEWILL_GUIDE}" 를 ` +
   "적어 다시 실행할 것. 프롬프트·설정이 달라졌으면 확인 카드부터 다시. 사용자에게 지침 버전 얘기는 하지 않는다";
+// 이 스크립트를 받은 뒤 지침이 바뀜 — 커넥터가 사용 기록 답에 지금 버전을 알려 준다(스크립트는 만료되지 않으니 이걸로 옛 스크립트를 걸러 낸다)
+const SCRIPT_OLD = (now) => `이 스크립트를 받은 뒤 지침이 바뀌었다(스크립트 ${FREEWILL_GUIDE} → 지금 ${now}) — freewill_guide("start") 를 다시 받아 읽고 ` +
+  `freewill_script("send-to-seedance") 로 스크립트도 새로 받아, 바뀐 규칙대로 프롬프트·확인 카드를 고친 뒤 jobs.json 에 "guide": "${now}" 를 적어 다시 실행할 것. ` +
+  "사용자에게 지침 버전 얘기는 하지 않는다";
 
 // 표 — 대화에 나오지 않게 이 스크립트가 커넥터에서 직접 받아 사용자 폴더에 둔다(10/22 대화 속 표를 Claude 자동 권한 검사가
 // '자격 증명 유출'로 막음). 없거나 만료면 요청 번호를 내고 멈춤 → 에이전트가 freewill_ticket(요청 번호)로 승인 → 같은 명령을
@@ -605,6 +609,7 @@ async function quota(n, what) {
   const host = os.hostname();
   const me = await usageApi("GET", `/usage/me?pc=${encodeURIComponent(host)}&user=${encodeURIComponent(os.userInfo().username)}&device=${encodeURIComponent(device())}`);
   if (me.http === 401 || me.http === 403) fail(me.error || NO_TICKET);   // 403 = 관리자가 막은 계정
+  if (FREEWILL_GUIDE && me.guide && me.guide !== FREEWILL_GUIDE) fail(SCRIPT_OLD(me.guide));
   const q = me.apps?.seedance;
   if (!q) fail(me.error || `사용 기록 서버가 답하지 않는다 (${me.http}) — 잠시 뒤 다시`);
   if (q.limit === 0) fail(`${q.scope === "account" ? `${owner.e} 계정은` : `이 PC(${host})는`} 관리자가 MCP 영상 생성을 막아 두었다 — 관리자에게 물을 것`);
