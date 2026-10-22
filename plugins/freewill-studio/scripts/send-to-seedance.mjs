@@ -12,9 +12,10 @@
 // 진행은 /api/agent/* 로만 본다. /api/byteplus/tasks/<id> 는 부르지 않는다 — 그 조회는 성공을 처음 본 순간
 // 크레딧 보고·영상 보관을 하고 기록을 지운다(앱 화면이 하는 일이다).
 //
-// 로그인과 사용 기록: 프리윌 스튜디오 MCP 커넥터(회사 구글 계정 로그인)가 이 스크립트를 내려줄 때 받는 사람의 표를
-// FREEWILL_TICKET 에 넣는다(12시간). 요청마다 앱에 넣기 직전에 커넥터에 "누가·어느 PC·무슨 모델·몇 개" 를 남기고
-// 하루 한도를 묻는다 — 표가 없거나 만료됐거나 커넥터에 닿지 않으면 보내지 않는다. 프롬프트·그림은 보내지 않는다.
+// 로그인과 사용 기록: 요청마다 앱에 넣기 직전에 프리윌 스튜디오 MCP 커넥터에 "누가·어느 PC·무슨 모델·몇 개" 를 남기고
+// 하루 한도를 묻는다 — 표(사용 기록용 토큰)가 없거나 커넥터에 닿지 않으면 보내지 않는다. 프롬프트·그림은 보내지 않는다.
+// 표는 이 스크립트가 커넥터에서 직접 받아 사용자 폴더에 둔다(12시간): 없으면 "표 승인 필요 — 요청 번호" 를 내고 멈춤 →
+// 에이전트가 freewill_ticket(요청 번호) → 같은 명령을 다시 실행하면 받아 간다. 표가 대화에 나오지 않게(아래 loadTicket).
 //
 // 한도 (MCP 로 보내는 것 — 대량 생성을 생각 없이 돌리는 걸 막는다. 앱에서 직접 만드는 건 막지 않는다):
 //   - 그 프로젝트에서 동시에 진행 중인 영상 6개까지 — 2판짜리 요청 3덩이(사용자 10/21 "3덩이씩 동시에 돌려. 영상 6개까지 괜찮음").
@@ -363,9 +364,11 @@ const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]
 // 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
 const COSTLY = { "card.final": 1, "card.regenerate": 1 };   // 26.10.2004~ 재생성은 늘 1편
 
-// 커넥터 — 사용 기록과 하루 한도. 표는 커넥터가 내려줄 때 채운다(이 줄의 모양을 바꾸지 말 것).
+// 커넥터 — 사용 기록과 하루 한도.
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
+// 옛 방식(원문에 박힌 표) — 시험에서만 쓴다. 지금 커넥터는 비워 두고 받는 사람만 아래에 채운다(두 줄 모양을 바꾸지 말 것).
 const FREEWILL_TICKET = "";
+const FREEWILL_ACCOUNT = "";
 // 지침 버전 — 커넥터가 내려줄 때 채운다(이 줄 모양도 바꾸지 말 것). jobs.json 의 "guide" 와 다르면 이 대화가 읽은 지침이
 // 옛것이다 → 보내지 않고 다시 읽게 한다(앱 설명서 버전과 같은 방식). 비어 있으면(커넥터에서 받은 게 아니면) 보지 않는다.
 const FREEWILL_GUIDE = "";
@@ -373,16 +376,57 @@ const GUIDE_STALE = (had) => `지침이 바뀌었다 (이 대화가 읽은 지�
   `freewill_guide("start") 를 다시 받아 읽고 바뀐 규칙대로 프롬프트·확인 카드를 고친 뒤, jobs.json 에 "guide": "${FREEWILL_GUIDE}" 를 ` +
   "적어 다시 실행할 것. 프롬프트·설정이 달라졌으면 확인 카드부터 다시. 사용자에게 지침 버전 얘기는 하지 않는다";
 
+// 표 — 대화에 나오지 않게 이 스크립트가 커넥터에서 직접 받아 사용자 폴더에 둔다(10/22 대화 속 표를 Claude 자동 권한 검사가
+// '자격 증명 유출'로 막음). 없거나 만료면 요청 번호를 내고 멈춤 → 에이전트가 freewill_ticket(요청 번호)로 승인 → 같은 명령을
+// 다시 실행하면 받아 간다. 요청 번호는 이 PC 에만 있는 비밀값의 지문이라 번호만으로는 표를 못 받는다.
+const TICKET_FILE = path.join(os.homedir(), ".freewill-studio", "ticket.json");
+const TICKET_ASK = path.join(os.homedir(), ".freewill-studio", "ticket-ask.json");
+let TICKET = FREEWILL_TICKET;
+const ticketBody = (t) => {
+  try { return JSON.parse(Buffer.from(String(t).split(".")[0].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")); } catch { return null; }
+};
 // 표 안의 이름·만료만 읽는다(서명은 커넥터가 확인한다). 없거나 만료면 null.
 function ticketOwner() {
-  if (!FREEWILL_TICKET) return null;
-  try {
-    const b = FREEWILL_TICKET.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
-    const t = JSON.parse(Buffer.from(b, "base64").toString("utf8"));
-    return t.x > Date.now() ? t : null;
-  } catch { return null; }
+  const t = TICKET ? ticketBody(TICKET) : null;
+  return t && t.x > Date.now() ? t : null;
 }
-// 표가 없으면(플러그인에 깔린 사본처럼 커넥터를 거치지 않음) 사람이 커넥터에 로그인해야 하고, 만료면 다시 받기만 하면 된다.
+const readTicketFile = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8").replace(/^[^{]*/, "")); } catch { return null; } };
+const writeTicketFile = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o), { mode: 0o600 }); };
+const askLine = (code) => `표 승인 필요 — freewill_ticket 도구를 request "${code.match(/.{4}/g).join("-")}" 로 부른 뒤 같은 명령을 다시 실행할 것. ` +
+  "사용자에게 묻지 않는다 — 표는 이 스크립트가 커넥터에서 직접 받아 이 PC 에 둔다(대화·명령줄에 옮겨 적지 않는다). " +
+  "freewill_ticket 도구가 없으면 이 대화가 그 도구가 생기기 전에 시작된 것이다 — 사용자에게 새 대화에서 이어 가자고 한다";
+// 표가 있으면 null, 없으면 할 일(요청 번호 안내)을 돌려준다.
+async function loadTicket() {
+  if (ticketOwner()) return null;
+  if (!FREEWILL_ACCOUNT) return NO_TICKET;
+  const saved = readTicketFile(TICKET_FILE);
+  const st = saved?.ticket ? ticketBody(saved.ticket) : null;
+  if (st && saved.account === FREEWILL_ACCOUNT && st.x > Date.now() + 5 * 60 * 1000) { TICKET = saved.ticket; return null; }
+  const ask = readTicketFile(TICKET_ASK);
+  if (ask?.v && ask.code && Date.now() - ask.at < 10 * 60 * 1000) {
+    let r;
+    try {
+      r = await fetch(`${FREEWILL}/ticket/claim`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verifier: ask.v }), signal: AbortSignal.timeout(15000) });
+    } catch {
+      throw new Stop(`사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인하거나, ${BLOCKED}`);
+    }
+    const j = await r.json().catch(() => null);
+    if (j?.ok && j.ticket) {
+      writeTicketFile(TICKET_FILE, { ticket: j.ticket, account: FREEWILL_ACCOUNT, saved: new Date().toISOString() });
+      try { fs.rmSync(TICKET_ASK, { force: true }); } catch {}
+      TICKET = j.ticket;
+      return null;
+    }
+    if (r.status !== 404) return j?.error || `사용 기록 서버가 지금 답하지 않는다(HTTP ${r.status}) — 잠시 뒤 다시`;
+    return askLine(ask.code);   // 아직 승인 전 — 같은 번호
+  }
+  const v = crypto.randomBytes(32).toString("hex");
+  const code = crypto.createHash("sha256").update(v).digest("hex").slice(0, 16);
+  writeTicketFile(TICKET_ASK, { v, code, at: Date.now() });
+  return askLine(code);
+}
+// 표가 없고 커넥터에서 받은 스크립트도 아니면(플러그인에 깔린 사본 등) 사람이 커넥터에 로그인해야 한다.
 const NO_TICKET = !FREEWILL_TICKET
   ? "이 스크립트는 프리윌 스튜디오 MCP 커넥터에서 받은 것이 아니라(플러그인에 깔린 사본 등) 앱으로 보낼 수 없다. " +
     "freewill_script 도구가 있으면 freewill_script(\"send-to-seedance\") 로 받아 그 원문을 실행할 것. " +
@@ -417,12 +461,13 @@ async function usageApi(method, p, body) {
   let r;
   try {
     r = await fetch(`${FREEWILL}${p}`, {
-      method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${FREEWILL_TICKET}` },
+      method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${TICKET}` },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000),
     });
   } catch {
     throw new Stop(`사용 기록 서버(프리윌 스튜디오 MCP)에 닿지 않아 보내지 않는다 — 인터넷 연결을 확인하거나, ${BLOCKED}`);
   }
+  if (r.status === 401 && TICKET !== FREEWILL_TICKET) { try { fs.rmSync(TICKET_FILE, { force: true }); } catch {} }   // 다음 실행이 새로 받게
   const j = await r.json().catch(() => null);
   // JSON 이 아닌 답 = 커넥터까지 못 감(클라우드플레어가 대신 답함). 기록이 안 남으니 보내지 않는다.
   if (!j) {
@@ -435,7 +480,7 @@ async function usageApi(method, p, body) {
 
 // 앱에 넣기 전에 기록을 남기고 한도를 묻는다. 거절이면 멈춘다. 돌려주는 settle(n) 로 실제 개수를 맞추거나(0 이면 무름).
 async function reserve(n, meta) {
-  if (!ticketOwner()) fail(NO_TICKET);
+  if (!ticketOwner()) fail((await loadTicket()) || NO_TICKET);
   const r = await usageApi("POST", "/usage", { app: "seedance", n, pc: os.hostname(), user: os.userInfo().username, device: device(), ...meta });
   if (!r.ok) fail(r.error || `사용 기록을 남기지 못함 (${r.http})`);
   return { ...r, settle: (actual) => (actual === n ? Promise.resolve() : usageApi("POST", "/usage/settle", { id: r.id, n: actual }).catch(() => {})) };
@@ -544,12 +589,14 @@ async function waitForRoom(manual, project, need, ownIds, projectId = "") {
   }
 }
 
-// 오늘 한도 — 표가 없으면(받은 스크립트가 아니면) dry-run 만 되고 보내기는 멈춘다.
+// 오늘 한도 — 표가 없으면 dry-run 은 요청 번호를 알려만 주고(카드 전에 승인해 두면 바로 보낸다) 보내기는 멈춘다.
 async function quota(n, what) {
+  const need = await loadTicket();
   const owner = ticketOwner();
   if (!owner) {
-    if (!DRY) fail(NO_TICKET);
-    return "로그인 표 없음 — 보낼 때는 커넥터에서 다시 받은 스크립트로";
+    if (!DRY) fail(need || NO_TICKET);
+    if (need === NO_TICKET) return "로그인 표 없음 — 보낼 때는 커넥터에서 받은 스크립트로";
+    return `표 승인 전\n  ${need}`;
   }
   // 하루 한도는 PC(PC 이름 + 윈도 사용자) 기준 — 관리자가 계정 전체 상한을 걸어 두면 더 빡빡한 쪽이 온다(scope)
   const host = os.hostname();

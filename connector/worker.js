@@ -7,6 +7,7 @@
 //   /mcp            로그인한 사람만 (MCP 본체, mcp.js — 선택 창 freewill_ask 는 ask.js, 답 기다리는 자리는 Durable Object AskRoom)
 //   /authorize · /callback   구글 로그인 (auth.js)
 //   /usage …        스크립트가 남기는 사용 기록·하루 한도 (usage.js, 스크립트의 로그인 표로 확인)
+//   /ticket/claim   스크립트가 승인된 요청 번호로 표를 받아 간다 (ticket.js — 표가 대화에 나오지 않게)
 //   /admin …        관리자 화면 (admin.js — ADMIN_EMAILS 만, 구글 로그인)
 //   /token · /register · /.well-known/…   OAuth 공급자가 맡는다
 //
@@ -16,6 +17,7 @@ import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { mcpHandler } from "./mcp.js";
 import { adminLogin, adminUser, authorize, callback, originOf, page } from "./auth.js";
 import { usage } from "./usage.js";
+import { claimTicket } from "./ticket.js";
 import { admin } from "./admin.js";
 
 export { AskRoom } from "./ask.js";
@@ -35,6 +37,7 @@ const defaultHandler = {
     if (p === "/authorize") return authorize(request, env);
     if (p === "/callback") return callback(request, env);
     if (p === "/usage" || p.startsWith("/usage/")) return usage(request, env);
+    if (p === "/ticket/claim") return claimTicket(request, env);
     if (p === "/admin" || p.startsWith("/admin/")) {
       const who = await adminUser(request, env);
       return who ? admin(request, env, who) : adminLogin(request, env);

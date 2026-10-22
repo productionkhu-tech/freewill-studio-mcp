@@ -150,3 +150,11 @@ CREATE TABLE IF NOT EXISTS events (
   detail TEXT
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
+
+-- 보내기 스크립트의 표 받기 승인 (ticket.js) — 요청 번호(스크립트 비밀값의 sha256 앞 16자) → 승인한 사람. 10분 · 한 번 쓰면 지운다.
+CREATE TABLE IF NOT EXISTS ticket_asks (
+  code TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  name TEXT,
+  ts INTEGER NOT NULL
+);

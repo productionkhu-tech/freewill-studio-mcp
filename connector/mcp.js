@@ -2,15 +2,16 @@
 //
 // 하는 일은 그대로다: GitHub 저장소(productionkhu-tech/freewill-studio-mcp)의 최신 지침·공식 프롬프팅 스킬·앱 다루는
 // 스크립트를 내려준다. 생성은 하지 않는다 — 앱에 작업을 넣는 일은 PC 에서 도는 에이전트가 여기서 받은 스크립트로 한다.
-// 스크립트를 내려줄 때는 (1) 통신 검사(script-check.mjs)를 거치고 (2) 받는 사람의 로그인 표를 넣는다 — 스크립트는
-// 보낼 때마다 그 표로 사용 기록을 남기고 하루 한도를 묻는다.
+// 스크립트를 내려줄 때는 (1) 통신 검사(script-check.mjs)를 거치고 (2) 받는 사람(계정)과 지침 버전을 넣는다. 사용 기록용
+// 표는 넣지 않는다 — 스크립트가 요청 번호를 내면 에이전트가 freewill_ticket 으로 승인하고, 표는 스크립트가 직접 받아 간다
+// (ticket.js — 표가 대화에 나오면 Claude 자동 권한 검사가 자격 증명 유출로 막는다, 10/22).
 //
 // MCP Streamable HTTP, 상태 없음: POST /mcp 로 JSON-RPC 를 받아 JSON 으로 답한다. 예외 하나 — freewill_ask(선택 창)는
 // 사용자의 답을 기다려야 해서 SSE 로 답한다(ask.js).
 
 import { checkScript } from "./script-check.mjs";
-import { makeTicket, TICKET_HOURS } from "./auth.js";
 import { ASK_TOOL, askResponse, deliverAnswer, isAnswer } from "./ask.js";
+import { TICKET_TOOL, approveTicket } from "./ticket.js";
 import { pickSections } from "./sections.js";
 import { extractDoc } from "./docs.js";
 
@@ -71,7 +72,7 @@ const START_PREAMBLE = `> **원격 커넥터로 받은 지침이다** (GitHub �
 > - \`official/<이름>/SKILL.md\`·\`GUIDE.md\` → \`freewill_guide("official:<이름>")\` — 예: \`"official:sd25-pe"\`, \`"official:nano-banana"\`
 > - \`official/<이름>/references/<파일>.md\` → \`"official:<이름>/<파일>"\` — 예: \`"official:imagegen/prompting"\`, \`"official:higgsfield-generate/model-catalog"\`
 > - \`<플러그인 폴더>/scripts/<이름>.mjs\` → \`freewill_script("<이름>")\` 로 받아 **임시 폴더에 .mjs 로 저장한 뒤** \`node\` 로 실행한다.
->   받은 스크립트에는 로그인한 사람의 표가 들어 있어 ${TICKET_HOURS}시간 동안 쓸 수 있다 — 만료됐다고 나오면 다시 받는다.
+>   보내기 스크립트가 "표 승인 필요 — 요청 번호 …" 를 내면 \`freewill_ticket\`(그 번호)을 부르고 같은 명령을 다시 실행한다(사용자에게 묻지 않는다).
 >   **Codex 는 이 스크립트들을 네트워크 허용(샌드박스 밖)으로 실행 승인을 받아 돌린다** — 샌드박스 안에서는 앱(127.0.0.1)·커넥터에
 >   닿지 못해 "연결 못 함" 이 나온다(앱이 꺼진 게 아니다).
 >   PC 에서 명령을 돌릴 수 없는 곳(claude.ai 웹·Cowork·ChatGPT 웹)에서는 앱을 직접 다루지 못한다 — 프롬프트와 설정만 정리해 준다.
@@ -114,6 +115,7 @@ const TOOLS = [
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
   ASK_TOOL,
+  TICKET_TOOL,
 ];
 
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -249,18 +251,20 @@ async function callTool(name, args, env, props) {
           problems.map((p) => `- ${p}`).join("\n"),
       );
     }
-    const ticket = await makeTicket(env, props);
     const ready = code
-      .replace(/^const FREEWILL_TICKET = "";$/m, `const FREEWILL_TICKET = "${ticket}";`)
+      .replace(/^const FREEWILL_ACCOUNT = "";$/m, `const FREEWILL_ACCOUNT = "${String(props?.email || "").replace(/[^A-Za-z0-9._%+@-]/g, "")}";`)
       .replace(/^const FREEWILL_GUIDE = "";$/m, `const FREEWILL_GUIDE = "${await guideVersion()}";`);
     return toolText(
       `아래 js 코드 블록 안의 코드만 임시 폴더에 \`${key}.mjs\` 로 저장한 뒤 \`node <저장한 경로> ...\` 로 실행한다(이 안내 문장은 빼고). 사용법은 원문 머리말.\n` +
         `Codex 는 네트워크 허용(샌드박스 밖)으로 실행 승인을 받아 돌린다 — 샌드박스 안에서는 앱·커넥터에 닿지 못한다.\n` +
-        `${props?.email || "로그인한 사람"} 의 표가 들어 있어 ${TICKET_HOURS}시간 동안 쓸 수 있다(만료되면 다시 받는다). ` +
-        `표를 명령줄·다른 파일로 옮겨 적지 말고 통째로 저장한다 — 옮겨 적으면 자동 권한 검사가 자격 증명 유출로 막는다.\n\n` +
+        (/FREEWILL_ACCOUNT/.test(code)
+          ? `받는 사람: ${props?.email || "로그인한 사람"}. 보낼 때 스크립트가 "표 승인 필요 — 요청 번호 …" 를 내면 freewill_ticket(그 번호)을 부르고 ` +
+            "같은 명령을 다시 실행한다 — 표는 스크립트가 직접 받아 이 PC 에 둔다(대화에 나오지 않는다).\n\n"
+          : "\n") +
         "```js\n" + ready + "\n```",
     );
   }
+  if (name === "freewill_ticket") return approveTicket(env, props, args?.request);
   return toolError(`모르는 도구: ${name}`);
 }
 

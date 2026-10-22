@@ -151,7 +151,7 @@ export async function usage(request, env) {
 async function handleUsage(request, env) {
   const url = new URL(request.url);
   const t = await readTicket(env, request);
-  if (!t) return json({ ok: false, error: "로그인 표가 없거나 만료됐습니다 — 스크립트를 커넥터(freewill_script)에서 다시 받을 것" }, 401);
+  if (!t) return json({ ok: false, error: "로그인 표가 없거나 만료됐습니다 — 같은 명령을 다시 실행하면 스크립트가 새 요청 번호를 낸다(freewill_ticket 으로 승인). 옛 스크립트면 freewill_script 로 다시 받을 것" }, 401);
 
   const stop = await blocked(env, t.e, url.pathname);
   if (stop) return stop;

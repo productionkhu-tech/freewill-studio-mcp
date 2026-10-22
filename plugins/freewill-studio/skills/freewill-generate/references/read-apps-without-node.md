@@ -49,18 +49,44 @@ Mac: `defaults read "/Applications/Freewill Seedance 2.0.app/Contents/Info" CFBu
 ## Node 없이 보낼 때의 사용 기록 (두 앱 공통)
 
 스크립트와 똑같이, **앱에 넣기 직전마다 커넥터에 기록을 남기고 하루 한도를 묻는다**(프롬프트·그림은 보내지 않는다).
-로그인 표는 `freewill_script("send-to-nanobanana")`(시댄스면 `"send-to-seedance"`)를 받아 원문의 `const FREEWILL_TICKET = "…";`
-값을 쓴다 — 12시간 유효, 만료되면 다시 받는다.
+표(사용 기록용 토큰)는 스크립트와 같은 파일(사용자 폴더 `.freewill-studio\ticket.json`)에서 바로 읽는다 — **값을 대화·명령에
+옮겨 적지 않는다**(Claude 자동 권한 검사가 자격 증명 유출로 막는다). 없거나 만료면 아래 블록이 "표 승인 필요 — 요청 번호" 를
+낸다 → `freewill_ticket`(그 번호) → 블록을 다시 실행하면 커넥터에서 받아 파일에 둔다(12시간).
 
 ```powershell
 $fw = "https://freewill-mcp.production-khu.workers.dev"
-$ticket = "<freewill_script 로 받은 원문의 FREEWILL_TICKET 값>"
+$dir = Join-Path $HOME ".freewill-studio"; New-Item -ItemType Directory -Force $dir | Out-Null
+$tf = Join-Path $dir "ticket.json"; $af = Join-Path $dir "ticket-ask.json"
+$now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+function Get-Exp($t) {   # 표 안의 만료 시각만 읽는다(서명은 커넥터가 확인)
+  try { $b = $t.Split(".")[0].Replace("-", "+").Replace("_", "/"); $b += "=" * ((4 - $b.Length % 4) % 4)
+        ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)) | ConvertFrom-Json).x } catch { 0 }
+}
+$ticket = $null
+if (Test-Path $tf) { $c = Get-Content $tf -Raw | ConvertFrom-Json; if ((Get-Exp $c.ticket) -gt $now + 300000) { $ticket = $c.ticket } }
+$ask = if (Test-Path $af) { Get-Content $af -Raw | ConvertFrom-Json } else { $null }
+if (-not $ticket -and $ask -and $now - $ask.at -lt 600000) {
+  try {
+    $r = Invoke-RestMethod -Method Post -Uri "$fw/ticket/claim" -ContentType "application/json" -Body (@{ verifier = $ask.v } | ConvertTo-Json -Compress)
+    if ($r.ok) { $ticket = $r.ticket; [IO.File]::WriteAllText($tf, (@{ ticket = $r.ticket; account = $r.email } | ConvertTo-Json -Compress)); Remove-Item $af; $ask = $null }
+  } catch {}   # 404 = 아직 승인 전
+}
+if (-not $ticket) {
+  if (-not $ask -or $now - $ask.at -ge 600000) {
+    $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+    $v = -join ($b | ForEach-Object { $_.ToString("x2") })
+    $h = [Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::ASCII.GetBytes($v))
+    $ask = @{ v = $v; code = (-join ($h | ForEach-Object { $_.ToString("x2") })).Substring(0, 16); at = $now }
+    [IO.File]::WriteAllText($af, ($ask | ConvertTo-Json -Compress))
+  }
+  "표 승인 필요 — 요청 번호 $($ask.code) — freewill_ticket 으로 승인한 뒤 이 블록을 다시 실행"
+  return
+}
 # 이 PC 의 장치 ID — 스크립트와 같은 파일(사용자 폴더 .freewill-studio\device.json). PC 이름을 바꿔도 한도·기록이 이어진다.
-$devFile = Join-Path $HOME ".freewill-studio\device.json"
+$devFile = Join-Path $dir "device.json"
 $device = if (Test-Path $devFile) { (Get-Content $devFile -Raw | ConvertFrom-Json).id } else { $null }
 if (-not $device) {
   $device = [guid]::NewGuid().ToString()
-  New-Item -ItemType Directory -Force (Split-Path $devFile) | Out-Null
   [IO.File]::WriteAllText($devFile, (@{ id = $device } | ConvertTo-Json -Compress))
 }
 function Use-FW($path, $obj) {
