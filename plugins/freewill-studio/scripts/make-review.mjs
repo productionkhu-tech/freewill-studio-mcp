@@ -145,6 +145,8 @@ function scan() {
 
 // 폴더 이름을 사람 말로 — 01_에셋/인물 → 에셋 · 인물, S010/C0010 → S010 · C0010
 const folderLabel = (f) => f.split("/").map((s) => s.replace(/^\d+_/, "").replace(/_/g, " ")).join(" · ");
+// 00_ 로 시작하는 폴더(원본 · 비교 영상)는 보기만 — 고를 것(OK · 보류 · 탈락)이 아니라 '볼 것'에 세지 않는다(10/22 "검수판이 엉망")
+const viewOnly = (folder) => /^00_/.test(String(folder).split("/")[0]);
 // 테이크 이름 — 씬·컷 배치는 파일 번호(I003 · V001_480), 예전 판은 A · B
 const takeLabel = (t) => (/_([IV]\d{3}(?:_[0-9A-Za-z]+)?)\.[^.]+$/.exec(t.file) || [])[1] || t.take || t.file;
 
@@ -225,10 +227,11 @@ function apply(saved, savedName) {
   const flat = isFlat();
   const takes = scan();
   const byKey = new Map(takes.map((t) => [t.key, t]));
+  const live = takes.filter((t) => !viewOnly(t.folder)).map((t) => t.key);   // 저장 전에 폴더에 있던 테이크(이번에 지운 탈락도 포함)
   const moved = [], stuck = [], okCards = [], roundTakes = {};
   for (const [key, d] of Object.entries(saved.takes || {})) {
     const t = byKey.get(key);
-    if (!t) continue;
+    if (!t || viewOnly(t.folder)) continue;
     const raw = d?.status === "NG" ? "탈락" : d?.status;   // 예전 저장본
     const status = STATUSES.includes(raw) ? raw : "";
     if (flat && status === "탈락") {
@@ -245,16 +248,23 @@ function apply(saved, savedName) {
         else stuck.push(key);
       } else t.status = status;
     }
-    const memo = String(d?.memo || "").trim();
+    // 같은 묶음에 OK 가 있어 페이지가 '고르지 않음'으로 탈락시킨 것(auto) — 메모가 없으면 이유를 남긴다
+    const memo = String(d?.memo || "").trim() || (d?.auto && status === "탈락" ? "고르지 않음 — 같은 묶음에 OK" : "");
     if (status || memo) roundTakes[key] = { status: t.status, memo };
     if (t.status === "OK" && t.card) okCards.push(t.card);
   }
-  // 이번 회차를 쌓는다 — 같은 저장본을 또 적용하면 회차는 늘리지 않는다(옮기기만 다시). 같은 저장본인지는 저장 시각으로
+  // 이번 회차를 쌓는다 — 같은 저장본을 또 적용하거나(저장 시각), 바로 앞 회차와 고른 것 · 메모가 똑같으면(저장을 연달아 누름 —
+  // 10/22 0.3초 사이 세 번 들어가 같은 회차가 셋 생김) 회차를 늘리지 않는다
   const rounds = readRounds();
-  const dup = rounds.find((r) => (saved.saved_at ? r.at === saved.saved_at : r.file === savedName));
+  const cuts = Object.fromEntries(Object.entries(saved.cuts || {}).map(([k, v]) => [k, String(v || "").trim()]).filter(([, v]) => v));
+  // 바뀐 게 없나 — 저장 전에 있던 테이크마다 상태가 앞 회차와 같고 새로 적은 메모가 없으면(예전에 지운 탈락은 목록에 없어 안 본다)
+  const last = rounds[rounds.length - 1];
+  const sameTake = (a, b) => (a?.status || "") === (b?.status || "") && (!b?.memo || b.memo === a?.memo);
+  const unchanged = last && live.every((k) => sameTake(last.takes?.[k], roundTakes[k])) &&
+    Object.entries(cuts).every(([k, v]) => last.cuts?.[k] === v);
+  const dup = rounds.find((r) => (saved.saved_at ? r.at === saved.saved_at : r.file === savedName)) || (unchanged ? last : null);
   if (!dup) {
-    const cuts = Object.fromEntries(Object.entries(saved.cuts || {}).map(([k, v]) => [k, String(v || "").trim()]).filter(([, v]) => v));
-    rounds.push({ n: rounds.length + 1, at: saved.saved_at || new Date().toISOString(), file: savedName, keys: takes.map((t) => t.key), takes: roundTakes, cuts });
+    rounds.push({ n: rounds.length + 1, at: saved.saved_at || new Date().toISOString(), file: savedName, keys: takes.filter((t) => !viewOnly(t.folder)).map((t) => t.key), takes: roundTakes, cuts });
     fs.mkdirSync(REVIEW_DIR, { recursive: true });
     fs.writeFileSync(ROUNDS, JSON.stringify({ rounds }, null, 1));
   }
@@ -297,7 +307,9 @@ function elementPicture(takes, name) {
 
 function render(served) {
   const pageTitle = workTitle();
-  const takes = scan();
+  const scanned = scan();
+  const takes = scanned.filter((t) => !viewOnly(t.folder));
+  const views = scanned.filter((t) => viewOnly(t.folder));
   const prompts = readPrompts();
   const rounds = readRounds();
   const plan = readJson(PLAN);
@@ -308,14 +320,21 @@ function render(served) {
   const fid = (f) => `f${folders.indexOf(f)}`;
 
   // 한눈에 — 폴더마다 무엇이 몇 개, 지금 볼 것이 어디 있는지
+  // OK 가 있는 묶음의 미정 테이크는 '고르지 않음'(페이지가 탈락으로 표시, 저장하면 정리) — 볼 것에 세지 않는다.
+  // 새로 받은 테이크는 빼고(다시 만든 판을 보기도 전에 정리하지 않게)
+  const okGroups = new Set(takes.filter((t) => t.status === "OK").map((t) => `${t.folder}/${t.cut}`));
+  const unpicked = (t) => !t.status && !isNew(t) && okGroups.has(`${t.folder}/${t.cut}`);
   const counts = (list) => ({ OK: list.filter((t) => t.status === "OK").length, 보류: list.filter((t) => t.status === "보류").length,
-    탈락: list.filter((t) => t.status === "탈락").length, 미정: list.filter((t) => !t.status).length, 새로: list.filter(isNew).length });
+    탈락: list.filter((t) => t.status === "탈락").length, 미정: list.filter((t) => !t.status && !unpicked(t)).length, 새로: list.filter(isNew).length,
+    고르지않음: list.filter(unpicked).length });
   const overview = folders.map((f) => {
     const c = counts(takes.filter((t) => t.folder === f));
     const todo = c.새로 + c.미정 + c.보류;
     return `<tr><td><a href="#${fid(f)}">${esc(folderLabel(f))}</a><span class="path">${esc(f)}</span></td><td class="ok">${c.OK}</td><td class="hold">${c.보류}</td>` +
-      `<td>${c.미정}</td><td class="new">${c.새로 || ""}</td><td class="drop">${c.탈락}</td><td>${todo ? `<b>볼 것 ${todo}</b>` : "끝"}</td></tr>`;
-  }).join("");
+      `<td>${c.미정}</td><td class="new">${c.새로 || ""}</td><td class="drop">${c.탈락}${c.고르지않음 ? ` <span class="path">+고르지 않음 ${c.고르지않음}</span>` : ""}</td>` +
+      `<td>${todo ? `<b>볼 것 ${todo}</b>` : c.고르지않음 ? "저장하면 끝" : "끝"}</td></tr>`;
+  }).join("") + [...new Set(views.map((t) => t.folder))].map((f) =>
+    `<tr><td><a href="#보기만">${esc(folderLabel(f))}</a><span class="path">${esc(f)}</span></td><td colspan="5" class="path">보기만 ${views.filter((t) => t.folder === f).length}개</td><td></td></tr>`).join("");
 
   // 검수 — 컷마다 테이크, 지난 피드백은 읽기 전용으로
   const takeHist = (key) => rounds.filter((r) => r.takes?.[key]?.memo).map((r) =>
@@ -368,12 +387,26 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
       (j.prompt ? `<details><summary>프롬프트</summary><pre>${esc(j.prompt)}</pre></details>` : "") + `</article>`;
   }).join("") : `<p class="intro">보낼 작업이 없다 — 보내기 스크립트를 jobs.json 의 "work" 로 dry-run 하면 여기에 레퍼런스가 그림으로 뜬다.</p>`;
 
-  // 기록 — 회차마다(최근 것 먼저)
-  const logHtml = rounds.length ? [...rounds].reverse().map((r) => {
+  // 기록 — 회차마다 그 회차에 바뀐 것만(최근 것 먼저). 저장본은 그때까지 고른 것을 모두 담고 있어 그대로 보이면 회차마다 같은 줄이 되풀이된다
+  const seenState = {};
+  const logRounds = rounds.map((r) => {
+    const changed = Object.entries(r.takes || {}).filter(([k, v]) => {
+      const p = seenState[k];
+      return !p || p.status !== v.status || (v.memo && v.memo !== p.memo);
+    });
+    for (const [k, v] of Object.entries(r.takes || {})) seenState[k] = v;
+    return { r, changed };
+  });
+  const logHtml = rounds.length ? [...logRounds].reverse().map(({ r, changed }) => {
     const cutLines = Object.entries(r.cuts || {}).map(([k, v]) => `<li><b>${esc(k)}</b> — ${esc(v)}</li>`).join("");
-    const takeLines = Object.entries(r.takes || {}).map(([k, v]) => `<li><span class="st st-${esc(v.status || "미정")}">${esc(v.status || "미정")}</span> ${esc(k)}${v.memo ? ` — ${esc(v.memo)}` : ""}</li>`).join("");
-    return `<article class="round"><h4>${r.n}차 · ${esc(when(r.at))}</h4>${cutLines ? `<ul>${cutLines}</ul>` : ""}${takeLines ? `<ul class="takes-log">${takeLines}</ul>` : ""}</article>`;
+    const takeLines = changed.map(([k, v]) => `<li><span class="st st-${esc(v.status || "미정")}">${esc(v.status || "미정")}</span> ${esc(k)}${v.memo ? ` — ${esc(v.memo)}` : ""}</li>`).join("");
+    return `<article class="round"><h4>${r.n}차 · ${esc(when(r.at))}</h4>${cutLines ? `<ul>${cutLines}</ul>` : ""}${takeLines ? `<ul class="takes-log">${takeLines}</ul>` : ""}` +
+      `${cutLines || takeLines ? "" : `<p class="intro">바뀐 것 없음</p>`}</article>`;
   }).join("") : `<p class="intro">아직 검수 기록이 없다.</p>`;
+  // 원본 · 비교 — 보기만(고르지 않는다)
+  const viewHtml = views.length ? `<section class="viewonly" id="보기만"><h3>원본 · 비교 — 보기만<span class="path">${esc([...new Set(views.map((t) => t.folder))].join(" · "))}</span></h3>` +
+    `<div class="takes">${views.map((t) => `<div class="vtake">${t.video ? `<video src="${mediaUrl(t.abs, served)}" preload="metadata" muted playsinline controls></video>`
+      : `<img src="${mediaUrl(t.abs, served)}" alt="${esc(t.key)}" loading="lazy">`}<div class="tf"><b>${esc(t.cut)}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}</b><span class="path">${esc(t.file)}</span></div></div>`).join("")}</div></section>` : "";
 
   // 프롬프트 — 보낸 작업마다
   const promptHtml = prompts.size ? [...prompts.entries()].map(([name, p]) =>
@@ -393,10 +426,11 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
 <main>
 <section id="한눈에"><h2>한눈에</h2><table class="ov"><thead><tr><th>폴더</th><th>OK</th><th>보류</th><th>미정</th><th>새로</th><th>탈락</th><th></th></tr></thead><tbody>${overview || `<tr><td colspan="7">받은 결과가 없다 — 보내기 스크립트 --save-to 로 이 작업 폴더의 종류별 폴더에 받는다.</td></tr>`}</tbody></table>
 <p class="intro">${round}차 검수 — 테이크마다 <b>OK</b>(쓸 것) · <b>보류</b>(다시 볼 것) · <b>탈락</b>(안 쓸 것)을 고르고 메모를 적은 뒤 저장한다.
+한 묶음에서 OK 를 고르면 나머지는 <b>고르지 않음</b>(탈락)으로 표시되고 저장할 때 정리된다 — 남길 건 보류로.
 ${served ? (isFlat() ? "저장하면 그 자리에서 OK 는 컷 폴더에 그대로, 보류는 보류 폴더로 옮겨지고 탈락은 지워진다(앱 원본은 앱에 남는다). 기록에도 남는다."
   : "저장하면 그 자리에서 파일이 폴더 안 OK/ · 보류/ · 탈락/ 으로 옮겨지고 기록에 남는다.") :"이 페이지는 파일로 열려 있어 저장하면 다운로드 폴더에 JSON 이 생긴다 — 에이전트에게 '검수 페이지 열어 줘'라고 하면 바로 저장되는 주소로 열어 준다."}
 ${rounds.length ? ` 지난 ${rounds.length}회차의 메모는 컷 아래 <b>지난 피드백</b>으로 옮겨 두었고 입력칸은 이번 ${round}차 것만 적는다. 처음엔 <b>볼 것</b>(새로 · 미정 · 보류)만 보인다.` : ""}</p></section>
-<section id="검수"><h2>검수</h2>${review || "<p class=\"intro\">받은 컷이 없다.</p>"}</section>
+<section id="검수"><h2>검수</h2>${review || "<p class=\"intro\">받은 컷이 없다.</p>"}${viewHtml}</section>
 <section id="보낼것"><h2>보낼 것</h2>${planHtml}</section>
 <section id="기록"><h2>기록</h2>${logHtml}</section>
 <section id="프롬프트"><h2>프롬프트</h2>${promptHtml}</section>
@@ -443,6 +477,9 @@ main>section{scroll-margin-top:64px;margin-bottom:28px}main>section>h2{font-size
 .seg button{border:0;background:#fff;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer;border-right:1px solid #e3e6eb}.seg button:last-child{border-right:0}
 .take[data-status="OK"] .seg [data-s="OK"]{background:#1f8a4c;color:#fff}.take[data-status="보류"] .seg [data-s="보류"]{background:#c98a00;color:#fff}
 .take[data-status="탈락"] .seg [data-s="탈락"]{background:#c62828;color:#fff}
+.take[data-auto="1"] .tf b::after{content:" · 고르지 않음(저장하면 정리)";font-weight:400;font-size:12px;color:#c62828}
+.viewonly h3,.folder h3{font-size:15px;margin:22px 0 8px;border-bottom:1px solid #e3e6eb;padding-bottom:4px;scroll-margin-top:64px}
+.vtake{border:1px solid #e3e6eb;border-radius:6px;overflow:hidden;background:#fafbfc}.vtake img,.vtake video{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#111}
 textarea{width:100%;border:1px solid #e3e6eb;border-radius:6px;padding:6px 10px;font:inherit;font-size:13px;resize:vertical;min-height:38px}
 .take textarea{border-width:1px 0 0;border-radius:0}.cmemo{margin-top:10px}
 details{margin-top:8px}summary{cursor:pointer;color:#5b616e;font-size:13px}pre{white-space:pre-wrap;background:#f3f5f8;border-radius:6px;padding:10px;font-size:12px}
@@ -470,33 +507,40 @@ if(!S){S={takes:{},cuts:{}};document.querySelectorAll('.take').forEach(function(
 function keep(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 var filter=D.filter||'전체';
 function want(t,d){if(filter==='전체')return true;if(filter==='볼 것')return t.dataset.new==='1'||!d.status||d.status==='보류';if(filter==='새로')return t.dataset.new==='1';if(filter==='미정')return !d.status;return d.status===filter}
-function paint(){var n={OK:0,'보류':0,'탈락':0,'미정':0},fresh=0;
- document.querySelectorAll('.take').forEach(function(t){var d=S.takes[t.dataset.key]||{status:''};t.dataset.status=d.status||'';n[d.status||'미정']++;if(t.dataset.new==='1')fresh++;
+// 한 묶음(컷 · 에셋)에 OK 가 있으면 고르지 않은 테이크는 탈락으로 표시해 둔다(저장하면 정리) — OK 를 골라 저장했는데
+// 나머지가 '볼 것'으로 남지 않게(사용자 10/22). 남길 건 보류로 바꾸면 된다. OK 가 없어지면 되돌린다.
+function prune(c){var ts=c.querySelectorAll('.take'),ok=false;
+ ts.forEach(function(t){if((S.takes[t.dataset.key]||{}).status==='OK')ok=true});
+ ts.forEach(function(t){var d=S.takes[t.dataset.key];if(!d||t.dataset.new==='1')return;if(ok&&!d.status){d.status='탈락';d.auto=1}else if(!ok&&d.auto){d.status='';delete d.auto}})}
+function paint(){var n={OK:0,'보류':0,'탈락':0,'미정':0},fresh=0,auto=0;
+ document.querySelectorAll('.take').forEach(function(t){var d=S.takes[t.dataset.key]||{status:''};t.dataset.status=d.status||'';t.dataset.auto=d.auto?'1':'';if(d.auto)auto++;n[d.status||'미정']++;if(t.dataset.new==='1')fresh++;
   t.classList.toggle('hide',!want(t,d))});
  document.querySelectorAll('.cut').forEach(function(c){c.classList.toggle('hide',!c.querySelector('.take:not(.hide)'))});
  document.querySelectorAll('.folder').forEach(function(f){f.classList.toggle('hide',!f.querySelector('.cut:not(.hide)'))});
- document.getElementById('count').textContent=D.round+'차 · '+(D.round>1?'새로 '+fresh+' · ':'')+'OK '+n.OK+' · 보류 '+n['보류']+' · 탈락 '+n['탈락']+' · 미정 '+n['미정'];
+ document.getElementById('count').textContent=D.round+'차 · '+(D.round>1?'새로 '+fresh+' · ':'')+'OK '+n.OK+' · 보류 '+n['보류']+' · 탈락 '+n['탈락']+(auto?'(고르지 않음 '+auto+')':'')+' · 미정 '+n['미정'];
  document.querySelectorAll('.filters button').forEach(function(b){b.classList.toggle('on',b.dataset.f===filter)})}
 document.querySelectorAll('.take').forEach(function(t){var k=t.dataset.key;S.takes[k]=S.takes[k]||{status:t.dataset.status||'',memo:''};
  var m=t.querySelector('.memo');if(S.takes[k].memo)m.value=S.takes[k].memo;m.addEventListener('input',function(){S.takes[k].memo=m.value;keep()});
- t.querySelectorAll('.seg button').forEach(function(b){b.addEventListener('click',function(){S.takes[k].status=S.takes[k].status===b.dataset.s?'':b.dataset.s;keep();paint()})});
+ t.querySelectorAll('.seg button').forEach(function(b){b.addEventListener('click',function(){S.takes[k].status=S.takes[k].status===b.dataset.s?'':b.dataset.s;delete S.takes[k].auto;prune(t.closest('.cut'));keep();paint()})});
  var media=t.querySelector('img,video');media.addEventListener('click',function(){open(k)})});
-document.querySelectorAll('.cut').forEach(function(c){var m=c.querySelector('.cmemo');if(S.cuts[c.dataset.cut])m.value=S.cuts[c.dataset.cut];m.addEventListener('input',function(){S.cuts[c.dataset.cut]=m.value;keep()})});
+document.querySelectorAll('.cut').forEach(function(c){prune(c);var m=c.querySelector('.cmemo');if(S.cuts[c.dataset.cut])m.value=S.cuts[c.dataset.cut];m.addEventListener('input',function(){S.cuts[c.dataset.cut]=m.value;keep()})});
 document.querySelectorAll('.filters button').forEach(function(b){b.addEventListener('click',function(){filter=b.dataset.f;paint()})});
 var stamp=function(d){var z=function(x){return String(x).padStart(2,'0')};return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+'-'+z(d.getHours())+z(d.getMinutes())+z(d.getSeconds())};
-function save(){var d=new Date();var out={page:'검수',work:D.work,round:D.round,saved_at:d.toISOString(),takes:S.takes,cuts:S.cuts};var note=document.getElementById('saved');
+var saving=false;   // 저장은 한 번에 하나 — Ctrl+S 를 누르고 있거나 연달아 누르면 같은 회차가 여러 개 생겼다(10/22)
+function save(){if(saving)return;var d=new Date();var out={page:'검수',work:D.work,round:D.round,saved_at:d.toISOString(),takes:S.takes,cuts:S.cuts};var note=document.getElementById('saved');
  if(D.served){
+  saving=true;document.getElementById('save').disabled=true;
   document.querySelectorAll('video').forEach(function(v){v.pause();v.removeAttribute('src');v.load()});
   note.textContent='저장하는 중…';
   fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json','X-Review':'1'},body:JSON.stringify(out)}).then(function(r){return r.json()}).then(function(j){
    if(!j.ok)throw new Error(j.error||'저장 실패');try{localStorage.removeItem(KEY)}catch(e){}
-   note.textContent=j.round+'차 저장됨 — 옮긴 파일 '+j.moved+'개'+(j.stuck?' · 못 옮김 '+j.stuck+'개(열려 있음)':'');setTimeout(function(){location.reload()},900)
-  }).catch(function(e){note.textContent='저장 실패 — '+e.message;note.style.color='#c62828'});return}
+   note.textContent=j.dup?'바뀐 것 없음 — '+j.round+'차 그대로':j.round+'차 저장됨 — 옮긴 파일 '+j.moved+'개'+(j.stuck?' · 못 옮김 '+j.stuck+'개(열려 있음)':'');setTimeout(function(){location.reload()},900)
+  }).catch(function(e){saving=false;document.getElementById('save').disabled=false;note.textContent='저장 실패 — '+e.message;note.style.color='#c62828'});return}
  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:'application/json'}));
  a.download=D.work+'_검수_'+stamp(d)+'.json';document.body.appendChild(a);a.click();a.remove();
  note.textContent='다운로드에 저장함 — 에이전트에게 저장했다고 알려 주세요'}
 document.getElementById('save').addEventListener('click',save);
-document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();save()}});
+document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!e.repeat)save()}});
 if(D.served)setInterval(function(){fetch('/api/ping').catch(function(){})},60000);
 var lb=document.getElementById('lb'),stage=lb.querySelector('.stage'),cap=lb.querySelector('.cap'),list=[],cur=0,chain=false;
 function visible(){return Array.prototype.slice.call(document.querySelectorAll('.take:not(.hide)')).map(function(t){return t.dataset.key})}
@@ -571,13 +615,12 @@ function runServer(port) {
             const saved = JSON.parse(body || "{}");
             for (const s of streams) s.destroy();   // 재생 중인 영상을 놓아야 옮길 수 있다
             const name = `저장_${String(saved.saved_at || new Date().toISOString()).replace(/[:.]/g, "-")}.json`;
-            fs.mkdirSync(REVIEW_DIR, { recursive: true });
-            fs.writeFileSync(path.join(REVIEW_DIR, name), JSON.stringify(saved, null, 1));
             const r = apply(saved, name);
+            if (!r.dup) { fs.mkdirSync(REVIEW_DIR, { recursive: true }); fs.writeFileSync(path.join(REVIEW_DIR, name), JSON.stringify(saved, null, 1)); }
             writePage();
             const stars = starHints(r.okCards);
-            console.log(`${r.round}차 저장 — 옮긴 파일 ${r.moved.length}개${r.stuck.length ? ` · 못 옮김 ${r.stuck.length}개` : ""}`);
-            json({ ok: true, round: r.round, moved: r.moved.length, stuck: r.stuck.length, stars });
+            console.log(`${r.round}차 저장${r.dup ? "(바뀐 것 없음 — 회차 그대로)" : ""} — 옮긴 파일 ${r.moved.length}개${r.stuck.length ? ` · 못 옮김 ${r.stuck.length}개` : ""}`);
+            json({ ok: true, round: r.round, dup: r.dup, moved: r.moved.length, stuck: r.stuck.length, stars });
           } catch (e) { json({ ok: false, error: e.message }, 500); }
         });
         return;
@@ -671,7 +714,7 @@ async function main() {
   }
   if (s.unset) console.log(`참고: ${ASK_REVIEW}`);
   const page = writePage();
-  const takes = scan();
+  const takes = scan().filter((t) => !viewOnly(t.folder));
   const rounds = readRounds().length;
   const fresh = rounds ? takes.filter((t) => !new Set(readRounds()[rounds - 1].keys || []).has(t.key)).length : 0;
   const summary = `${rounds + 1}차 작업 페이지 — 컷 ${new Set(takes.map((t) => `${t.folder}/${t.cut}`)).size}개 · 테이크 ${takes.length}개` +
