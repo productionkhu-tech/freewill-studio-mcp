@@ -14,7 +14,7 @@
 //   node make-review.mjs <작업 폴더> --apply <저장본.json>              → (파일로 연 페이지의 저장본) 분류대로 옮김 · 회차 · 페이지 다시
 //   node make-review.mjs [<작업 폴더>] --review on|off|status          → 검수를 켜고 끔(폴더를 주면 그 작업만, 안 주면 이 PC 사용자의 모든 작업)
 //   node make-review.mjs [<작업 폴더>] --book on|off|status            → 프롬프트 북을 늘 만들지(OK 를 저장할 때마다 05_프롬프트 의
-//                                                                    「<작업 이름> 프롬프트 북.html」을 샷리스트 양식으로 다시 쓴다) — 끄면 넘길 때만(make-prompt-book)
+//                                                                    「<작업 이름> 프롬프트 북.html」을 사내 양식으로 — 이 스크립트는 _검수/북.json 을 쓰고 make-prompt-book --work 가 그린다) — 끄면 넘길 때만
 //
 // 폴더: 받은 결과는 종류별 폴더(01_에셋/인물 · 01_에셋/로케이션 · 01_에셋/프랍, 02_이미지, 03_영상_초안, 04_영상_본편 …)의
 //       _목록.tsv(보내기 스크립트 --save-to 가 남김)로 찾는다. 검수 뒤에는 그 폴더 안이 OK/ · 보류/ · 탈락/ 으로 나뉜다.
@@ -163,7 +163,9 @@ function readPrompts() {
       const spec = JSON.parse(readText(path.join(dir, f)));
       for (const j of spec.jobs || []) {
         if (j?.name && j.prompt) map.set(j.name, { prompt: String(j.prompt), model: j.model ?? spec.defaults?.model ?? "", mode: j.mode ?? spec.defaults?.mode ?? "", file: f,
-          duration: j.duration ?? spec.defaults?.duration ?? "", ratio: j.ratio ?? j.aspect ?? spec.defaults?.ratio ?? spec.defaults?.aspect ?? "" });
+          duration: j.duration ?? spec.defaults?.duration ?? "", ratio: j.ratio ?? j.aspect ?? spec.defaults?.ratio ?? spec.defaults?.aspect ?? "",
+          refs: (j.refs || []).map((r) => (typeof r === "string" ? r : r?.path || "")).filter(Boolean),
+          elements: [...new Set([...String(j.prompt).matchAll(/@\{([^}\n]+)\}/g)].map((m) => m[1].trim()))] });
       }
     } catch {}
   }
@@ -191,8 +193,8 @@ function readRounds() {
 // 켬으로 치되 에이전트가 사용자에게 물어 남기게 알린다.
 const ASK_REVIEW = "검수 화면을 쓸지 아직 안 정함 — 사용자에게 한 번 묻는다(\"결과를 검수 화면에서 볼까요? 늘 쓰기 / 안 쓰기\") → " +
   "make-review --review on|off 로 남기면 다음부터 묻지 않는다";
-// 프롬프트 북도 같은 식으로 처음 한 번 고른다(10/22 "프롬프트북이랑 검수 둘다 처음에 선택") — 늘 만들기면 OK 를 저장할 때마다 샷리스트 양식으로
-const ASK_BOOK = "프롬프트 북을 늘 만들지 아직 안 정함 — 사용자에게 한 번 묻는다(\"OK 가 나올 때마다 프롬프트 북(샷리스트 양식)을 알아서 채울까요? " +
+// 프롬프트 북도 같은 식으로 처음 한 번 고른다(10/22 "프롬프트북이랑 검수 둘다 처음에 선택") — 늘 만들기면 OK 를 저장할 때마다 사내 양식으로
+const ASK_BOOK = "프롬프트 북을 늘 만들지 아직 안 정함 — 사용자에게 한 번 묻는다(\"OK 가 나올 때마다 프롬프트 북(사내 양식)을 알아서 채울까요? " +
   "늘 만들기 / 넘길 때만\") → make-review --book on|off 로 남기면 다음부터 묻지 않는다";
 function userChoice(w, key) {
   const here = w ? readJson(path.join(w, "_작업설정.json"))[key] : undefined;
@@ -460,77 +462,41 @@ function writePage() {
   return file;
 }
 
-// 프롬프트 북 — OK 가 나온 것(컷 · 에셋 · 이미지 · 영상)을 사용자 샷리스트 스킬(seedance-shotlist-director) 양식으로 모은다
-// (10/22 "OK 될 때마다 · 북 형식은 내 샷리스트 스킬"). <작업 폴더>/05_프롬프트/<작업 이름> 프롬프트 북.html 하나를 다시 쓴다.
-// 검수를 안 쓰면 받은 것 모두가 OK 다. 그림 · 영상은 북에서 본 상대 경로라 작업 폴더째 넘기면 그대로 열린다.
+// 프롬프트 북 데이터 — OK 가 나온 것(컷 · 에셋 · 이미지 · 영상)을 사내 프롬프트 북(make-prompt-book) 형식으로 _검수/북.json 에 쓴다
+// (10/22 "OK 될 때마다 · 사내 양식으로"). HTML 은 make-prompt-book --work 가 05_프롬프트 에 그린다 — 이 스크립트는 다른 프로그램을
+// 실행하지 않아서(커넥터 통신 검사) 에이전트가 이어서 돌린다. 검수를 안 쓰면 받은 것 모두가 OK 다. 에셋은 레퍼런스, 씬 · 컷은 컷으로.
+const BOOK_DATA = path.join(REVIEW_DIR, "북.json");
+const BOOK_CMD = () => `node make-prompt-book.mjs --work "${work}"`;
 function writeBook() {
   const reviewOn = reviewSetting(work).on;
   const ok = scan().filter((t) => !viewOnly(t.folder) && (reviewOn ? t.status === "OK" : t.status !== "탈락"));
   const prompts = readPrompts();
-  const dir = path.join(work, "05_프롬프트");
-  const file = path.join(dir, `${workTitle()} 프롬프트 북.html`);
-  const scene = (f) => (/^S\d/.test(f) ? 0 : 1);   // 씬 · 컷 먼저, 에셋은 뒤에
+  const rounds = readRounds();
+  const memos = (t) => rounds.map((r) => r.takes?.[t.key]?.memo).filter(Boolean);
+  const CAT = { 인물: "character", 로케이션: "location", 프랍: "prop" };
+  const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v !== undefined && v !== null));
   const groups = [...new Map(ok.map((t) => [`${t.folder}/${t.cut}`, { folder: t.folder, cut: t.cut }])).values()]
-    .sort((a, b) => scene(a.folder) - scene(b.folder) || a.folder.localeCompare(b.folder) || a.cut.localeCompare(b.cut));
-  // 모든 프롬프트가 같은 줄로 시작하면 그게 공통 스타일 접두(스킬의 Global Style Prefix) — 위에 한 번 접어 보여 준다
-  const texts = groups.map((g) => prompts.get(g.cut)?.prompt).filter(Boolean).map((p) => p.split("\n"));
-  let prefix = [];
-  if (texts.length >= 2) {
-    for (let i = 0; texts[0][i] !== undefined && texts.every((ls) => ls[i] === texts[0][i]); i++) prefix.push(texts[0][i]);
-    while (prefix.length && !prefix[prefix.length - 1].trim()) prefix.pop();
-    if (prefix.filter((l) => l.trim()).length < 3) prefix = [];
+    .sort((a, b) => a.folder.localeCompare(b.folder) || a.cut.localeCompare(b.cut));
+  const refs = [], cuts = [];
+  for (const g of groups) {
+    const takes = ok.filter((t) => t.folder === g.folder && t.cut === g.cut);
+    const p = prompts.get(g.cut);
+    if (!/^S\d/.test(g.folder)) {
+      refs.push(clean({ id: `${g.folder}/${g.cut}`, name: g.cut, category: CAT[g.folder.split("/").pop()] || "", role: folderLabel(g.folder),
+        model: p?.model || takes[0].model, prompt: p?.prompt, images: takes.map((t) => t.abs) }));
+      continue;
+    }
+    cuts.push(clean({ id: `${g.folder.split("/").join("_")}_${g.cut}`, title: g.cut, group: folderLabel(g.folder),
+      settings: p ? clean({ model: p.model, mode: p.mode, ratio: p.ratio, duration: p.duration }) : takes[0].model ? { model: takes[0].model } : undefined,
+      refs: p ? [...p.elements, ...p.refs.map((r) => path.basename(r).replace(/\.[^.]+$/, "").replace(/_[A-Z]$/, ""))] : undefined,
+      prompt: p?.prompt,
+      results: takes.filter((t) => !/_1080\.[^.]+$/.test(t.file)).map((t) => ({ file: t.abs, label: takeLabel(t), adopted: true })),
+      finals: takes.filter((t) => /_1080\.[^.]+$/.test(t.file)).map((t) => ({ file: t.abs, label: `${takeLabel(t)} 본편` })),
+      memo: takes.flatMap(memos) }));
   }
-  const media = (t) => {
-    const src = path.relative(dir, t.abs).split(path.sep).map(encodeURIComponent).join("/");
-    return `<figure>${t.video ? `<video src="${src}" preload="metadata" muted controls></video>` : `<img src="${src}" loading="lazy" alt="">`}<figcaption>${esc(takeLabel(t))}</figcaption></figure>`;
-  };
-  const scenes = groups.map((g, i) => {
-    const n = i + 1, p = prompts.get(g.cut);
-    const label = `${folderLabel(g.folder)} · ${g.cut}`;
-    const spec = p ? [p.duration ? `${p.duration}s` : "", p.model, p.mode, p.ratio].filter(Boolean).join(" · ") : "";
-    return `<div class="scene"><div class="scene-header"><input type="checkbox" data-scene="${esc(label)}"><div class="scene-num">${n}.</div>` +
-      `<div class="scene-desc">${esc(label)}</div></div>` +
-      `<div class="prompt-block"><div class="prompt-label"><span>Prompt ${n}${spec ? ` · ${esc(spec)}` : ""}</span><button class="copy-btn">Copy</button></div>` +
-      `<pre class="prompt">${esc(p ? p.prompt : "(보낸 프롬프트 기록이 없다 — 05_프롬프트 에 이 작업의 jobs.json 이 없다)")}</pre></div>` +
-      `<div class="ok-row">${ok.filter((t) => t.folder === g.folder && t.cut === g.cut).map(media).join("")}</div></div>`;
-  }).join("");
-  const now = new Date().toISOString();
-  const html = `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"><title>${esc(workTitle())} — Director's Shotlist</title><style>
-:root{--bg:#0e0e10;--panel:#17171a;--panel-2:#1d1d21;--border:#2a2a30;--text:#e8e8ea;--text-dim:#9a9aa2;--accent:#d4a259;--done:#4ade80}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Pretendard GOV","Malgun Gothic",system-ui,sans-serif;line-height:1.5;padding:32px 24px 80px;word-break:keep-all}
-.container{max-width:980px;margin:0 auto}h1{font-size:28px;font-weight:600;margin:0 0 4px;letter-spacing:-0.02em}.subtitle{color:var(--text-dim);font-size:14px;margin-bottom:32px}
-.howto{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 18px;font-size:13px;color:var(--text-dim);margin-bottom:24px}
-details.style-prefix{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:32px}
-details.style-prefix summary{cursor:pointer;font-weight:600;color:var(--accent);user-select:none}
-details.style-prefix pre,pre.prompt{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;white-space:pre-wrap;color:var(--text)}
-details.style-prefix pre{margin:14px 0 0;padding:14px;background:var(--panel-2);border-radius:6px}
-.scene{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px 22px;margin-bottom:18px}
-.scene-header{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}.scene-header input[type="checkbox"]{width:20px;height:20px;margin-top:2px;accent-color:var(--done);cursor:pointer;flex-shrink:0}
-.scene-num{font-size:18px;font-weight:700;color:var(--accent);min-width:56px}.scene-desc{font-size:15px;color:var(--text);flex:1}.scene.done .scene-desc{text-decoration:line-through;color:var(--text-dim)}
-.prompt-block{background:var(--panel-2);border:1px solid var(--border);border-radius:6px;margin-top:12px;overflow:hidden}
-.prompt-label{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em}
-.copy-btn{background:transparent;color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:0.05em;font-family:inherit}
-.copy-btn:hover{border-color:var(--accent)}.copy-btn.copied{color:var(--done);border-color:var(--done)}pre.prompt{margin:0;padding:14px 16px}
-.ok-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:12px}.ok-row figure{margin:0}
-.ok-row img,.ok-row video{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#000;border:1px solid var(--border);border-radius:6px}
-.ok-row figcaption{font-size:11px;color:var(--text-dim);margin-top:4px}
-</style></head><body><div class="container">
-<h1>${esc(workTitle())}</h1><div class="subtitle">Director's Shotlist · 채택 ${ok.length}개 · ${esc(when(now))} 갱신</div>
-<div class="howto">끝낸 씬은 체크 — 이 브라우저에 저장된다. Copy 로 그 프롬프트 전체를 복사한다. 검수에서 OK 를 저장할 때마다 이 파일이 다시 만들어진다(체크는 그대로).</div>
-${prefix.length ? `<details class="style-prefix"><summary>Global Style Prefix (모든 프롬프트 맨 앞에 같이 들어 있음)</summary><pre>${esc(prefix.join("\n"))}</pre></details>` : ""}
-${scenes || `<div class="howto">아직 OK 가 없다 — 검수에서 OK 를 골라 저장하면 여기에 모인다.</div>`}
-</div><script>
-var W=${JSON.stringify(path.basename(work)).replace(/</g, String.fromCharCode(92) + "u003c")};
-document.querySelectorAll('.scene input[type="checkbox"]').forEach(function(cb){var key='shotlist-'+W+'-scene-'+cb.dataset.scene+'-done';
- try{if(localStorage.getItem(key)==='1'){cb.checked=true;cb.closest('.scene').classList.add('done')}}catch(e){}
- cb.addEventListener('change',function(){try{localStorage.setItem(key,cb.checked?'1':'0')}catch(e){}cb.closest('.scene').classList.toggle('done',cb.checked)})});
-document.querySelectorAll('.copy-btn').forEach(function(btn){btn.addEventListener('click',function(){var pre=btn.closest('.prompt-block').querySelector('pre.prompt');
- navigator.clipboard.writeText(pre.textContent).then(function(){btn.classList.add('copied');var o=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.classList.remove('copied');btn.textContent=o},1500)})})});
-</script></body></html>`;
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file, html);
-  return `프롬프트 북(샷리스트 양식) — 채택 ${ok.length}개 · ${groups.length}개 묶음 → ${file}`;
+  fs.mkdirSync(REVIEW_DIR, { recursive: true });
+  fs.writeFileSync(BOOK_DATA, JSON.stringify({ id: path.basename(work), title: workTitle(), subtitle: `채택 ${ok.length}개`, refs, cuts }, null, 1));
+  return `프롬프트 북 데이터(사내 양식) — 채택 ${ok.length}개 · 컷 ${cuts.length} · 에셋 ${refs.length} → 북 갱신: ${BOOK_CMD()}`;
 }
 
 const CSS = `
@@ -815,22 +781,23 @@ async function main() {
   const fresh = rounds ? takes.filter((t) => !new Set(readRounds()[rounds - 1].keys || []).has(t.key)).length : 0;
   const summary = `${rounds + 1}차 작업 페이지 — 컷 ${new Set(takes.map((t) => `${t.folder}/${t.cut}`)).size}개 · 테이크 ${takes.length}개` +
     `${rounds ? ` (새로 ${fresh}개 · 지난 피드백 ${rounds}회차는 읽기 전용으로)` : ""}`;
+  const bookHint = bookSetting(work).on ? `\n  프롬프트 북(사내 양식) — 검수를 저장한 뒤마다 묻지 않고 갱신: ${BOOK_CMD()}` : "";
   if (!serve) {
     const was = readJson(SERVER_FILE);
     const live = was.port && (await ping(was.port))?.work === path.basename(work);
-    console.log(`${summary} → ${page}${live ? `\n  검수 서버가 떠 있다 — 저장되는 주소: ${local(was.port)}` : ""}`);
+    console.log(`${summary} → ${page}${live ? `\n  검수 서버가 떠 있다 — 저장되는 주소: ${local(was.port)}` : ""}${bookHint}`);
     return;
   }
   const sv = await serverPlan();
   const url = local(sv.port);
   const opener = process.platform === "win32" ? `explorer.exe "${url}"` : `${process.platform === "darwin" ? "open" : "xdg-open"} "${url}"`;
   if (sv.live) {
-    console.log(`${summary}\n  저장되는 주소(작업마다 하나 — 떠 있음): ${url}\n  열기: ${opener}\n  파일: ${page}`);
+    console.log(`${summary}\n  저장되는 주소(작업마다 하나 — 떠 있음): ${url}\n  열기: ${opener}\n  파일: ${page}${bookHint}`);
     return;
   }
   console.log(`${summary}\n  검수 서버가 꺼져 있다 — 아래 '띄우기'를 돌린 뒤 --serve 를 한 번 더 돌려 떠 있는지 확인하고 주소를 연다(사용자 PC 의 창은 뜨지 않는다)\n` +
     `  띄우기: ${sv.launch}\n  (그래도 안 뜨면 이 명령을 백그라운드로 — 이 대화가 끝나면 같이 꺼진다: ${sv.direct})\n` +
-    `  주소(뜨면): ${url}\n  파일: ${page}`);
+    `  주소(뜨면): ${url}\n  파일: ${page}${bookHint}`);
 }
 
 main().catch((e) => { console.error(e.message || e); process.exit(1); });

@@ -2,6 +2,9 @@
 // 프롬프트 북 만들기 — 컨펌된 이미지·영상 작업을 HTML 한 장으로 정리한다(인라인 CSS·JS, 바깥 연결 없음).
 //
 //   node make-prompt-book.mjs <book.json | 전에 만든 북.html> --out <저장할 경로.html> [--link]
+//   node make-prompt-book.mjs --work <작업 폴더>     → 북을 늘 만드는 작업(make-review --book on): 검수 도구가 OK 를 저장할 때마다 쓰는
+//                                                    <작업 폴더>/_검수/북.json 으로 <작업 폴더>/05_프롬프트/<작업 이름> 프롬프트 북.html 을 다시 그린다.
+//                                                    그림·영상은 복사하지 않고 작업 폴더 안 상대 경로로 건다(폴더째 넘기면 그대로 열림)
 //
 // - 그림·영상은 HTML 옆 "<북 이름>_files" 폴더로 복사하고 상대 경로로 건다. 폴더째 옮기거나 압축해 넘겨도 열린다.
 //   HTML 과 같은 폴더(또는 그 아래)에 이미 있는 파일은 복사하지 않는다. --link 는 복사 없이 원래 자리를 건다(이 PC 에서만 열림).
@@ -13,16 +16,28 @@ import path from "node:path";
 import url from "node:url";
 import crypto from "node:crypto";
 
-const USAGE = "쓰는 법: node make-prompt-book.mjs <book.json | 북.html> --out <저장할 경로.html> [--link]";
+const USAGE = "쓰는 법: node make-prompt-book.mjs <book.json | 북.html> --out <저장할 경로.html> [--link] | --work <작업 폴더>";
 const argv = process.argv.slice(2);
 let input = "";
 let out = "";
 let linkOnly = false;
+let workDir = "";
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--out") out = argv[++i] || "";
   else if (argv[i] === "--link") linkOnly = true;
+  else if (argv[i] === "--work") workDir = argv[++i] || "";
   else if (argv[i] === "-h" || argv[i] === "--help") { console.log(USAGE); process.exit(0); }
   else if (!input) input = argv[i];
+}
+// 작업 폴더의 북 — 검수 도구(make-review)가 쓴 _검수/북.json 을 05_프롬프트 에. 제목은 작업 페이지와 같은 이름
+const relLink = Boolean(workDir);
+if (workDir) {
+  let set = {};
+  try { set = JSON.parse(fs.readFileSync(path.join(workDir, "_작업설정.json"), "utf8").replace(/^[^{]*/, "")); } catch {}
+  const name = (set.title || path.basename(path.resolve(workDir))).replace(/[\\/:*?"<>|]/g, " ").trim() || "작업";
+  input = path.join(workDir, "_검수", "북.json");
+  out = path.join(workDir, "05_프롬프트", `${name} 프롬프트 북.html`);
+  if (!fs.existsSync(input)) { console.error(`북 데이터가 없다(${input}) — 그 작업에서 make-review --book on 을 켜고 검수 페이지를 한 번 만들 것`); process.exit(1); }
 }
 if (!input || !out) { console.error(USAGE); process.exit(2); }
 if (!/\.html?$/i.test(out)) out += ".html";
@@ -277,6 +292,11 @@ function publish(m) {
   if (linkOnly) {
     stats.linked++;
     res = { kind, name, href: url.pathToFileURL(abs).href, src: abs, pub: "" };
+  } else if (relLink) {
+    // 작업 폴더의 북 — 복사 없이 상대 경로(../S010/C0010/…). 같은 작업 폴더째 넘기면 그대로 열린다
+    stats.kept++;
+    const rel = path.relative(outDir, abs);
+    res = { kind, name, href: toHref(rel), src: abs, pub: rel };
   } else {
     const rel = path.relative(outDir, abs);
     if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
