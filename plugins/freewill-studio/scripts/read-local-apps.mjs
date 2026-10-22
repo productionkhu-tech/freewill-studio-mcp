@@ -321,4 +321,17 @@ const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0"
 const sections = [];
 if (which === "all" || which === "nanobanana") sections.push(await nanobanana());
 if (which === "all" || which === "seedance") sections.push(await seedance());
+// 검수 화면(make-review --serve 로 띄우는 검수 페이지)을 쓸지 — 사용자가 처음 한 번 고르고 기억한다(10/22 "극 초반부에 물어보기").
+// 아직 안 정했으면 에이전트가 첫 질문에 같이 묻게 여기서 알린다.
+{
+  let review;
+  try { review = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".freewill-studio", "settings.json"), "utf8").replace(/^[^{]*/, "")).review; } catch {}
+  sections.push([
+    "## 검수 화면",
+    typeof review === "boolean"
+      ? `- ${review ? "늘 씀" : "안 씀"}(이 PC 사용자 설정) — 사용자가 바꾸라고 할 때만 make-review --review ${review ? "off" : "on"}`
+      : "- 아직 안 정함 → 처음 질문에 같이 묻는다: \"결과를 검수 화면(서버로 띄우는 검수 페이지)에서 볼까요? 늘 쓰기 / 안 쓰기\" — " +
+        "답을 make-review --review on|off 로 남기면 다음부터 묻지 않는다",
+  ]);
+}
 console.log([`# 이 PC 의 앱 (${stamp} 읽음)`, "", ...sections.map((s) => s.join("\n")).join("\n\n").split("\n")].join("\n"));

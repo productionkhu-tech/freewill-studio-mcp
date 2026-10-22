@@ -180,14 +180,17 @@ function readRounds() {
   return [{ n: 1, at: fs.statSync(MASTER).mtime.toISOString(), file: "_컷목록.tsv", keys, takes, cuts }];
 }
 
-// 검수를 할지 — 사용자가 "검수 빼" 라고 한 것을 기억한다. 작업 폴더의 _작업설정.json 이 먼저, 없으면 이 PC 사용자의
-// ~/.freewill-studio/settings.json, 둘 다 없으면 켬.
+// 검수 화면을 쓸지 — 사용자가 처음 한 번 고른 것(10/22 "극 초반부에 물어보기 — 검수를 안 하는 사람도 있다")을 기억한다.
+// 작업 폴더의 _작업설정.json 이 먼저, 없으면 이 PC 사용자의 ~/.freewill-studio/settings.json. 둘 다 없으면 아직 안 정한 것 —
+// 켬으로 치되 에이전트가 사용자에게 물어 남기게 알린다.
+const ASK_REVIEW = "검수 화면을 쓸지 아직 안 정함 — 사용자에게 한 번 묻는다(\"결과를 검수 화면에서 볼까요? 늘 쓰기 / 안 쓰기\") → " +
+  "make-review --review on|off 로 남기면 다음부터 묻지 않는다";
 function reviewSetting(w) {
   const here = w ? readJson(path.join(w, "_작업설정.json")).review : undefined;
   const mine = readJson(ME_SETTINGS).review;
   if (typeof here === "boolean") return { on: here, from: "이 작업 설정(_작업설정.json)" };
   if (typeof mine === "boolean") return { on: mine, from: "이 PC 사용자 설정(~/.freewill-studio/settings.json)" };
-  return { on: true, from: "기본값" };
+  return { on: true, from: "아직 안 정함", unset: true };
 }
 function setReview(w, on) {
   const file = w ? path.join(w, "_작업설정.json") : ME_SETTINGS;
@@ -639,7 +642,8 @@ async function main() {
       console.log(`검수 ${reviewArg === "on" ? "켬" : "끔"} — ${work ? "이 작업만" : "이 PC 사용자의 모든 작업"} (${file})`);
     }
     const s = reviewSetting(work);
-    console.log(`지금: 검수 ${s.on ? "켜짐" : "꺼짐"} · ${s.from}${s.on ? "" : " — 결과는 폴더에 받기만 하고 검수 페이지·검수 회차는 만들지 않는다"}`);
+    console.log(s.unset ? `지금: ${ASK_REVIEW}`
+      : `지금: 검수 ${s.on ? "켜짐" : "꺼짐"} · ${s.from}${s.on ? "" : " — 결과는 폴더에 받기만 하고 검수 페이지·검수 회차는 만들지 않는다"}`);
     return;
   }
   if (child) return runServer(childPort);
@@ -665,6 +669,7 @@ async function main() {
     console.log(`검수가 꺼져 있다(${s.from}) — 페이지를 만들지 않는다. 결과는 폴더에 받은 그대로 둔다. 이번만 만들려면 --force, 다시 켜려면 --review on`);
     return;
   }
+  if (s.unset) console.log(`참고: ${ASK_REVIEW}`);
   const page = writePage();
   const takes = scan();
   const rounds = readRounds().length;
