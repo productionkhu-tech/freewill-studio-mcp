@@ -315,13 +315,18 @@ Seedance 2.5 · 레퍼런스→영상 · 16:9 · 10초 · 초안 480p · 2개 ·
    - 없으면 등록한다 — 지금 프로젝트에 연결된 컬렉션이 이 작업 것이면 거기에 `elements.add`, 연결된 게 없으면 `collection.create`(작업 이름)
      → `elements.add` → `collection.bind`. **다른 작업의 컬렉션이 연결돼 있으면 바꾸기 전에 묻는다** — 연결을 바꾸면 그 프로젝트가 쓰던
      `@{이름}` 이 안 찾아진다(선택지: 그 컬렉션에 추가 / 새 컬렉션으로 바꿔 연결 / 이 작업용 사이드바 프로젝트를 새로 — `project.create`).
-   - `elements.add` 는 이름 · 분류(character / location / prop) · 설명 한 줄 · 이미지(시트 원본 그대로, 장소는 메인 플레이트 한 장 — 역방향 컷용
+   - **등록돼 있으면 그걸로 부른다**(사용자 10/22 "등록했으면 써먹어야지") — 연결된 컬렉션에 있는 인물·장소·소품의 그림 파일을 `[Image N]` 으로
+     또 붙이지 않는다. 파일 이름(끝 `_A`·`_B` 뗀 것)이 엘리먼트 이름이면 dry-run 이 멈춘다(일부러 다른 판이면 그 ref 에 `"as_file": "이유"`).
+     여러 컷에 다시 쓰는 새 그림(플레이트 등)도 먼저 등록한다. dry-run 이 엘리먼트마다 분류·설명·그림 수를 보여 주니 그걸 보고 고른다.
+   - `elements.add` 는 이름 · 분류(character / location / prop) · **설명 한 줄 — 그림에 무엇이 있는지(누구·무엇 · 몇 면 시트 · 그림체 · 판)**, 다음 대화가
+     이름만 보고 맞게 부르게 · 이미지(시트 원본 그대로, 장소는 메인 플레이트 한 장 — 역방향 컷용
      플레이트가 따로 있으면 그건 다른 엘리먼트로: `loc_motel_room` · `loc_motel_room_reverse`).
      이름은 짧은 영어 소문자 + 밑줄로 무엇인지 보이게 — `hero_mina`, `valet_oliver`, `lot_hotel_garage`, `prop_dashcam`(사용자 컬렉션들이 쓰는 방식).
    - 등록·연결은 과금·삭제가 없는 준비라 확인 카드 전에 해도 된다 — 무엇을 어느 컬렉션에 올리고 연결했는지 카드에 한 줄로 보여 주고,
      이름을 바꾸라고 하면 `element.update`.
    - 프롬프트에는 ACTIVE REFERENCES 의 역할 줄에 `@{이름}` 을 한 번씩, 동작·컷 문장은 사람 이름·물건 이름으로(`seedance-prompting.md` 2절).
-     dry-run 이 지금 프로젝트에 연결된 엘리먼트를 보여 주고, 없는 `@{이름}` 은 보내기 전에 멈춘다.
+     dry-run 이 지금 프로젝트에 연결된 엘리먼트를 보여 주고, 없는 `@{이름}` 은 보내기 전에 멈춘다. 레퍼런스 블록의 줄은 모두 `@{이름}`·`[Image N]`
+     으로 시작한다 — 안 묶인 줄("the trophy is …")은 그림이 안 붙는다(dry-run "확인할 것"). 카드의 '엘리먼트' 줄은 dry-run 의 `@{이름} = …` 그대로.
 1. 작업 목록을 JSON 파일로 쓴다 (임시 폴더). 형식은 스크립트 머리말에 있다:
    `{"guide", "manual", "project", "billing", "work", "defaults": {"model", "mode", "ratio", "duration", "resolution", "draft", "output_count", "generate_audio", "output_format"}, "jobs": [{"name", "prompt", "refs": [경로 또는 {"path", "role"}]}]}`
    - `work` 는 작업 폴더 — 있으면 dry-run 이 작업 페이지 '보낼 것'에 레퍼런스를 그림으로 올린다. `output_format` 은 2.5 면 늘 적는다(처음에 정한 값, 기본 `mov`).

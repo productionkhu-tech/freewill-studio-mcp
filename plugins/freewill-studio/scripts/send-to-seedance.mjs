@@ -170,6 +170,9 @@ function timecodes(s) {
   return out;
 }
 // 사내 블록 형식(references/seedance-prompting.md)의 블록 — 대문자만으로 된 줄이 제목이다
+// 엘리먼트 한 줄 소개 — 앱 화면의 분류 이름 · 설명 · 그림 수
+const ELEMENT_KIND = { character: "캐릭터", location: "로케이션", prop: "프랍" };
+const elementLabel = (e) => [ELEMENT_KIND[e.category] || e.category, String(e.description ?? "").trim() || "설명 없음", `그림 ${e.images ?? "?"}장`].join(" · ");
 function blocksOf(p) {
   const out = {};
   let cur = null;
@@ -897,9 +900,16 @@ async function main() {
       const raw = await sendCommand(spec.manual, "collections.list", {});
       const bound = (Array.isArray(raw) ? raw : raw?.collections || []).filter((c) => (c.boundTo || []).includes(project));
       library = new Map(bound.flatMap((c) => (c.elements || []).map((e) => [e.name, { ...e, collection: c.name }])));
+      // 엘리먼트마다 무엇인지(분류 · 설명 · 그림 수)를 보여 준다 — 이름만 보고 엉뚱한 엘리먼트를 부르지 않게(사용자 10/22)
       log(library.size
-        ? `  "${project}" 에 연결된 컬렉션 「${bound.map((c) => c.name).join("」「")}」의 엘리먼트 ${library.size}개: ${[...library.values()].map((e) => `@{${e.name}}`).join(" ")}`
+        ? `  "${project}" 에 연결된 컬렉션 「${bound.map((c) => c.name).join("」「")}」의 엘리먼트 ${library.size}개:\n` +
+          [...library.values()].map((e) => `    @{${e.name}} ${elementLabel(e)}`).join("\n")
         : `  "${project}" 에 연결된 엘리먼트 없음 — 다시 쓸 인물·장소·소품은 collection.create → elements.add → collection.bind 뒤 @{이름} 으로(지침 6단계 시댄스 0)`);
+      const blank = [...library.values()].filter((e) => !String(e.description ?? "").trim());
+      if (blank.length) {
+        log(`  참고: 설명이 없는 엘리먼트 ${blank.length}개(${blank.slice(0, 6).map((e) => `@{${e.name}}`).join(" ")}${blank.length > 6 ? " …" : ""}) — ` +
+          "element.update 로 그림에 무엇이 있는지 한 줄(누구·무엇 · 몇 면 시트 · 그림체 · 언제 판)을 적어 둔다 — 다음 대화도 이름만 보고 맞게 부르게");
+      }
     } catch (e) {
       log(`  참고: 어셋 라이브러리를 못 읽음 — ${e.message} (앱 26.10.305 이상이면 --do collections.list)`);
     }
@@ -912,6 +922,20 @@ async function main() {
     if (library) for (const n of names.filter((n) => !library.has(n))) {
       problems.push(`${nameOf(j)}: @{${n}} 가 "${project}" 에 연결된 컬렉션에 없다 — 이름을 고치거나 elements.add 로 등록(연결된 게 없으면 collection.bind)`);
     }
+    // 이미 엘리먼트로 등록된 그림을 파일 [Image N] 으로 또 붙이지 않는다(사용자 10/22 "등록했으면 써먹어야지") — 파일 이름에서
+    // 끝의 _A · _B 를 뗀 것이 연결된 컬렉션의 엘리먼트 이름이면 @{이름} 으로. 엘리먼트와 다른 그림을 일부러 쓰면 그 ref 에 "as_file": "이유".
+    if (library && elementModes.includes(modeOf(j))) {
+      const byLower = new Map([...library.values()].map((e) => [e.name.toLowerCase(), e]));
+      for (const r of j.refs.filter((x) => !x.role && KINDS.Image.test(x.path) && !String(x.as_file ?? "").trim())) {
+        const stem = path.basename(r.path).replace(/\.[^.]+$/, "").toLowerCase();
+        const e = byLower.get(stem) || byLower.get(stem.replace(/_[a-z]$/, ""));
+        if (!e) continue;
+        const msg = `${path.basename(r.path)} 는 엘리먼트 @{${e.name}}(${elementLabel(e)}) 로 등록돼 있다 — refs 에서 빼고 그 [Image N] 줄을 ` +
+          `@{${e.name}} 줄로 바꾼다(남은 [Image N] 번호는 다시 센다). 엘리먼트와 다른 그림을 일부러 쓰는 거면 그 ref 에 "as_file": "이유"`;
+        if (userFormat(j)) log(`  확인: ${nameOf(j)} — ${msg}`);
+        else problems.push(`${nameOf(j)}: ${msg}`);
+      }
+    }
   }
   const notes = jobs.flatMap((j, i) => [
     ...logicNotes(j, { model: j.model ?? defaults.model, duration: Number(j.duration ?? defaults.duration), ratio: j.ratio ?? defaults.ratio }),
@@ -919,7 +943,22 @@ async function main() {
     ...(seedanceJob(j) && modeOf(j) === "multimodal_reference" && j.refs.some((r) => !r.role && KINDS.Image.test(r.path))
       ? [`그림 파일 ${j.refs.filter((r) => !r.role && KINDS.Image.test(r.path)).length}장을 [Image N] 으로 붙였다 — 다시 쓸 인물·장소·소품이면 어셋 라이브러리 엘리먼트로 등록해 @{이름} 으로 부른다(지침 6단계 시댄스 0)`]
       : []),
+    // 레퍼런스 블록(머리 줄 바로 아래, 빈 줄 전까지)의 줄마다 무엇을 가리키는지 묶여 있어야 한다 — 묶지 않은 줄은 그림이 안 붙는다(언급 누락)
+    ...(seedanceJob(j) && elementModes.includes(modeOf(j))
+      ? String((blocksOf(j.prompt)["ACTIVE REFERENCES"] ?? blocksOf(j.prompt)["REFERENCES"]) || "").replace(/^\s*\n/, "").split(/\n\s*\n/)[0]
+        .split("\n").map((l) => l.trim())
+        .filter((l) => l.length > 12 && !/^(?:SHOT|CUT|SEGMENT|Shot|Cut|Segment)\b/.test(l) && !/\[(?:Image|Video|Audio) \d+\]|@\{[^}\n]+\}/.test(l))
+        .map((l) => `레퍼런스 줄 "${l.slice(0, 50)}…" 이 어떤 그림·엘리먼트인지 묶여 있지 않다 — 엘리먼트면 @{이름}, 파일이면 [Image N] 으로 시작(안 묶으면 그림이 안 붙는다)`)
+      : []),
   ].map((n) => `${nameOf(j)}: ${n}`));
+  // 같은 그림을 여러 작업에 붙였으면 그건 다시 쓰는 것 — 엘리먼트로(한 번만 알린다)
+  const fileUse = new Map();
+  for (const j of jobs) for (const r of j.refs) if (!r.role && KINDS.Image.test(r.path)) fileUse.set(path.resolve(r.path), (fileUse.get(path.resolve(r.path)) || 0) + 1);
+  const reused = [...fileUse].filter(([, n]) => n > 1);
+  if (reused.length) {
+    notes.push(`여러 작업에 같은 그림 파일 — ${reused.map(([f, n]) => `${path.basename(f)}(${n}개 작업)`).join(" · ")}: ` +
+      "다시 쓰는 인물·장소·소품이면 엘리먼트로 등록(elements.add, 설명에 그림 내용 한 줄)해 @{이름} 으로");
+  }
   const noteText = notes.length ? `\n  확인할 것 (논리 점검 — references/prompt-logic.md · seedance-quality.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}` : "";
   if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}${noteText}`);
   if (noteText) log(noteText.slice(1));
@@ -943,6 +982,8 @@ async function main() {
       const st = settingsOf(j);
       log(`  ${i + 1}. ${j.name || ""} · ${Object.entries(st).map(([k, v]) => `${k}=${v}`).join(" ") || "(앱 지금 설정 그대로)"} · 레퍼런스 ${j.refs.length}개` +
         `${mentions(j).length ? ` · 엘리먼트 ${mentions(j).map((n) => `@{${n}}`).join(" ")}` : ""}`);
+      // 부른 엘리먼트가 무엇인지 — 확인 카드의 '엘리먼트' 줄에 옮긴다
+      for (const n of mentions(j)) if (library?.has(n)) log(`     @{${n}} = ${elementLabel(library.get(n))}`);
       // 레퍼런스마다 무엇을 왜 — 확인 카드에 그대로 옮긴다
       const seen = {};
       for (const r of j.refs) {
