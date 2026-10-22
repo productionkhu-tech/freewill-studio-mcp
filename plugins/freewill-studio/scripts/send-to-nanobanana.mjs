@@ -311,9 +311,13 @@ function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
     const now = new Date().toISOString();
     fs.writeFileSync(path.join(dir, "보낼것.json"), JSON.stringify({ ...plan, at: now, sent, ...(sent ? { sentAt: now } : {}) }, null, 1));
     if (sent && jobsFile) {
+      // 같은 이름으로 또 보내면 덮어쓰지 않고 시각을 붙여 남긴다 — 앞에 보낸 프롬프트가 작업 페이지 · 프롬프트 북에서 사라지지 않게(10/22)
       const pd = path.join(work, "05_프롬프트");
       fs.mkdirSync(pd, { recursive: true });
-      const to = path.join(pd, path.basename(jobsFile));
+      let to = path.join(pd, path.basename(jobsFile));
+      if (fs.existsSync(to) && path.resolve(to) !== path.resolve(jobsFile) && fs.readFileSync(to, "utf8") !== fs.readFileSync(jobsFile, "utf8")) {
+        to = to.replace(/\.json$/i, `_${now.replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}.json`);
+      }
       if (path.resolve(to) !== path.resolve(jobsFile)) fs.copyFileSync(jobsFile, to);
     }
     log(`  작업 페이지 '보낼 것'${sent ? "을 보냄으로 바꿨다(jobs.json 은 05_프롬프트 에)" : "에 레퍼런스를 올렸다 — 페이지에서 그림으로 보여 준 뒤 확인 카드로"}: ${path.join(dir, "보낼것.json")}`);
