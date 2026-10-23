@@ -109,7 +109,10 @@ const TOOLS = [
       ".mjs 로 저장해 node 로 실행. node 가 없으면 freewill_guide(\"read-apps-without-node\") 의 PowerShell 절차.",
     inputSchema: {
       type: "object",
-      properties: { name: { type: "string", enum: Object.keys(SCRIPTS), description: "받을 스크립트" } },
+      properties: {
+        name: { type: "string", enum: Object.keys(SCRIPTS), description: "받을 스크립트" },
+        approve: { type: "string", description: "보내기 스크립트가 낸 요청 번호 — 주면 스크립트 대신 승인만 한다(freewill_ticket 과 같음, 그 도구가 없는 대화용)" },
+      },
       required: ["name"],
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -246,6 +249,8 @@ async function callTool(name, args, env, props) {
     return toolText(p.body + tail);
   }
   if (name === "freewill_script") {
+    // freewill_ticket 이 생기기 전에 시작한 대화는 그 도구가 목록에 없다 — 있던 도구로도 승인되게(10/23 옛 대화가 "새 대화로" 작업 카드를 만들던 것)
+    if (args?.approve) return approveTicket(env, props, args.approve);
     const key = String(args?.name || "");
     const path = SCRIPTS[key];
     if (!path) return toolError(`모르는 스크립트: ${key}. 쓸 수 있는 것: ${Object.keys(SCRIPTS).join(", ")}`);

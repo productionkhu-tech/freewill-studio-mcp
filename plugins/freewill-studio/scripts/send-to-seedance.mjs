@@ -401,7 +401,8 @@ const readTicketFile = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8
 const writeTicketFile = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o), { mode: 0o600 }); };
 const askLine = (code) => `표 승인 필요 — freewill_ticket 도구를 request "${code.match(/.{4}/g).join("-")}" 로 부른 뒤 같은 명령을 다시 실행할 것. ` +
   "사용자에게 묻지 않는다 — 표는 이 스크립트가 커넥터에서 직접 받아 이 PC 에 둔다(대화·명령줄에 옮겨 적지 않는다). " +
-  "freewill_ticket 도구가 없으면 이 대화가 그 도구가 생기기 전에 시작된 것이다 — 사용자에게 새 대화에서 이어 가자고 한다";
+  "이 대화에 freewill_ticket 이 안 보이면(그 도구가 생기기 전에 시작한 대화) 도구 검색으로 찾아보고, 없으면 freewill_script 를 " +
+  `name 은 아무거나, approve: "${code.match(/.{4}/g).join("-")}" 로 불러도 같다 — 새 대화 · 작업 카드를 만들지 않는다`;
 // 표가 있으면 null, 없으면 할 일(요청 번호 안내)을 돌려준다.
 async function loadTicket() {
   if (ticketOwner()) return null;
