@@ -176,10 +176,10 @@
         "gpt-image"
       ],
       "version": null,
-      "hash": "ff47a722821f700d3920d2eddb75c26f56561f7b129b24d8e369dfb78f1dc913",
+      "hash": "8724e047053a9eb89ca5448479af906e9bb199eb1674c547759224498f981a17",
       "digest": null,
-      "appliedAt": "2026-10-12",
-      "chars": 41742,
+      "appliedAt": "2026-10-24",
+      "chars": 41750,
       "files": []
     },
     "higgsfield-seedance-2-5": {
@@ -190,9 +190,9 @@
       "models": [],
       "families": [],
       "version": "1.6.0",
-      "hash": "a54bae696fb7d059095d818d81c798b12159c2d9bf3f3d276814d5b91b5c9528",
+      "hash": "e8b69eb588504bf5af3e3de7361bfd2bc40b9efc9691c4de06d43f7ccade7eff",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "LICENSE.md",
         "MODE-PLAYBOOKS.md",
@@ -208,9 +208,9 @@
       "models": [],
       "families": [],
       "version": "1.16.0",
-      "hash": "1976566e97b9192ae876d02a81154cbdf905aff10b0067c89b11a943fdcc2a84",
+      "hash": "909839825a598b48b94fc53eb691f24fbaae8aaf8a7ed379d8895e2514621250",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "ENGINE-RULES.md",
         "FAILURE-MODES.md",
@@ -276,9 +276,9 @@
       "models": [],
       "families": [],
       "version": "3.1.3",
-      "hash": "59ac42577df8a3f8ee9a4c9b3f70fca1a2e5c8708acc88e867ceb50656b84d03",
+      "hash": "9305c4dd726729ad88bfe35d57c5967b887e16967ee1aa04747cf69895e5f609",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -349,9 +349,9 @@
       "models": [],
       "families": [],
       "version": "1.1.0",
-      "hash": "4c988259f03d694c609de737c6e4bb36477cfc073efce4240dc445a2d9418cf1",
+      "hash": "d017a46da68cf22923791eeb593038aca387cfa7203ce7dc7f0c0e753f9e0c9c",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -365,9 +365,9 @@
       "models": [],
       "families": [],
       "version": "3.3.1",
-      "hash": "1a0620cff245855c89bc021b40dbf3d0c695f767130760e34d1ce4ab0add3df5",
+      "hash": "73af2048624d92472d380b8304de19abaec1224da661c51cfb93d6e90c1751c8",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -397,9 +397,9 @@
       "models": [],
       "families": [],
       "version": "3.1.2",
-      "hash": "4b9115553eb963c9009f56292efb1ba33c4c1e784e70e2f7f34893281d5bcee8",
+      "hash": "9f2f0917a78095f9af0b8b9379a01a5ef9be57f2a9e77a232ae6fed94f29e55d",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -429,9 +429,9 @@
       "models": [],
       "families": [],
       "version": "1.3.1",
-      "hash": "ce32e2484aa0007ddfbe2abd4c87515b85866694577d5c5b7318aaee73f6a142",
+      "hash": "a54209b0bb086f827f7bf352ffce7a60ca1fe07707197badc443af99b895da8b",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "LICENSE.md",
         "SKILL.md",
@@ -479,9 +479,9 @@
       "models": [],
       "families": [],
       "version": "3.5.3",
-      "hash": "a549b9f6db4c4aa68c9745c61ba239c1affd06f3bd5c38918a71b56973e8264a",
+      "hash": "013685e5bb215488a9e13efda8e4adf3101378d9f51bca1d63155cdcc26d98d2",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-10-24",
       "files": [
         "LICENSE.md",
         "SKILL.md",
@@ -544,7 +544,9 @@
       ]
     }
   },
-  "held": {},
+  "held": {
+    "higgsfield": "dc0377a481aff139ec8c0af12c985dd7140dc69dc82f37869cfbd27d9ef59f09"
+  },
   "known": {
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [
       "sd2-pe",
