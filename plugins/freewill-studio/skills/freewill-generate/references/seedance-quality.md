@@ -182,6 +182,9 @@ DECISIVE RULES · 특수 촬영 기법 · 극단 화각 렌즈 잠금 · 충격 
   반응을 짧은 칸에 밀어 넣으면 서두른다.
 - **렌즈와 심도.** 감정 클로즈업 29°·18° 얕은 심도, 대화 · 투샷 47° 중간, 공간 63° 깊게, 인서트는 아주 얕게. 인서트 · 타이트 클로즈업은 처음부터 끝까지
   초점을 고정하고, 초점이 옮겨 가면 계기 → 옮김 → 상태로(`as he sets the bottle down, focus moves from the bottle to her face and holds there`).
+- **아나모픽 룩** — 렌즈 이름이 아니라 그 증거를 쓴다. OPTICS 에 `84° field of view, anamorphic rectilinear character; the lens holds for the whole shot`,
+  초점 물체 하나 · 거리 1–3 m · 조리개 개방 · 무엇이 녹는지, 세로로 긴 타원 보케가 맺히는 자리, 화면 속 가장 밝은 광원에서 나오는 가로 줄 플레어
+  (텅스텐이면 주황). 얼굴은 84° 로 잡지 않는다. 자세히는 `image-prompting.md` 8절(같은 말을 첫 프레임 그림과 영상에).
 - **자주 쓰는 무빙** — 숫자는 자리표, 장면에 맞게:
 
   | 무빙 | 쓸 때 | 쓰는 말 |
@@ -294,6 +297,7 @@ DECISIVE RULES · 특수 촬영 기법 · 극단 화각 렌즈 잠금 · 충격 
   `shoulder to shoulder on one depth line, both heads the same size`. 컷 사이 속도는 양쪽 프롬프트에 같은 km/h.
 - **싸움** — 실제 속도(`real-time speed from the first frame to the last`), 동작마다 이름과 방향, 손 · 발 인서트, 주요 동작은 한 타임라인에,
   이미 진행 중인 동작에서 시작한다. 빠른 동작이 녹아내리면 슬로모션으로 뽑아 편집에서 빠르게 돌리는 방법도 있다.
+  격투 안무(용어 대신 몸 모양 · 긍정 잠금 · 방향 맞는 반응 · 끊긴 리듬 · 스타일 잠금 · 동작 표)는 `references/fight-choreography.md`.
 - **충격 없이 깨지기**(군중이 미는 유리 · 압력에 갈라지는 얼음이나 벽) — 그냥 쓰면 한 점에서 별 모양으로 퍼지는 타격 금이 나온다.
   힘과 금의 길을 긍정형으로, 시간 순서까지: `the crowd presses against the glass with its whole weight`, `the fracture starts at the stressed edge of the pane`,
   `a pressure crack runs from the edge toward the centre in stages, one segment at a time`.

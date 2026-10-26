@@ -70,6 +70,7 @@
 - **사실감은 질감과 결함으로** — 실제 재질 이름, 실제 비대칭과 마모, 접사면 렌즈 성격(`a 100 mm macro look at f/8, every fibre resolving`).
   얼굴에 `photorealistic` 을 쓰면 GPT 에서 플라스틱처럼 나온다는 보고와 그 반대 보고가 같이 있다 — 필름 말(`a 35 mm photograph, natural grain`)과 A/B.
   나노바나나 피부가 플라스틱처럼 나오면 끝에 `fine film grain, deep shadow detail, real skin texture` (공간 플레이트에는 천장 연무를 넣지 않는다 — 사내 취향).
+  아나모픽 · 필름 룩은 8절 — 렌즈 이름 대신 초점 · 흐림 · 타원 보케 · 가로 줄 플레어 · 필름을 증거로 쓴다.
 - **크기는 기준으로** — `tiny compared to the creature` 는 매번 다르게 나온다. 몸의 기준(`its eye is level with her knee`)이나 사람 키 비교,
   확실하지 않으면 작은 쪽을 더 작게.
 - **옷은 실루엣 + 알아볼 것 하나** — 단추 · 끈 · 장신구 · 무늬마다 그리는 힘을 쓴다.
@@ -119,3 +120,50 @@
 출처: O-Side Media [higgsfield-ai-prompt-skill](https://github.com/OSideMedia/higgsfield-ai-prompt-skill)(MIT, © 2026 O-Side Media) —
 `official:higgsfield-gpt-image-2`(+ `/reference-sheet-workflow`) · `official:higgsfield-image-shots` · `official:higgsfield-character-design` ·
 `official:higgsfield-cinema/reference-sheet-types` · `official:higgsfield/image-models` · `official:higgsfield/templates/ad-asset-prep` 를 우리 말로 옮겼다(원문은 매일 동기화).
+
+## 8. 아나모픽 룩 — 렌즈 이름이 아니라 증거를 쓴다
+
+모델은 `anamorphic` 이라는 이름을 따르지 않고 그 렌즈의 **보이는 증거** — 초점 하나와 녹는 앞뒤, 세로 타원 보케, 가로 줄 플레어, 필름 — 를 따른다.
+증거를 다 적는다. 렌즈 · 카메라 · 필름 제조사 이름은 쓰지 않는다(7절). 사용자 로컬 스킬(아나모픽 룩, 10/26)에서 옮겼다.
+
+- **화각은 할 일에서 고른다** — 스틸은 mm 를 써도 된다. 영상 첫 프레임으로 쓸 그림이면 영상 OPTICS 와 같은 °(`seedance-prompting.md` 4절 표의 값)로.
+
+  | 할 일 | 렌즈 | 화각 | 이유 |
+  |---|---|---|---|
+  | 공간 · 설정 · 지리 | 24 mm | 약 84° | 공간이 읽히고 깊이가 쌓인다 — 장소의 기본 |
+  | 주인공 물체 · 깊이 층이 있는 공간 | 35 mm | 약 63° | 흐림을 쓸 수 있고 가장자리가 덜 늘어난다 |
+  | 좁은 실내 · 골목 · 차 안 | 40 mm | 약 57° | 24 mm 면 벽에 부딪힐 때(영상 화각표엔 없어 첫 프레임이면 63°) |
+  | 미디엄 · 연기 | 50 mm | 약 47° | 얼굴이 읽힌다 |
+  | 얼굴 · 인서트 | 85 mm | 약 29° | 얼굴을 24 mm 로 잡으면 늘어난다 |
+
+  인물 시트는 85 mm(얼굴) · 50 mm(전신) · 35 mm(여럿).
+- **흐림은 물리로 박는다** — 광각에 `strong blur` 만 쓰면 다 선명하게 나온다. 넷을 다 쓴다: ① 초점 물체 하나(`focus locked on the edge of the first column`)
+  ② 거리와 높이(`the camera 1–3 m from it, the lens at knee height`) ③ `the aperture wide open` ④ 무엇이 녹는지 층마다
+  (`the foreground railing melts into creamy blur, the far wall dissolves softly`). 초점 물체가 없으면 모델은 전부 선명하게 둔다.
+- **보케와 플레어는 물건으로 — 맺히는 자리와 광원까지.**
+  `anamorphic bokeh: tall vertical oval highlights on the wet floor and the lamp bulbs, and one long horizontal blue streak flare off the brightest light in frame`.
+  보케는 **세로로 긴** 타원, 플레어는 **가로** 줄. 광원이 텅스텐 · 불이면 `warm amber streak flare` — 따뜻한 램프의 파란 줄은 가짜로 읽힌다.
+  화면에 밝은 광원이 없으면 플레어도 없다 — 이유가 될 빛 하나(램프 · 수평선 띠 · 젖은 반사)를 둔다.
+- **필름은 빛에 맞추고, 제조사 대신 균형과 감도로** — 밤 · 실내 · 해 질 녘 · 텅스텐은 `tungsten-balanced 500-speed colour negative, visible grain`,
+  낮 · 흐린 날 · 파스텔은 `daylight-balanced 250-speed colour negative, fine grain`.
+- **카메라 앵커는 한쪽에서 대각선으로, 높이 하나** — `Three-quarter angle from one side of the room, looking diagonally into its depth, the lens at waist height.`
+  나노바나나 3 Pro 는 이 문장을 맨 앞에 둬야 따른다(5절 공간 플레이트 · 사내 취향).
+- **공간 플레이트 순서** — ① 카메라 앵커 ② `A film still:` + 장소 한 줄 + 분위기 ③ 화면 속 앞 → 뒤 ④ 색 60 · 30 · 10 ⑤ 빛(광원 · 색온도 · 방향 · 대비)
+  ⑥ 초점 · 조리개 · 녹는 것 · 보케 · 플레어 ⑦ 끝 문단 — 필름 · 렌즈 mm · 물리 세 자리를 장면에 맞게 바꿔 붙인다:
+  `Photographed on real 35 mm film with tungsten-balanced 500-speed colour negative grain; a 24 mm anamorphic lens with a subtle horizontal flare and gentle highlight bloom; natural true-to-life colour; real environmental physics — rain falling in streaks backlit by the street lamp; gritty documentary realism, indistinguishable from a photograph taken on location. Every element in the frame is unique. A clean environment plate, empty of people; every sign face is a plain blank surface.`
+  비는 램프 · 네온에 **역광**으로 줄이 보일 때만 비로 읽힌다 — 그렇게 적는다.
+- **비율** — 2.39:1 이 이 룩의 기본이지만 본문에 쓰지 않고 설정으로: 앱의 `21:9`, 정확히 2.39:1 이 필요하면 GPT · 시드림 custom 픽셀(예: GPT 3824×1600).
+- **고치기**
+
+  | 증상 | 고치기 |
+  |---|---|
+  | 다 선명하다 | 초점 물체 이름 · 1–3 m · `wide open` |
+  | 보케가 둥글다 | `tall vertical oval highlights` + 맺히는 자리 |
+  | 플레어가 없다 | 화면에 밝은 광원 하나, 거기서 나오는 줄 |
+  | 어안처럼 휜다 | `rectilinear`, 35 mm 로 |
+  | 얼굴이 늘어났다 | 사람을 24 mm 로 잡음 — 85 · 50 mm 로 |
+  | 3D 렌더 같다 | 끝 문단을 통째로 — 실제 35 mm 필름 · 그레인 · 물리 줄 |
+  | 따뜻한 램프에 파란 플레어 | 줄 색을 광원에 맞춰 주황으로 |
+  | 로고 · 상표가 생긴다 | 어딘가 제품 이름을 썼다 — 생김새 묘사로 |
+
+  영상에서는 mm 대신 ° 로 같은 증거를 쓴다(`seedance-quality.md` 4절 아나모픽 룩).

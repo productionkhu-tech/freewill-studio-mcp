@@ -220,7 +220,7 @@ POSITIVE LOCKS
   `her eyes drop to the cup, her jaw sets, she swallows once before she answers`. 듣는 사람도 반응한다. 절제가 기본.
 - **대사**는 `{ }` 안의 말만, 그 사람의 입만 그때 움직인다. 말 앞뒤에 숨 쉴 틈.
 - 연기(전술 · 듣기 · 눈 · 미세 표정), 대사 길이와 립싱크, 감정에 맞춘 카메라 질감, 컷 잇기(180° · 30° · 컨티뉴이티), 밤 조명, 여러 인물 · 이어지는 클립은
-  `seedance-quality.md` 2–8절에 자세히 있다 — 이 컷에 해당하는 절을 골라 같은 밀도로 쓴다.
+  `seedance-quality.md` 2–8절에 자세히 있다 — 이 컷에 해당하는 절을 골라 같은 밀도로 쓴다. 싸움 · 격투는 `references/fight-choreography.md`.
 
 ## 7. 빛·색·물리·수치
 
