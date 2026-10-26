@@ -3,6 +3,8 @@
 `seedance-prompting.md` 가 **형식**(블록 순서·밀도·레퍼런스 쓰는 법)이면, 이 문서는 그 블록 안에 **무엇을 써야 실패가 안 나는지**다.
 커뮤니티 스킬 — O-Side Media `higgsfield-ai-prompt-skill`(시댄스 2.0·2.5 실전 기록)과 Rylai `cinematic-video-prompt-skill`(어휘) — 을
 처음부터 끝까지 읽고 품질에 직접 듣는 규칙만 골라 우리 앱(BytePlus)에 맞게 옮겼다(사용자 10/14 "퀄리티 올려 주는 프롬프트·규칙은 꼼꼼히 보고 잘 따와라").
+10/26 에는 사용자 로컬 스킬(시댄스 2.5 프롬프트 빌더)에서 긍정형만 쓰기 · 괄호 소리 채널과 무음 문장 · 연기의 원인 사슬과 프레임 테스트 ·
+DECISIVE RULES · 특수 촬영 기법 · 극단 화각 렌즈 잠금 · 충격 없이 깨지기를 더 옮겼다.
 대부분 현장 관찰이라 BytePlus 에서 잰 값은 아니다. 사용자 지시와 앱 규칙(정수 초·설정은 본문에 안 씀·`[Image N]`·`@{이름}`)이 먼저고,
 출처와 다르게 쓰는 곳은 11절에 모았다.
 
@@ -30,14 +32,25 @@
    세는 소품은 `exactly one … throughout`, 소품마다 주인 한 명(`the parcel belongs only to the courier`). 군중은 덩어리 하나로 대략의 수를 적고
    (`a crowd of about twenty`) 따라가는 인물은 셋까지. 손 클로즈업은 손이 몇 개고 화면 어느 쪽에서 들어오는지, 손 연기를 하는 사람은 둘까지.
    두 사람 이상이면 실제 키(`Mina is 165 cm, Jun is 182 cm`), 와이드에는 사람 크기 기준을 하나 둔다. 복제는 모델의 기본 실패라
-   `never a second phone` 같은 짧은 부정은 써도 된다.
-5. **세트는 레퍼런스가 보여 준 것만.** `The set contains only what the location reference shows — no added furniture, doors or rooms.`
-   역방향 컷에서는 없는 것을 이름으로 적는다(`the wall behind the bed is solid panelling with no second door`). 레퍼런스에 없는 방·문·길을
+   개수와 자리를 끝까지 긍정형으로 — `exactly one phone throughout, the one in her right hand`.
+5. **세트는 레퍼런스가 보여 준 것만.** `The set contains only what the location reference shows.`
+   역방향 컷에서는 그 자리에 실제로 있는 것을 이름으로 적는다(`the wall behind the bed is one unbroken run of solid panelling`). 레퍼런스에 없는 방·문·길을
    지어내는 게 가장 흔한 표류다.
-6. **금지보다 배분.** 번지는 색은 자리와 양을 정해 준다 — `Yellow exists only inside the lamp bulb and a palm-sized halo beneath it.`
-   부정문은 모델의 기본값이 곧 실패인 곳(복제, 멋대로 컷 · 줌 · 떠다니는 핸드헬드, 싸움의 슬로모션, 깔리는 음악, 레퍼런스 음성 따라 하기)에만,
-   긍정 사실 다음에 짧게 — `Smooth and motorised: no handheld float, no zoom, no cut.` · `It dips once on its springs and does not travel along the ground.`
-   원하는 것을 금지 목록으로 대신하지는 않는다.
+6. **금지 대신 배분 — 부정문은 쓰지 않는다.** 번지는 색은 자리와 양을 정해 준다 — `Yellow exists only inside the lamp bulb and a palm-sized halo beneath it.`
+   막고 싶은 실패는 그 자리에 있어야 할 상태로 쓴다 — 금지문도 그 말을 부른다(사용자 로컬 스킬 기준, 10/26):
+
+   | 금지문 | 긍정형 |
+   |---|---|
+   | `no handheld float, no zoom, no cut` | `smooth and motorised on one steady path, one field of view, one continuous shot` |
+   | `does not travel along the ground` | `dips once on its springs and stays on the same spot` |
+   | `does not fall backward` | `stays upright, feet planted` |
+   | `no slow motion` | `real-time speed from the first frame to the last` |
+   | `never a second phone` | `exactly one phone throughout, the one in her right hand` |
+   | `do not use the people in it` | `use only its empty architecture` |
+   | `no music` · `NO BGM` | 3절 무음 문장 |
+
+   정해진 문구 셋만 그대로 둔다 — 대사 없음 줄(공식, 3절), 무음 문장(3절), 프레임 테스트(2절). 보내기 스크립트는 금지문을 짚지 않는다
+   (예전 프롬프트를 막지 않으려고) — 쓰는 사람이 바꾼다.
    맨말 품질어 — `film grain`, `blurry background`, `hazy`, `imperfect focus` — 는 화면 전체를 뭉갠다. 어느 면이 언제 어떻게
    (`a brief focus hunt on the fence at 2s; her face stays sharp`), 안개는 % 와 거리(m)로 쓴다.
 7. **잴 수 있는 말.** `fast` 대신 km/h·보폭·접촉(`fast` 가 복잡한 움직임에서 화면을 가장 많이 흔드는 말이라는 관찰), 무게는 kg
@@ -51,7 +64,8 @@
    컷끼리 맞춰야 하는 값은 **같은 절댓값을 양쪽에 다 쓴다**(같은 km/h, 같은 K, 같은 화면 %). 한 시퀀스의 렌즈 성격 · 조명 원칙 · 색 · STYLE ·
    소리 원칙은 한 곳에서 고쳐 모든 컷에 같은 글로 붙인다 — 어느 컷이 그중 하나를 바꾸면 바꾼다고 적는다.
 10. **고칠 때는 한 줄만.** `Keep … / Change only … / Do not alter anything else.` 문장을 덧붙이지 말고 그 자리에서 바꾼다(덧붙이면 앞 문장과 싸운다).
-    다시 뽑을 때 바꾸는 건 하나씩. 두 테이크에 **같은** 결함이면 프롬프트 탓이니 고쳐 쓰고, 테이크마다 **다른** 결함이면 운이니 프롬프트를
+    다시 뽑을 때 바꾸는 건 하나씩. 두 테이크에 **같은** 결함이면 프롬프트 탓이니 고쳐 쓰고 그 한 가지를 맨 위 DECISIVE RULES 로 올린다
+    (번호 붙인 다섯 줄까지, POSITIVE LOCKS 에도 같은 말 — `seedance-prompting.md` 3절). 테이크마다 **다른** 결함이면 운이니 프롬프트를
     그대로 두고 다시 뽑아 고른다. 고칠수록 나빠지면 대상 + 행동 + 카메라만 남기고 다시 쌓는다. 열 번 가까이 고쳐도 안 되면 컷이 잘못된 것 —
     나누고, 행동 하나를 빼고, 앵글을 바꾼다. 한 컷의 주 임무가 둘이면(액션과 대사, 물리와 연기) 컷 둘이다.
 
@@ -60,6 +74,16 @@
 - **감정은 근육·숨·눈·피부로 푼다.** 겹친 감정은 얼굴에 위의 감정, 숨·자세·손에 아래 감정, 눈에 새는 것 하나 —
   `Anxious resolve: jaw set, gaze locked on him, shallow chest breathing, her free hand opening and closing at her side.`
   어떤 감정인지 풀 수 없으면 사용자에게 고르게 한다.
+- **연기는 박자 목록이 아니라 원인 사슬로.** `0–3s blank stare. 3–6s recognition. 6–9s a tired smile.` 처럼 늘어놓으면 얼굴이 박자를 차례로
+  지나가며 사이마다 원점으로 돌아간다 — 그게 무대 같은 AI 연기의 정체다. 컷마다 **동력 하나**(숨 · 무게 · 시선 중 그 장면이 정말 다루는 것)를
+  정하고, 나머지 변화를 거기에 건다 — 앞 변화가 다음 변화를 부른다:
+  `Her breath drives everything: each exhale runs a little longer, her gaze settles on his hands, her brow lets go, and only then do her lips part on the first word.`
+  손과 대사도 같은 사슬로 — `her fingers stay still through every pause and move only on the word that costs her most to say.` 동력이 둘이면 서로 지운다.
+  타임코드는 써도 되지만 그 안의 연기는 사슬로 잇는다.
+- **얼굴이나 손이 박자를 나르는 컷은 PERFORMANCE 를 프레임 테스트로 닫는다** — 행동을 다 쓴 뒤 따로 한 문장(정해진 문구라 그대로, 동력이 숨이
+  아니면 끝말만 `carried by the weight` · `carried by the eye-line` 으로):
+  `Cut any single frame out of this shot and it should not be possible to label it as a stage — every transition is continuous and carried by the breath.`
+  행동 하나를 더하는 게 아니라 블록 전체의 합격 기준으로 읽힌다.
 - **원하는 것과 전술.** 인물마다 지금 원하는 것을 동사로(press, charm, shame, plead, provoke, bargain, threaten, stall) — 막히면 전술이 바뀐다.
   한 컷에 2–4번의 변화가 멈춤 · 자세 · 빠르기 · 시선 중 하나로 보인다. 손에는 할 일을 준다 — 손이 멈추는 순간이 강세다
   (`she keeps folding the cloth until his question; her hands stop mid-fold`).
@@ -99,7 +123,7 @@
 
 - **대사는 AUDIO 에, 한 줄씩** — 누가 · 목소리와 감정 · `{정확한 대사}` · 하는 동작 · 얼굴 반응. 그리고 한 번만 말한다고 잠근다:
   `Mina says this line once and nothing else; everyone without a line keeps their mouth closed and relaxed.`
-  입만 웃는 반응은 소리 없는 표정이라고 적는다(`a silent half-smile, no laugh`).
+  입만 웃는 반응은 소리 없는 표정이라고 적는다(`a silent half-smile, lips together`).
 - **입 맞추기(립싱크)는 한 컷에 한 얼굴.** 3–8초, MCU 이상으로 가깝게, 카메라는 고정이나 느린 푸시, 대사 중엔 고개를 끄덕이거나 돌리지 않는다.
   두 사람이 주고받으면 컷을 나눈다(숏 / 리버스). 말이 겹치게 쓰지 않는다.
 - **대사 길이를 컷에 맞춘다.** 영어 기준 15초에 25–30단어쯤. **짧은 대사를 긴 컷에 두면 남는 시간을 지어낸 웅얼거림으로 채운다**
@@ -114,9 +138,18 @@
 - **배경 소리는 층으로.** 주변음 2–3개 + 그 공간의 울림(`a reverberant concrete stairwell`, `the tight hush of a car interior`) + 구체적인 효과음.
   효과음은 행동마다 하나, 그 순간에 맞춰(`as the cup meets the saucer`). 대사가 중요한 컷은 AUDIO 를 가볍게 — 소리를 많이 쌓으면 대사를 덮는다.
   침묵도 사건이다(`two seconds of nothing, then one footstep`).
-- **음악.** 없을 때는 들리는 소리 목록을 먼저 쓰고 그다음 `No music.` 한 줄 — 음악 괄호 `( )` 안에 넣지 않고, 금지 목록을 길게 늘이지 않는다.
-  있을 때는 악기 · 빠르기 · 분위기 · 들어오고 나가는 때(`(a solo piano enters at 3s and builds to the end)`), 곡·가수 이름은 쓰지 않는다.
-  너무 크게 나오면 짧게, 맨 뒤에, `subtle`.
+- **괄호는 소리 채널이다 — 둥근 괄호는 음악.** 공식 표기대로 효과음 `< >`(사건 하나에 한 쌍), 대사 `{ }`, 음악 `( )`.
+  그래서 **AUDIO 의 음악 한 줄 말고는 둥근 괄호를 쓰지 않는다** — `(Macro)` · `(strictly enforced)` · `(segment 3)` 같은 곁말도 어느 블록에 있든
+  음악 신호로 읽혀, 무음을 청한 영상에 음악이 깔리는 흔한 원인이다. 그 뒤에 "음악 없음"을 아무리 써도 이기지 못한다. 곁말은 줄표(—)나 쉼표로.
+  `【 】` 는 자막 채널이라 우리 형식(블록 이름은 대문자 줄)에서는 화면 자막이 필요할 때만 — 공식 구조형 틀을 그대로 쓸 때의 `【제목】` 은 그 틀이니 둔다.
+  보내기 스크립트가 음악 줄이 아닌 둥근 괄호를 짚는다.
+- **음악이 없으면 무음 문장으로 닫는다.** 효과음 목록 다음에 이 문장을 그대로 — 금지하는 장르를 늘어놓으면 오히려 부르고, 소리가 **무엇인지**
+  말하는 긍정 한 문장이 버틴다:
+  `Environmental sound effects only — the soundtrack is these sounds and silence between them; generate only environmental sounds and action sounds, no BGM. No dialogue, no subtitles.`
+  대사가 있는데 음악만 없으면 대사 줄 다음에 `The soundtrack is these sounds, the spoken lines and silence between them; generate only environmental sounds, action sounds and the spoken lines, no BGM. No subtitles.`
+  무음을 꼭 보장해야 하면 설정에서 소리 생성을 끈다.
+- **음악이 있으면** 악기 · 빠르기 · 분위기 · 들어오고 나가는 때를 음악 괄호 하나에(`(a solo piano enters at 3s and builds to the end)`), 곡·가수 이름은
+  쓰지 않는다. 너무 크게 나오면 짧게, 맨 뒤에, `subtle`.
 - 화면 속 화면(TV · 폰 · 모니터)이 있으면 거기 무엇이 나오는지 적는다. 화면 밖 목소리는 `offscreen` 으로, 목소리만 나오는 인물도 이름을 적는다.
 - 소리 레퍼런스를 넣었으면 무엇을 가져오고 무엇은 가져오지 않는지 — `take the melody from [Audio 1]; the voice is Mina's own`. 넣은 소리를 그대로 쓰려면
   주변음·음악 말을 지우고 `[Audio 1] plays unchanged from start to end.` 더 깊게는 `official:higgsfield-audio`.
@@ -170,6 +203,15 @@
   | 시점 숏 | 몰입 · 공포 | `POV: her hands shove the heavy door open` |
 
   더 많은 이름과 쓰임은 `official:higgsfield-camera` · `official:cinematic-video-prompt/01-camera-angles-and-movement` — 프리셋 이름 대신 움직임을 말로 쓴다.
+- **특수 촬영 기법** — 장면이 그 시점을 원할 때(화각은 `seedance-prompting.md` 4절 표의 값):
+
+  | 기법 | 쓸 때 | 쓰는 말 |
+  |---|---|---|
+  | 관찰 시점(숨은 카메라) | 감시 · 엿보기 · 스릴러 | 세 가지를 한꺼번에 — 앞을 가리는 흐린 물체가 화면의 20–30%(벽 · 기둥 · 가지 · 아치), 카메라와 대상 사이의 연무 · 먼지 · 아지랑이, 멀리 박힌 8°–12° 망원(`the operator anchored far away`). 박자마다 가리는 물체는 바꾸고 카메라 자리는 하나로 |
+  | 중계 화면 | 스포츠 · 사건 현장 | `8° super-telephoto, handheld with a 1–2 cm tremor, anchored at a distance and finding the action` |
+  | 스네이크 캠(세부 위 와이드) | 작은 물체를 크게, 공간은 깊게 | `84° wide, the lens low and right up against the small object; it looms large in the foreground while the room recedes into depth` |
+  | 친밀한 와이드 | 얼굴과 둘레를 함께 | `63° wide on a close face, centred; the room around her stays readable and sharp` (84° 까지) |
+  | 망원 공기 기둥 | 거리 · 열기 · 고립 | 8°–12° — `dust suspended in the long compressed air column between camera and subject`, `heat shimmer compressed into a wall of haze in front of the figure` |
 
 ## 5. 컷 잇기 — 180° 축 · 30° · 컨티뉴이티
 
@@ -232,6 +274,10 @@
   출처(O-Side)의 "강한 행동 2개 · 카메라 무빙 2개를 넘으면 나눈다"는 한 생성을 나누라는 뜻이 아니라 **한 CUT 안**에 넣을 양으로 읽는다 —
   CUT 하나에 4–8초 행동 하나, 8–12초 행동 + 드러남. 이어지는 감정 붕괴 하나는 CUT 으로도 쪼개지 않는다.
 - **단조로움 점검.** 샷 크기 + 무빙 줄만 읽어 같은 게 세 번 연달아 나오지 않게.
+- **극단 화각(8° · 107°)을 여러 컷에 걸쳐 쓰면 네 가지를 다 넣는다** — 하나라도 빠지면 2–3컷 뒤에 화각과 공간이 평범하게 돌아온다는 현장 기록.
+  ① 시퀀스 전체가 장소 레퍼런스 하나(같은 엘리먼트)를 부른다 ② 컷(박자)마다 **첫 문장**을 렌즈 잠금으로 —
+  `LENS LOCK: 8° super-telephoto, the camera 60 m back at 1.6 m height.` ③ 컷마다 **끝 문장**을 렌즈 확인으로 —
+  `LENS CHECK: still 8°, the street still compressed flat behind her.` ④ 색은 목록이 아니라 재질 + 빛 + 역할로(6절).
 - **여러 인물 고정.** 인물마다 이름 + 눈에 띄는 특징 · 화면 자리(삼분할 + x/y % + 화면을 차지하는 %) · 앞뒤 층 · 몸 방향 · 시선 · 닿는 곳 · 지금 상태,
   그다음 서로의 거리 · 시선 · 엇갈리는 규칙 · 빈 공간. 컷마다 다시 적는다. 위에서 본 지도로 계획하고 프롬프트에는 블로킹 문장만 넣는다
   (`official:higgsfield/templates/seedance/multi-character-anchor` · `top-down-map`).
@@ -246,18 +292,21 @@
 
 - **걷기** — `heel lands first, strict left-right alternation, one foot always on the ground`. 나란히 걸으면
   `shoulder to shoulder on one depth line, both heads the same size`. 컷 사이 속도는 양쪽 프롬프트에 같은 km/h.
-- **싸움** — 실제 속도(원치 않으면 `real-time speed, no slow motion`), 동작마다 이름과 방향, 손 · 발 인서트, 주요 동작은 한 타임라인에,
+- **싸움** — 실제 속도(`real-time speed from the first frame to the last`), 동작마다 이름과 방향, 손 · 발 인서트, 주요 동작은 한 타임라인에,
   이미 진행 중인 동작에서 시작한다. 빠른 동작이 녹아내리면 슬로모션으로 뽑아 편집에서 빠르게 돌리는 방법도 있다.
+- **충격 없이 깨지기**(군중이 미는 유리 · 압력에 갈라지는 얼음이나 벽) — 그냥 쓰면 한 점에서 별 모양으로 퍼지는 타격 금이 나온다.
+  힘과 금의 길을 긍정형으로, 시간 순서까지: `the crowd presses against the glass with its whole weight`, `the fracture starts at the stressed edge of the pane`,
+  `a pressure crack runs from the edge toward the centre in stages, one segment at a time`.
 - **크기** — 화면 안에 사람 + 계산이 맞는 기준물(`its wingspan is as wide as twenty people lying head to toe`). 확실하지 않으면 큰 것을 더 작게.
 - **변신 · 전환** — 중간 지점에 무엇이 보이는지 적는다. 없으면 툭 끊기거나 뭉개진다. 처음 → 계기 → 중간 → 끝.
 - **춤** — 동작을 박자마다 쉬운 말로(발 · 방향 · 손), 춤 용어는 안 먹는다. 박자에 맞춘다는 문장 하나, 한 클립에 둘까지.
 - **반사** — 거울 · 물웅덩이 · 칼날의 반사는 자주 틀린다. 반사가 이야기의 핵심이면 반사만 따로 한 컷.
-- **첫 · 끝 프레임 모드** — 첫 그림에 없는 것은 없다고, 어떻게 들어오는지 적는다(`the photo is not on the fridge at first; it rises into frame in her hand from below`).
+- **첫 · 끝 프레임 모드** — 첫 그림에 없는 것은 처음 상태와 들어오는 길로 적는다(`the fridge door starts bare; the photo rises into frame in her hand from below`).
   그대로인 것은 이름으로 잠근다(`the magnet stays on the fridge door throughout; only the photo moves`). 본문은 움직임과 카메라만.
 - **블록아웃 영상 레퍼런스**(블록아웃 스튜디오의 회색 MP4 를 `[Video 1]` 로) — 거칠면
-  `[Video 1] is a coarse blockout reference. It provides only the motion paths, subject blocking, camera movement and cuts; do not use its grey materials, shapes or scene.`
+  `[Video 1] is a coarse blockout reference. It provides only the motion paths, subject blocking, camera movement and cuts; every material, shape and surface comes from the text and the other references.`
   그리고 블록아웃의 덩어리마다 누구 · 무엇인지 짝지어 적고 인물 · 장소 · 스타일은 따로 정한다. 정교하면 구조 · 동작 · 카메라 · 컷을 지키되
-  `do not use its grey materials`. 경로 선 · 축 · 카메라 표시는 지우고 넣는다. 일부만 쓰면 몇 초부터 몇 초인지(정수).
+  `its grey surfaces are placeholders; every material comes from the text`. 경로 선 · 축 · 카메라 표시는 지우고 넣는다. 일부만 쓰면 몇 초부터 몇 초인지(정수).
 - **영상 → 영상(편집)** — 원본의 생김새 · 연기 · 구도 · 렌즈 · 카메라를 그대로, 바꿀 것 하나만. 새로 넣은 것은 원본과 섞이게(빛 번짐 · 닿는 그림자 · 시차).
 - **필터 거절** — 실존 인물 이름은 체형 · 특징으로, 브랜드는 생김새로, 폭력은 결과 · 긴장 · 물리로, 선정성 오탐이면 신체 세부와 관능적 형용사를 뺀다.
   지어낸 생물은 `an original design`. 나이 단어(boy · girl · child · teen …)를 피하라는 건 힉스필드 필터 대책이다 — BytePlus 에선 확인되지 않았으니,
@@ -312,11 +361,16 @@
 | 색이 화면 전체로 번진다 | 색 이름만 씀 | 1절 6의 배분 + 자기 점검 문장(`if the frame turns yellow, the frame is wrong`) |
 | 화면 전체가 뭉개진다 | 맨말 품질어(grain · hazy · blurry) | 어느 면이 언제, 안개는 % · m |
 | 밤인데 낮처럼 밝다 | `night` 한 단어 | 화면 속 광원만, 하늘은 거의 검게(6절) |
-| 들고 있어야 할 물건이 손을 떠나 공중에 뜬다 | 던지는 뜻의 동사(hurl · fling · toss · throw) | 쥔 채 하는 동사로(`raises it overhead`, `holds it aloft`) + `it never leaves her hands` |
+| 들고 있어야 할 물건이 손을 떠나 공중에 뜬다 | 던지는 뜻의 동사(hurl · fling · toss · throw) | 쥔 채 하는 동사로(`raises it overhead`, `holds it aloft`) + `it stays gripped in both hands throughout` |
 | 동작 중간에 멈춘다(물건 · 손이 정지) | 모든 컷에 붙인 공통 문구의 정지 · 홀드 규칙 | 공통 문구는 모든 컷에 맞는 말만 — 정지는 정한 한 곳에만, 그 컷에 |
 | 사람이 과하게 날뛰어 옷 · 소품이 날아간다 | 몸 전체를 크게 쓰는 동사(jumping · leaping · flailing) | 실제 한 동작을 크기까지(`bounces once on her toes`) |
 | 빼 달라고 한 효과가 생긴다 | 효과 말이 남아 있음(부정문이어도) | 효과 말 자체를 지운다 — 부정문도 그 말을 부른다 |
 | 컷마다 편 · 진영의 좌우가 바뀐다 | "늘 왼쪽" 한 줄 선언뿐 | 5절 — 컷마다 경계물이 화면 어느 끝에 걸리는지 · 보이는 편이 어느 쪽인지 |
+| 무음이라 했는데 음악이 깔린다 | 본문 어딘가의 둥근 괄호 곁말, `no music` 금지 목록 | 괄호를 줄표로, 3절 무음 문장 — 꼭 무음이면 소리 생성 설정을 끈다 |
+| 연기가 박자마다 바뀌고 사이에서 원점으로 돌아간다(무대 같은 연기) | 박자를 목록으로 씀 | 2절 원인 사슬 — 동력 하나에 변화를 걸고, 프레임 테스트로 닫는다 |
+| 고쳐도 같은 실패가 또 난다 | 잠금이 맨 끝 POSITIVE LOCKS 에만 있음 | 그 한 가지를 맨 위 DECISIVE RULES(번호, 다섯 줄까지)로 올린다 |
+| 8° · 107° 여러 컷이 2–3컷 뒤 평범한 화각으로 돌아온다 | 렌즈 잠금이 처음 한 번뿐 | 7절 네 가지 — 컷마다 LENS LOCK 으로 열고 LENS CHECK 로 닫는다 |
+| 미는 장면인데 한 점에서 별 모양으로 깨진다 | 타격처럼 씀 | 8절 충격 없이 깨지기 — 가장자리에서 가운데로, 차례로 |
 
 더 자세한 표는 `official:higgsfield-troubleshoot` · `official:higgsfield-seedance/FAILURE-MODES` · `official:higgsfield/skills/shared/house-rulings`.
 
@@ -330,7 +384,8 @@
 | 전신 칸의 머리를 지운 시트, 패널을 잘라 낸 그림 | 시드림 원본 시트 그대로 — 손댄 시트는 BytePlus 실사 인물 필터에 걸렸다 |
 | 렌즈 말은 플레이트에 굽고 다시 쓰지 말라 | OPTICS 블록을 매 프롬프트에(화각 · 거리 · 높이). 렌즈 성격 말은 프로젝트마다 정한다 |
 | 30–100단어, 512자 | 우리 블록 형식으로 자세하게(5초 한 컷도 2,500자 넘게) |
-| 부정어 꼬리를 줄줄이(`NO CGI. NO BGM.`) | 모델의 기본 실패를 막는 짧은 부정만, 긍정 사실 다음에(1절 6) |
+| 부정어 꼬리를 줄줄이(`NO CGI. NO BGM.`), 긍정 뒤 짧은 부정 허용 | 긍정형만(1절 6) — 정해진 문구 셋(대사 없음 줄 · 무음 문장 · 프레임 테스트)만 그대로 |
+| 무음은 `No music.` 한 줄 | 3절 무음 문장(사용자 로컬 스킬의 문구) |
 | '시네마틱' 대신 감독 이름 | 감독 · 작품 · 장비 이름은 쓰지 않는다 — 빛과 렌즈를 말로 |
 | 나이 단어 금지 | 힉스필드 필터 대책 — BytePlus 에선 확인 안 됨, 걸리면 바꾼다 |
 | 180° — 개념 · 컷 뒤 재고정 · 축 문장 · 역방향 플레이트를 따로(출처에 있음) | 그대로 쓴다(5절). 역방향 플레이트는 역방향 컷이 있을 때만 — 공간은 기본 메인 한 장 |
@@ -339,4 +394,5 @@
 
 출처: O-Side Media [higgsfield-ai-prompt-skill](https://github.com/OSideMedia/higgsfield-ai-prompt-skill)(MIT, © 2026 O-Side Media) ·
 Rylai [cinematic-video-prompt-skill](https://github.com/Rylaispirit/cinematic-video-prompt-skill)(MIT) — 규칙만 골라 우리 말로 옮겼다.
+사용자 로컬 스킬(시댄스 2.5 프롬프트 빌더) — 규칙을 옮기고, 무음 문장 · 프레임 테스트 두 문장만 그대로 가져왔다(10/26).
 원문은 `official:higgsfield-*` · `official:higgsfield/…` · `official:cinematic-video-prompt/…`(매일 동기화, 목록은 `freewill_guide("versions")` 의 커뮤니티 표).

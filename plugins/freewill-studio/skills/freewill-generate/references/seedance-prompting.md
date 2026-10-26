@@ -27,9 +27,10 @@ Omni(구글)는 해당 없다 — 그 공식 가이드대로.
 3. **시간 안에 들어가게.** 5초에는 사건 하나. 사건을 더 넣으면 전부 반쯤 되다 만다(5절).
 4. **모순 없이.** 그 카메라 자리·렌즈·순간에 실제로 보이는 것만 쓴다 — 클로즈업에 발, 뒷모습에 표정, 탑다운에 벽면을 쓰지 않는다.
    보내기 전 `references/prompt-logic.md` 대로 점검한다.
-5. **원하는 상태를 긍정형으로.** 막아야 할 실패는 그 긍정 문장 바로 뒤에 짧게(`Faces stay in deep side shadow; no flat front light.` ·
-   `Smooth and motorised: no handheld float, no zoom, no cut.`). 원하는 것을 금지 목록으로 대신하지 않는다 — 쓴 말이 그림을 부른다
-   (`seedance-quality.md` 1절 6).
+5. **원하는 상태를 긍정형으로만.** 막고 싶은 실패 대신 그 자리에 있어야 할 상태를 쓴다 — `does not fall backward` → `stays upright, feet planted`,
+   `no flat front light` → `faces stay in deep side shadow`, `no handheld float, no zoom, no cut` → `smooth and motorised on one steady path,
+   one field of view, one continuous shot`. 쓴 말이 그림을 부르고 금지문도 그 말을 부른다(사용자 로컬 스킬 기준, 10/26 — `seedance-quality.md` 1절 6).
+   정해진 문구 셋만 그대로 둔다 — 대사 없음 줄(공식), 무음 문장(`seedance-quality.md` 3절), 연기의 프레임 테스트(같은 문서 2절).
 
 ## 2. 레퍼런스 — 역할을 범위로 묶는다 (레퍼런스→영상)
 
@@ -53,16 +54,17 @@ CUT 을 나눠 그 CUT 에 나오는 사람만 부른다(`seedance-quality.md`).
 | 영상 레퍼런스 | 정한 것만(움직임·카메라 움직임·리듬 중) | 나머지 전부 |
 
 ```
-@{hero_mina} is Mina, a Korean woman in her early thirties, slim, chin-length black bob, navy trench coat over a white shirt. Use her face, hair and wardrobe from the sheet's front full-body panel; do not take the sheet's grey backdrop or panel layout. 100% matches the reference.
-@{loc_carpark} is the underground car park plate: board-marked concrete, pale green epoxy floor, square columns with striped corner guards, fluorescent tubes. Use it for the space's geography, materials, colour and light only; the framing of every shot is written below, not taken from the plate. Do not use the cars or people in it.
+@{hero_mina} is Mina, a Korean woman in her early thirties, slim, chin-length black bob, navy trench coat over a white shirt. Use only her face, hair and wardrobe from the sheet's front full-body panel; the sheet's grey backdrop and panel layout are layout only. 100% matches the reference.
+@{loc_carpark} is the underground car park plate: board-marked concrete, pale green epoxy floor, square columns with striped corner guards, fluorescent tubes. Use only its empty architecture — geography, materials, colour and light; the framing of every shot comes from the text below.
 @{prop_dashcam} is the dashboard camera: matte black body, one round lens in a gunmetal ring, a slim windshield mount. Exactly one camera exists in the frame; the sheet's views and dividing line are layout only. 100% matches the reference.
-[Video 1] is used only for the camera move — a slow handheld walk-in; not for the people, clothing or location in it.
+[Video 1] supplies only the camera move — a slow handheld walk-in; people, clothing and location all come from the other references.
 The references supply identity, materials, colour and light; the shot sizes, camera positions and timing written here supply the framing.
 ```
 (여기서 `[Video 1]` 은 이 컷에만 쓰는 움직임 참고라 파일로 붙였다 — 엘리먼트와 섞어 써도 된다.)
 
-- **쓸 것과 쓰지 않을 것을 한 문장에** — `@{loc_workshop} is the workbench and window light. Do not use the people in it.`
-  그림에 새어 나올 수 있는 것(다른 사람, 시트의 회색 배경·칸, 마네킹)은 그 줄에서 바로 뺀다.
+- **쓸 것만 범위로 묶는다** — `@{loc_workshop} supplies only its empty architecture: the workbench and the window light.`
+  그림에 새어 나올 수 있는 것(다른 사람, 시트의 회색 배경·칸, 마네킹)은 그 줄에서 바로 범위 밖에 둔다 — 금지문 대신 `the sheet's grey backdrop and
+  panels are layout only`, `people, clothing and location come from the other references` 처럼(1절 5).
 - **충실도를 같이** — 그대로(face, build, wardrobe 전부) / 일부만(`the jacket and the scar; hairstyle may change`) /
   다른 대상에 옮기기(`apply this fabric's weave to Mina's coat only` — 옮겨 갈 대상을 꼭 이름으로) / 느낌만(색·분위기).
 - **동작·컷 문장에서는 `@{이름}`·`[Image N]` 대신 사람 이름 + 눈에 보이는 특징 하나로** — `Mina, in the navy trench coat, crosses to the door.`
@@ -70,7 +72,7 @@ The references supply identity, materials, colour and light; the shot sizes, cam
 - 인물 외모 글은 짧게 — 나이·역할·체형, 지금 상태, 꼭 살아야 할 특징 한두 개. 긴 외모 글은 그림과 싸운다. 작은 글자·로고·색처럼
   빠지기 쉬운 건 글로도 한 번 적는다.
 - **레퍼런스가 많으면 다섯 단계로** — ① 대상마다 한 줄씩(`[Image 1] … [Image 4] define four characters` 처럼 한 줄에 묶지 않는다 — 엘리먼트면 이름이 이미 하나씩이다)
-  ② 종류별로 묶기(인물 · 소품 · 장소 · 움직임·소리) + `Do not interchange these characters' appearances, positions or dialogue.`
+  ② 종류별로 묶기(인물 · 소품 · 장소 · 움직임·소리) + `Each character keeps their own appearance, position and dialogue throughout.`
   ③ 여러 컷에 나오는 인물은 프로필 한 덩어리(옷 = 어느 그림, 늘 드는 소품, 나오는 장소) ④ 컷마다 그 컷에 쓰는 것만 다시 고르기
   ⑤ 소품은 한 사람 것(`belongs only to Mina`), 인원·옷·방향이 컷마다 같은지 확인.
 - **그 컷에 안 나오는 대상의 그림은 넣지 않는다** — 넣으면 모델이 화면에 억지로 넣는다. 여러 컷이면 컷 문단에서 그 컷에 나오는 것만 부른다.
@@ -79,11 +81,11 @@ The references supply identity, materials, colour and light; the shot sizes, cam
   ① 가져올 것(얼굴 · 옷 · 공간 · 소품 · 첫 프레임 · 움직임 · 카메라 · 소리)
   ② 같이 끌려올 것과 막는 법 — 그림: 다른 인물이 있는 장소 사진 · 글자 · 그림체가 다른 참고 · 다른 컷 구도의 스틸 · 생성물의 뭉개짐.
      **영상 레퍼런스는 움직임 · 카메라 · 속도 · 컷 리듬 · 소리까지 통째로 따라온다** — 그걸 원할 때만, 필요한 구간만 잘라 넣고 무엇만 따를지 글로 못 박는다
-     (`follow only [Video 1]'s camera path, not its subject or cut timing`).
+     (`follow only [Video 1]'s camera path; the subject and the cut timing come from the text`).
   ③ 다른 길 — 다시 쓰는 인물 · 장소 · 소품은 엘리먼트 @{이름}, 분위기 · 빛 · 재질은 글로.
   따져 보니 필요한데 빠진 것은 넣는다. 생성물(앞 영상의 프레임 · 앞에서 만든 장면 그림)은 다시 넣지 않는다 — 깨끗한 원본 시트 · 플레이트에서.
   jobs.json refs 는 `{"path", "role"?, "why"}` — why 에 ①과 ②의 대처를 한 줄로(없으면 보내기 스크립트가 멈춤). 보내기 전에 작업 페이지 '보낼 것'에 그림과 why 가 뜬다.
-- 같은 대상의 여러 그림(소품 · 캐릭터 6면 시트)은 하나로 묶고 개수를 잠근다 — `jointly define one …`, `exactly one …, never a copy`.
+- 같은 대상의 여러 그림(소품 · 캐릭터 6면 시트)은 하나로 묶고 개수를 잠근다 — `jointly define one …`, `exactly one … throughout`.
 - **공간은 메인 플레이트 한 장이 기본이다**(사용자 10/14 "배경 에셋은 하나만 있어도 되는데") — 여러 방향은 소품 · 캐릭터 이야기다.
   역방향 컷(숏 / 리버스)이 정말 있으면 그 방향 플레이트를 따로 엘리먼트로 두고(`loc_room` · `loc_room_reverse`) 그 컷에서 카메라가 보는 쪽만 부른다
   (`seedance-quality.md` 5절 — 180° 축).
@@ -101,6 +103,9 @@ SCENE CONTEXT
 ACTIVE REFERENCES
 [One line per reference, scoped by role (section 2), then the hierarchy line.]
 
+DECISIVE RULES
+[Only after a render has actually broken the same thing. 1. to 5. at most — one numbered positive line per failure: handedness, screen direction, the one object that carries a colour, the surface that stays blank, the beat the shot ends on. Each line also reappears in POSITIVE LOCKS. All equal, no severity labels.]
+
 LOCATION MAP
 [Foreground / midground / background with distances in metres. Where the camera stands, which side the light comes from, the paths subjects move along. With two or more shots: the axis (the line between the people, or the direction of travel), who is screen-left and screen-right, and the side of the line every shot stays on.]
 
@@ -111,7 +116,7 @@ FORMAT MODE
 [One continuous shot; the timed beats below all happen inside it; the camera does not cut on its own. / CUT 1 … CUT 2 … with cuts only at those points. / Whole-second timecodes that tile the runtime: 0–2s, 2–5s.]
 
 OPTICS
-[Per shot: shot size in words, field of view in degrees, camera distance and height, lens character. No drift mid-shot.]
+[Per shot: shot size in words, field of view in degrees, camera distance and height, lens character. The field of view holds for the whole shot.]
 
 CAMERA
 [Per shot: support (locked off / dolly / handheld), ONE move with direction, distance and speed, its motivation, focus behaviour.]
@@ -122,8 +127,8 @@ ACTION
 FINAL FRAME
 [The literal last frame: who or what is where, what is held still, what is still moving.]
 
-PERFORMANCE    (when someone acts)
-[What they want, what is in the way, what their body and eyes do about it — breath, pauses, eye-line.]
+PERFORMANCE
+[When someone acts: what they want, what is in the way, what their body and eyes do about it. One driver for the shot — the breath, the weight or the eye-line — and every change caused by the one before it, a chain rather than a list of beats. When a face or a hand carries the beat, close with the frame test sentence.]
 
 PHYSICS
 [Weight, inertia, contact, cloth and hair delay, liquids, particles — cause and effect.]
@@ -131,21 +136,29 @@ PHYSICS
 LIGHTING
 [Real sources in the location, direction, colour temperature in Kelvin, exposure and contrast; one white balance per scene.]
 
-COLOR GRADE    (when the look is stylised)
-[Palette tied to material + light + role; hex values when a look is set.]
+COLOR GRADE
+[When the look is stylised: palette tied to material + light + role; hex values when a look is set.]
 
 AUDIO
-[<sound effects>, (music), {dialogue} in the official notation; offscreen sources named as offscreen. If nobody speaks: No dialogue or narration; mouths stay closed. No subtitles or on-screen text.]
+[<sound effects>, {dialogue}, and music only inside one round-bracket cue — a round bracket anywhere else in the prompt is also read as music, so asides use dashes or commas. Offscreen sources named as offscreen. If nobody speaks: No dialogue or narration; mouths stay closed. No subtitles or on-screen text. With no music either, close with the silent-piece sentence instead.]
 
 STYLE
 [Overall look in words — photoreal, film texture, real time or slow motion per shot. No director, film or equipment names.]
 
 POSITIVE LOCKS
-[Short fixers next to the likely failures: counts, positions, screen direction, light, prop states — each stated once.]
+[The target state for each likely failure, stated positively: counts, positions, screen direction, light, prop states — each stated once. Every DECISIVE RULES line reappears here.]
 ```
 
 공식 템플릿의 필수 항목은 이 안에 다 들어간다 — 목표 = SCENE CONTEXT 첫 문장, 레퍼런스 역할 = ACTIVE REFERENCES,
 시작·끝 = FIRST FRAME·FINAL FRAME, 대사 없음 = AUDIO. 여러 장면을 한꺼번에 쓸 때도 장면마다 처음부터 쓴다 — 틀에 끼워 찍지 않는다.
+
+- **DECISIVE RULES 는 렌더가 실제로 깬 것만 올린다.** 같은 내용이 두 자리에서 두 일을 한다 — 맨 위의 짧은 목록은 모델이 아직 구도를 정하기 전에
+  읽고, 맨 끝 POSITIVE LOCKS 는 전체 목록을 나른다. 한 번도 안 깨진 것을 상상으로 올리면 LOCKS 가 하나 더 생길 뿐이고 강조가 사라진다.
+  다섯 줄까지, `1.` `2.` 번호를 붙이고, 한 줄에 한 실패(`The phone is in her RIGHT hand and the camera sees only its matte back.`).
+  '치명 · 경미' 같은 등급은 붙이지 않는다 — 낮은 등급을 빼도 되는 것으로 읽는다. 자리와 짧은 개수가 무게를 싣는다.
+- **AUDIO 의 음악 한 줄 말고는 둥근 괄호를 쓰지 않는다** — 블록 이름 줄의 `(when …)`, 곁말 `(Macro)` · `(segment 3)` 도 음악 표시로 읽힌다
+  (`seedance-quality.md` 3절, 보내기 스크립트가 짚는다).
+  위 틀의 `[ ]` 설명은 쓰는 사람에게 하는 말이라 본문에 옮기지 않는다.
 
 ## 4. 렌즈와 카메라
 
@@ -170,6 +183,8 @@ POSITIVE LOCKS
 - **컷이 둘 이상이면 180° · 30° 를 기본으로 지킨다**(연출로 일부러 깰 때만 깨고, 그때는 의도와 넘는 방법을 적는다) — 축을 정해 카메라는 선의 한쪽에,
   컷마다 누가 화면 왼쪽 · 오른쪽이고 어느 쪽을 보는지, 같은 대상을 다시 잡으면 30° 넘게 옮기거나 크기를 한 단계 넘게. `seedance-quality.md` 5절.
 - 장비·감독·영화 이름은 쓰지 않는다 — 그 모양을 말로 묘사한다.
+- 특수 촬영 기법(관찰 시점 · 중계 화면 · 스네이크 캠 · 친밀한 와이드 · 망원 공기 기둥)은 `seedance-quality.md` 4절,
+  극단 화각(8° · 107°)을 여러 컷에 걸쳐 쓸 때의 렌즈 잠금 네 가지는 7절.
 
 ## 5. 시간과 컷
 
@@ -259,7 +274,7 @@ FORMAT MODE
 One continuous shot; the timed beats below all happen inside it; the camera does not cut on its own.
 
 OPTICS
-Medium-wide, 47° field of view, the camera 1.2 m behind the recorder at 0.9 m height, just above desk level, looking diagonally across the room to the nightstand. No drift.
+Medium-wide, 47° field of view, the camera 1.2 m behind the recorder at 0.9 m height, just above desk level, looking diagonally across the room to the nightstand. The field of view holds for the whole shot.
 
 CAMERA
 Locked off on a tripod at the desk's end. Focus holds on the telephone, then racks to the recorder at 2s and stays there.
@@ -276,13 +291,13 @@ PHYSICS
 The handset rattles a few millimetres in the cradle and settles between rings; the reels spin up over half a second and the tape draws taut.
 
 LIGHTING
-No lamps on. Hard red neon stripes through the blinds from screen-left fall across the desk and the carpet; a cold blue 7000K spill from the wet street outlines the bed; deep shadow under the nightstand. The camera sits on the shadow side of the desk.
+Every lamp in the room is off. Hard red neon stripes through the blinds from screen-left fall across the desk and the carpet; a cold blue 7000K spill from the wet street outlines the bed; deep shadow under the nightstand. The camera sits on the shadow side of the desk.
 
 COLOR GRADE
 Low-key red and steel blue against near-black walnut; the darkest wood at #0E0B0C, the neon stripes peaking at #C2343A, the blue spill at #3D5A80; nothing reaches pure white.
 
 AUDIO
-<Rain tapping on the window>, <the shrill bell of the rotary telephone>, <a mechanical clunk as the key snaps down>, <a soft tape hiss and the whir of the reels>. No dialogue or narration. No subtitles or on-screen text.
+<Rain tapping on the window>, <the shrill bell of the rotary telephone>, <a mechanical clunk as the key snaps down>, <a soft tape hiss and the whir of the reels>. Environmental sound effects only — the soundtrack is these sounds and silence between them; generate only environmental sounds and action sounds, no BGM. No dialogue, no subtitles.
 
 STYLE
 Photoreal, 1970s film texture with fine grain, real-time speed.
@@ -308,7 +323,7 @@ One telephone, on the nightstand only. One recorder, on the desk only. The room 
 | 영상→영상(편집·VFX·연장) — 원본을 지키고 하나만 바꾸기 | `official:higgsfield-seedance-vfx` · `official:higgsfield/templates/seedance/footage-vfx-transform` |
 | 서술형이냐 타임코드형이냐, 프롬프트 구조 | `official:higgsfield-prompt` |
 | 결과가 이상할 때 — 증상 → 원인 → 고치기 | `official:higgsfield-troubleshoot` · `official:higgsfield/skills/shared/house-rulings` |
-| 부정어를 언제 어떻게(긍정형 원칙의 예외) | `official:higgsfield/skills/shared/negative-constraints` |
+| 부정어 논의 원문(우리는 긍정형만 — 1절 5, 정해진 문구 셋만 예외) | `official:higgsfield/skills/shared/negative-constraints` |
 | 장르별 시작 틀 — 액션 추격·제품·공포·패션·SF VFX·인물 소개·풍경 설정·코미디·로맨스·댄스 | `official:higgsfield-recipes` · `official:higgsfield/templates/<01~10 이름>` · 예시 `official:higgsfield/prompt-examples` |
 | 여러 컷의 룩 통일(전역 스타일 머리말) · 여러 인물 고정 · 위치 지도(staging·top-down) · 표정 비트 | `official:higgsfield/templates/seedance/<global-style-prefix · multi-character-anchor · staging-reference · top-down-map · facs-expression-beats>` |
 | 여러 컷 샷리스트 | `official:higgsfield-shotlist-director` |
@@ -327,5 +342,6 @@ O-Side 문서 안의 상대 경로는 이렇게 받는다 — `../higgsfield-<�
 
 1. `references/prompt-logic.md` 대로 한 블록씩 대조하고 모순을 고친다.
 2. `references/seedance-quality.md` 1절 열 가지(컷 규칙 · 끝에 닿는 움직임 · 원인 사슬 · 개수 · 세트 잠금 · 배분 · 잴 수 있는 말 · 동사 · 처음부터 · 한 줄씩 고치기)를 대조한다.
+   금지문을 긍정형으로 바꿨는지(정해진 문구 셋 말고), 둥근 괄호가 AUDIO 의 음악 줄에만 있는지도 본다.
 3. 보내기 스크립트 dry-run 이 짚는 "확인할 것"을 하나씩 보고 고치거나, 맞는 경우면 그대로 둔다.
 4. 확인 카드는 할지 말지만 묻는다 — 영어 프롬프트는 사용자가 보자고 할 때만 보여 준다.

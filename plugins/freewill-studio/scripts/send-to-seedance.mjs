@@ -184,7 +184,11 @@ function blocksOf(p) {
   return out;
 }
 // 레퍼런스→영상에서 구도를 그림(파일 [Image N] 이든 엘리먼트 @{이름} 이든)에 맡기는 문장(10/14 "matching the camera position of [Image 1]") — 그림은 생김새·재질·빛만 맡는다
-const FRAMING_FROM_IMAGE = /\b(?:camera (?:position|placement|angle|height|setup)|framing|composition|viewpoint|point of view|vantage)\s+(?:of|from|in|as in|shown in|seen in)\s+(?:\[Image \d+\]|@\{[^}\n]+\})|\bmatch(?:es|ing)?\s+(?:the\s+)?(?:camera|framing|composition|view|angle)\b[^.\n]{0,40}(?:\[Image \d+\]|@\{[^}\n]+\})|\b(?:close to|as in|like) the (?:view|angle|framing|composition|shot) of (?:\[Image \d+\]|@\{[^}\n]+\})/i;
+// AUDIO 안의 ( ) 가 음악 지시인지 — 악기·장르·음악 말이 있으면 음악 줄로 본다
+const MUSIC_WORDS = /\b(?:music\w*|score|piano|strings?|guitar|drums?|percussion|beats?|melody|song|synth\w*|choir|orchestra\w*|cello|violin|bass\w*|brass|horns?|hum(?:s|ming)?|lullaby|theme|soundtrack|BGM|chords?|ballad|jazz|tune|organ|flute|harp|trumpet|sax\w*|marimba|ambient)\b/i;
+// 음악 없는 장면의 무음 문장(seedance-quality 3절)이나 음악 금지 말
+const SILENT = /\bthe soundtrack is these sounds\b|\bno (?:background )?music\b|\bno BGM\b/i;
+const FRAMING_FROM_IMAGE =/\b(?:camera (?:position|placement|angle|height|setup)|framing|composition|viewpoint|point of view|vantage)\s+(?:of|from|in|as in|shown in|seen in)\s+(?:\[Image \d+\]|@\{[^}\n]+\})|\bmatch(?:es|ing)?\s+(?:the\s+)?(?:camera|framing|composition|view|angle)\b[^.\n]{0,40}(?:\[Image \d+\]|@\{[^}\n]+\})|\b(?:close to|as in|like) the (?:view|angle|framing|composition|shot) of (?:\[Image \d+\]|@\{[^}\n]+\})/i;
 function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
   const p = String(j.prompt);
   // hard = 앱·BytePlus 가 실패하거나 바인딩이 깨지는 것(사용자 형식이어도 멈춤) · house = 사내 쓰는 법 점검(user_format 이면 확인할 것으로만)
@@ -220,6 +224,19 @@ function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
       house.push(`구도를 레퍼런스 그림에 맡겼다("${lean[0].slice(0, 60)}") — 레퍼런스→영상에서 그림은 생김새·재질·빛만 맡는다. ` +
         "카메라 자리·화각·거리는 글로 쓰고(seedance-prompting 2절), 그림 구도 그대로가 필요하면 첫 프레임 모드로");
     }
+    // ( ) 는 음악 표시(공식 표기) — AUDIO 의 음악 줄이 아닌 곁말 괄호((Macro) · (segment 3))도 어느 블록에 있든 음악 신호로 읽혀
+    // 무음 영상에 음악이 깔린다(사용자 로컬 스킬 10/26). 사용자 프롬프트북 158개 중 8개에 곁말 괄호가 있었다
+    const audio = blocksOf(p).AUDIO || "";
+    const parens = [...new Set([...bare.replace(/(^|[^@])\{[^{}\n]*\}/g, "$1").matchAll(/[(（][^()（）\n]*[)）]/g)].map((m) => m[0]))];
+    const music = parens.filter((s) => audio.includes(s) && MUSIC_WORDS.test(s));
+    const stray = parens.filter((s) => !music.includes(s));
+    if (stray.length) {
+      house.push(`둥근 괄호 ${stray.slice(0, 3).join(" · ")}${stray.length > 3 ? ` 외 ${stray.length - 3}개` : ""} — ( ) 는 음악 표시라 어느 블록에 있든 ` +
+        "음악 신호로 읽힌다. 음악 지시가 아니면 줄표(—)나 쉼표로 바꾼다(seedance-quality 3절)");
+    }
+    if (music.length && SILENT.test(bare)) {
+      house.push(`음악 괄호 ${music[0]} 와 무음 문장이 같이 있다 — 음악을 넣을지 하나로 정한다(seedance-quality 3절)`);
+    }
   }
   // 시댄스 2.5 공식 템플릿(sd25-pe) 기준 — 10/12 알파젠 10케이스를 코드 틀로 찍어내 끝 상태·대사 없음 제약이 빠지고 틀 문구가 남았던 것
   if (/seedance-2-5/.test(model || "") && lang !== "ko") {
@@ -239,7 +256,8 @@ function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
     // 대사 표시는 { } — 엘리먼트 멘션 @{이름} 은 대사가 아니다
     const talks = /(^|[^@])\{[^}\n]+\}|\b(says|said|asks|whispers|shouts|speaks|replies|calls out|sings)\b/i.test(p);
     if (!talks && !(/\bno (dialogue|narration|speech|voice-?over)\b/i.test(p) && /\b(subtitles?|on-screen text|captions?)\b/i.test(p))) {
-      house.push("대사 없는 장면 제약이 없다 — 공식대로 'No dialogue or narration; mouths stay naturally closed. No subtitles or on-screen text.' 를 넣는다");
+      house.push("대사 없는 장면 제약이 없다 — 공식대로 'No dialogue or narration; mouths stay naturally closed. No subtitles or on-screen text.' 를 넣는다" +
+        "(음악도 없으면 seedance-quality 3절 무음 문장 — 이 제약이 들어 있다)");
     }
     if (/<(subject|summary|placeholder|relationship|fixed features|observable state|final visual state|initial state|starting state|main event)\b[^>]*>/i.test(p)) {
       house.push("템플릿 자리표(<subject> 등)가 남았다 — 그 장면의 구체 내용으로 바꾼다");
@@ -253,7 +271,7 @@ function lintPrompt(j, { mode, omniTask, lang, model, duration }) {
     }
     for (const line of p.split("\n")) {
       if (/use only/i.test(line) && /\b(views|sheet|turnaround|jointly define)\b/i.test(line) && !/\b(backdrop|background|panel|layout)\b/i.test(line)) {
-        house.push("인물 시트 레퍼런스에 제외 문구가 없다 — 같은 줄에 \"do not use the sheet's gray backdrop or panel layout\"");
+        house.push("인물 시트 레퍼런스에 범위 문구가 없다 — 같은 줄에 \"the sheet's grey backdrop and panel layout are layout only\"");
         break;
       }
     }
@@ -308,6 +326,10 @@ function logicNotes(j, { model, duration, ratio }) {
   // 빈 수식어만 — 'hyperrealistic photographic detail — pores …' 처럼 바로 디테일을 붙이는 말은 사용자 프롬프트북도 쓴다
   const slop = [...new Set((prose.match(/\b(?:cinematic|epic|stunning|breathtaking|masterpiece|award[- ]winning|best quality)\b/gi) || []).map((w) => w.toLowerCase()))];
   if (slop.length) notes.push(`그림이 안 되는 말(${slop.join(", ")}) — 지우고 보이는 것(빛의 방향·렌즈·재질·동작)으로 바꾼다(seedance-quality 1절 8)`);
+  // 무음을 금지 말로만 쓰면 버티지 못한다 — 소리가 무엇인지 말하는 무음 문장으로(사용자 로컬 스킬 10/26)
+  if (/\bno (?:background )?music\b|\bno (?:BGM|score|soundtrack)\b/i.test(prose) && !/\bthe soundtrack is these sounds\b/i.test(prose)) {
+    notes.push("'no music' 같은 금지 말 — 음악이 없으면 seedance-quality 3절 무음 문장으로 닫는다(소리가 무엇인지 긍정형으로 말하는 쪽이 버틴다)");
+  }
   // 비율은 설정이 정한다 — 본문에 적은 비율이 이 작업의 비율 설정과 다르거나 서로 다르면 모순
   const ratios = [...new Set(prose.match(/\b(?:16:9|9:16|21:9|9:21|4:3|3:4|1:1|2\.39:1|2\.35:1)\b/g) || [])];
   const fixed = /^\d+(?:\.\d+)?:\d+$/.test(String(ratio || "")) ? String(ratio) : "";
