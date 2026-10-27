@@ -85,14 +85,16 @@
       "families": []
     },
     "higgsfield-generate": {
+      "kind": "skill",
       "vendor": "Higgsfield",
       "source": "higgsfield-ai/skills",
-      "mode": "review",
+      "mode": "auto",
       "models": [],
+      "families": [],
       "version": "0.13.0",
-      "hash": "48c7b7f92133f8166107d7e27b3df4dd32b932a742ae1d2b249cb4fe22930228",
+      "hash": "f84eb5ed7a6cdfb6689192a3fae07aa87d90d063e39d09fc43abbc48e453c1de",
       "digest": null,
-      "appliedAt": "2026-10-02",
+      "appliedAt": "2026-10-27",
       "files": [
         "SKILL.md",
         "references/marketing-ad-references.md",
@@ -107,9 +109,7 @@
         "references/prompt-engineering.md",
         "references/troubleshooting.md",
         "references/workflows.md"
-      ],
-      "kind": "skill",
-      "families": []
+      ]
     },
     "nano-banana": {
       "kind": "doc",
