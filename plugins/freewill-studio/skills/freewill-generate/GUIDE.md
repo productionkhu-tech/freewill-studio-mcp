@@ -198,8 +198,8 @@ Claude·Codex·ChatGPT 어디서 불러도 같은 절차를 따른다.
    | `image_to_video_first` (`image_to_video`) | refs `role: first_frame` — 카드에 '시작 프레임' | 그 장면에서 이어지는 동작·카메라·소리. 첫 장면 모습을 길게 다시 묘사하지 않는다 | `[Image N]`, 공식 스킬의 `Use @ImageN as the first frame.` — 앱이 role 로 넘긴다(BytePlus API 가이드도 role 우선) |
    | `image_to_video_first_last` (`image_to_video`) | `role: first_frame` · `last_frame` | 처음에서 끝까지 무엇이 어떻게 바뀌는지 | `[Image N]` |
    | `multimodal_reference` (`reference_to_video`) | refs 순서 = `[Image N]` → 앱이 알약으로 바인딩 | 대상마다 한 줄 — 무엇인지 + 그 그림에서 쓸 것(생김새·재질·빛). 구도는 글로 쓴다(seedance-prompting 2절) · 그 컷에 안 나오는 대상의 그림은 넣지 않는다 | 한 줄에 여러 대상 묶기, "matching the camera position of [Image N]" 처럼 구도를 그림에 맡기기 |
-   | `edit_video` (`edit`) | `[Video 1]` = 고칠 원본 | 편집 동사(edit · add · remove · replace · change) + 바꿀 것과 그대로 둘 것. Omni 는 앱이 `[Video N]` 을 지우므로 "the source video" 로 | 길이·비율(자동) |
-   | `extend_video` (`extend`) | `[Video N]` | extend forward / backward · continue + 이어질 내용. Omni 는 "the source video" 로 | — |
+   | `edit_video` (`edit`) | 고칠 원본 하나를 첫 문장에서 `[Video N]` 으로 지목. 2.5 는 영상 여럿 — 나머지는 가져올 것 한 줄씩(app-rules) | 편집 동사(edit · add · remove · replace · change) + 바꿀 것과 그대로 둘 것. Omni 는 앱이 `[Video N]` 을 지우므로 "the source video" 로 | 길이·비율(자동) |
+   | `extend_video` (`extend`) | 이을 원본 하나 `[Video N]`. 2.5 는 영상 · 그림을 더 넣어 새 구간에 쓸 것만 | extend forward / backward · continue + 이어질 내용. Omni 는 "the source video" 로 | — |
 
 4. **"이 그림으로" 는 두 가지다.** 그 그림이 영상의 첫 장면 그대로면 첫 프레임, 그림 속 인물·대상·분위기를 따라 새
    장면을 만들면 레퍼런스→영상. 사용자가 "레퍼런스로" 라고 하면 레퍼런스다. 애매하면 선택지로 묻는다 — 그림 장수로
