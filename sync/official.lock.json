@@ -91,10 +91,10 @@
       "mode": "auto",
       "models": [],
       "families": [],
-      "version": "0.13.0",
-      "hash": "f84eb5ed7a6cdfb6689192a3fae07aa87d90d063e39d09fc43abbc48e453c1de",
+      "version": "0.14.0",
+      "hash": "02b747794d56769a0c9522da7362139bdfd8bef5fddacfa67f436d8ed1ce29ee",
       "digest": null,
-      "appliedAt": "2026-10-27",
+      "appliedAt": "2026-10-28",
       "files": [
         "SKILL.md",
         "references/marketing-ad-references.md",
@@ -604,6 +604,7 @@
     ],
     "higgsfield-ai/skills": [
       "higgsfield-brandkit",
+      "higgsfield-faceless-video",
       "higgsfield-generate",
       "higgsfield-marketplace-cards",
       "higgsfield-product-photoshoot",

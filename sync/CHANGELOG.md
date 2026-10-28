@@ -2,6 +2,10 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-10-28
+
+- **higgsfield-generate** (Higgsfield) 0.13.0 → 0.14.0 · 파일 1개, +1 −1줄
+
 ## 2026-10-27
 
 - **higgsfield-generate** (Higgsfield) 0.13.0 → 0.13.0 · 파일 3개, +7 −8줄
