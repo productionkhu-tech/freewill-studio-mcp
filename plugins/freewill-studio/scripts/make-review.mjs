@@ -7,10 +7,15 @@
 // 씬·컷 배치(사용자 10/21 — 보내기 스크립트가 _검수/목록.tsv 에 적은 작업): OK 는 컷 폴더 바로 아래 그대로, 보류는 그 안 보류/,
 // 탈락은 지운다("다운받을 이유가 없음" — 우리 사본만 지우고 앱 원본은 앱에 남는다). 예전 판(폴더마다 _목록.tsv · OK/ · 탈락/)은
 // 그대로 읽고 옮긴다(예전 저장본의 "NG" 는 탈락으로 읽는다).
+// 받지 않은 영상(목록의 받기 "대기" — 사용자 10/30 "검수하려고 다 받다 보니 용량이 꽉 참"): 검수 서버가 앱 주소(/api/media/<task>)를
+// 이어 주어 재생하고, 저장할 때 OK·보류만 그 자리로 받는다. 탈락은 받은 적이 없으니 지울 것도 없다(앱 원본은 앱 · 회사 보관소에 남는다).
 //
 //   node make-review.mjs <작업 폴더> [--title "작업 이름"] [--force]   → <작업 폴더>/<작업 이름>.html 을 다시 쓴다
 //   node make-review.mjs <작업 폴더> --serve                         → 저장되는 주소(작업마다 하나). 꺼져 있으면 띄울 명령 한 줄을 알려 준다
 //                                                                    (이 스크립트는 다른 프로그램을 실행하지 않는다 — 커넥터 통신 검사)
+//   node make-review.mjs <작업 폴더> --sheets [all]                  → 에이전트가 볼 접촉 시트(0.5초 간격) ffmpeg 명령 — 볼 것(미정 · 보류)만,
+//                                                                    all 이면 전부. 받지 않은 영상은 앱 주소에서 바로 읽고, 시트는 임시 폴더
+//                                                                    한 곳(%TEMP%\freewill-review)에만 — 7일 지난 시트는 돌릴 때마다 지운다
 //   node make-review.mjs <작업 폴더> --apply <저장본.json>              → (파일로 연 페이지의 저장본) 분류대로 옮김 · 회차 · 페이지 다시
 //   node make-review.mjs [<작업 폴더>] --review on|off|status          → 검수를 켜고 끔(폴더를 주면 그 작업만, 안 주면 이 PC 사용자의 모든 작업)
 //   node make-review.mjs [<작업 폴더>] --book on|off|status            → 프롬프트 북을 늘 만들지(OK 를 저장할 때마다 05_프롬프트 의
@@ -27,12 +32,13 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const USAGE = "쓰는 법: node make-review.mjs <작업 폴더> [--title \"작업 이름\"] [--force] | <작업 폴더> --serve | " +
+const USAGE = "쓰는 법: node make-review.mjs <작업 폴더> [--title \"작업 이름\"] [--force] | <작업 폴더> --serve | <작업 폴더> --sheets [all] | " +
   "<작업 폴더> --apply <저장본.json> | [<작업 폴더>] --review on|off|status | [<작업 폴더>] --book on|off|status (폴더를 주면 그 작업만, 안 주면 이 PC 사용자의 모든 작업)";
 const argv = process.argv.slice(2);
-let work = "", title = "", applyFile = "", reviewArg = "", bookArg = "", force = false, serve = false, child = false, childPort = 0;
+let work = "", title = "", applyFile = "", reviewArg = "", bookArg = "", sheets = "", force = false, serve = false, child = false, childPort = 0;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--title") title = argv[++i] || "";
+  else if (argv[i] === "--sheets") sheets = argv[i + 1] === "all" ? (i++, "all") : "todo";
   else if (argv[i] === "--apply") applyFile = argv[++i] || "";
   else if (argv[i] === "--review") reviewArg = argv[++i] || "status";
   else if (argv[i] === "--book") bookArg = argv[++i] || "status";
@@ -57,6 +63,9 @@ const STATUSES = ["OK", "보류", "탈락"];
 const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
 const MEDIA = /\.(png|jpe?g|webp|gif|mp4|mov|m4v|webm)$/i;
 const IDLE_MS = 45 * 60 * 1000;
+const SD = process.env.FREEWILL_SD_URL || "http://127.0.0.1:3000";   // 시댄스 앱 — 받지 않은 영상은 여기서 읽는다
+const SHEET_DIR = path.join(os.tmpdir(), "freewill-review");          // 접촉 시트는 여기 한 곳(7일 지나면 지움)
+const TASK_ID = /^[A-Za-z0-9._-]+$/;
 
 // 이 PC 의 검수 서버 주소 — 포트는 URL 이 숫자로만 받는다(글자를 이어 붙여 다른 곳을 가리키지 못하게)
 function local(port, p = "") {
@@ -124,11 +133,14 @@ function scan() {
       const folder = r["폴더"], file = r["파일"];
       if (!folder || !file || seen.has(`${folder}/${file}`)) continue;
       seen.add(`${folder}/${file}`);
+      const base = { key: `${folder}/${file}`, folder, cut: r["작업"] || file, take: r["테이크"] || "", card: r["카드"] || "", task: r["task"] || "",
+        model: r["모델"] || "", file, video: VIDEO.test(file), range: r["범위"] || "", version: r["안"] || "", res: r["해상도"] || "" };
       const where = locate(folder, file, dec);
-      if (!where) continue;   // 탈락으로 지웠거나 사람이 옮김
-      takes.push({ key: `${folder}/${file}`, folder, cut: r["작업"] || file, take: r["테이크"] || "", card: r["카드"] || "", task: r["task"] || "",
-        model: r["모델"] || "", file, abs: where.abs, status: where.status, video: VIDEO.test(file),
-        range: r["범위"] || "", version: r["안"] || "", res: r["해상도"] || "" });
+      if (where) { takes.push({ ...base, abs: where.abs, status: where.status }); continue; }
+      // 받지 않은 영상 — 앱 주소로 본다. 탈락으로 고른 것은 받을 일이 없어 목록에서 뺀다. 받은 뒤 없어진 것(사람이 지움)도 뺀다
+      const d = dec?.get(base.key) || "";
+      if (r["받기"] !== "대기" || !TASK_ID.test(base.task) || d === "탈락") continue;   // 탈락으로 지웠거나 사람이 옮김
+      takes.push({ ...base, abs: path.join(work, folder, ...(d === "보류" ? ["보류"] : []), file), status: d, remote: true });
     }
   }
   for (const folder of listFolders()) {
@@ -234,18 +246,69 @@ function removeFile(p) {
   return false;
 }
 
-function apply(saved, savedName) {
+// 받지 않은 영상을 앱에서 받아 그 자리에 — 다 받은 뒤에만 이름을 붙인다(도중에 끊기면 반쪽 파일이 남지 않게). 실패하면 이유를 던진다
+async function fetchTake(t, target) {
+  const signal = AbortSignal.timeout(10 * 60 * 1000);   // 받는 동안 전체 — 멈춰 버리면 저장이 끝나지 않으니
+  let r;
+  try { r = await fetch(`${SD}/api/media/${encodeURIComponent(t.task)}?ext=${encodeURIComponent(path.extname(t.file))}`, { signal }); }
+  catch (e) { throw new Error(`앱에 닿지 않음(${e.cause?.code || e.name}) — 시댄스 앱이 켜져 있는지 보고 다시 저장`); }
+  if (!r.ok || !r.body) { await r.body?.cancel().catch(() => {}); throw new Error(`앱이 영상을 안 줌(HTTP ${r.status}) — 시댄스 앱이 켜져 있는지 보고 다시 저장`); }
+  const want = Number(r.headers.get("content-length")) || 0;
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const part = `${target}.part`;
+  const fd = fs.openSync(part, "w");
+  let got = 0;
+  try {
+    const reader = r.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fs.writeSync(fd, value);
+      got += value.length;
+    }
+  } catch (e) { fs.closeSync(fd); fs.rmSync(part, { force: true }); throw new Error(`받다가 끊김 — ${e.message}`); }
+  fs.closeSync(fd);
+  if (!got || (want && got !== want)) { fs.rmSync(part, { force: true }); throw new Error(`받은 크기가 다름(${got}/${want})`); }
+  fs.renameSync(part, target);
+}
+// 목록의 받기 "대기" → "받음" — 받은 뒤 사람이 지우면 다시 받지 않게
+function markReceived(keys) {
+  if (!keys.length || !fs.existsSync(WORK_LIST)) return;
+  const lines = readText(WORK_LIST).split(/\r?\n/);
+  const head = lines[0].split("\t");
+  const [fi, ni, gi] = ["폴더", "파일", "받기"].map((h) => head.indexOf(h));
+  if (gi < 0) return;
+  const want = new Set(keys);
+  const out = lines.map((l, i) => {
+    if (!i || !l.trim()) return l;
+    const c = l.split("\t");
+    if (c[gi] !== "대기" || !want.has(`${c[fi]}/${c[ni]}`)) return l;
+    c[gi] = "받음";
+    return c.join("\t");
+  });
+  fs.writeFileSync(WORK_LIST, out.join("\n"));
+}
+
+async function apply(saved, savedName) {
   const flat = isFlat();
   const takes = scan();
   const byKey = new Map(takes.map((t) => [t.key, t]));
   const live = takes.filter((t) => !viewOnly(t.folder)).map((t) => t.key);   // 저장 전에 폴더에 있던 테이크(이번에 지운 탈락도 포함)
-  const moved = [], stuck = [], okCards = [], roundTakes = {};
+  const moved = [], stuck = [], failed = [], received = [], okCards = [], roundTakes = {};
   for (const [key, d] of Object.entries(saved.takes || {})) {
     const t = byKey.get(key);
     if (!t || viewOnly(t.folder)) continue;
     const raw = d?.status === "NG" ? "탈락" : d?.status;   // 예전 저장본
     const status = STATUSES.includes(raw) ? raw : "";
-    if (flat && status === "탈락") {
+    if (t.remote) {
+      // 받지 않은 영상 — OK · 보류만 이제 받는다. 탈락 · 미정은 받지 않는다. 못 받으면 고른 것은 남기고 다음 저장 때 다시
+      t.status = status;
+      if (status === "OK" || status === "보류") {
+        const target = path.join(work, t.folder, ...(status === "보류" ? ["보류"] : []), t.file);
+        try { await fetchTake(t, target); moved.push(`${status}(받음) ← ${key}`); received.push(key); t.abs = target; t.remote = false; }
+        catch (e) { failed.push(`${key} — ${e.message}`); }
+      }
+    } else if (flat && status === "탈락") {
       // 탈락은 지운다 — 우리 사본만(앱 원본은 앱에 남는다). 열려 있으면 못 지우고 알린다
       if (removeFile(t.abs)) { moved.push(`탈락(지움) ← ${key}`); t.status = "탈락"; }
       else stuck.push(key);
@@ -264,6 +327,7 @@ function apply(saved, savedName) {
     if (status || memo) roundTakes[key] = { status: t.status, memo };
     if (t.status === "OK" && t.card) okCards.push(t.card);
   }
+  markReceived(received);
   // 이번 회차를 쌓는다 — 같은 저장본을 또 적용하거나(저장 시각), 바로 앞 회차와 고른 것 · 메모가 똑같으면(저장을 연달아 누름 —
   // 10/22 0.3초 사이 세 번 들어가 같은 회차가 셋 생김) 회차를 늘리지 않는다
   const rounds = readRounds();
@@ -284,7 +348,7 @@ function apply(saved, savedName) {
   const rows = takes.map((t) => [t.folder, t.cut, t.take, t.status || "미정", rel(t.abs), t.card, t.task,
     latest((r) => r.takes?.[t.key]?.memo).replace(/\s+/g, " "), latest((r) => r.cuts?.[`${t.folder}/${t.cut}`]).replace(/\s+/g, " ")].join("\t"));
   fs.writeFileSync(MASTER, `폴더\t컷\t테이크\t상태\t파일\t카드\ttask\t메모\t컷 메모\n${rows.join("\n")}\n`);
-  return { moved, stuck, okCards, takes, round: dup ? dup.n : rounds.length, dup: !!dup };
+  return { moved, stuck, failed, okCards, takes, round: dup ? dup.n : rounds.length, dup: !!dup };
 }
 
 // OK 영상 카드 — 앱에서도 채택(★). 인자는 JSON 파일로(Windows PowerShell 은 명령줄의 큰따옴표를 깨뜨린다)
@@ -308,6 +372,12 @@ function mediaUrl(abs, served) {
   const inside = !path.relative(work, abs).startsWith("..") && !path.isAbsolute(path.relative(work, abs));
   if (served) return inside ? `/f/${rel(abs).split("/").map(encodeURIComponent).join("/")}` : `/r/${Buffer.from(abs).toString("base64url")}`;
   return inside ? rel(abs).split("/").map(encodeURIComponent).join("/") : pathToFileURL(abs).href;
+}
+// 테이크 주소 — 받지 않은 영상은 앱에서: 서버로 열면 /m/<task>(검수 서버가 이어 줌), 파일로 열면 앱 주소 그대로
+function takeUrl(t, served) {
+  if (!t.remote) return mediaUrl(t.abs, served);
+  const q = `?ext=${encodeURIComponent(path.extname(t.file))}`;
+  return served ? `/m/${encodeURIComponent(t.task)}${q}` : `${SD}/api/media/${encodeURIComponent(t.task)}${q}`;
 }
 
 // 보낼 것 — 엘리먼트 @{이름} 은 작업 폴더의 에셋(_목록.tsv 의 작업 이름이 같은 것, OK 먼저)으로 그림을 찾는다
@@ -366,8 +436,8 @@ function render(served) {
 <div class="cut-head"><h4>${esc(cut)}</h4>${p ? `<span class="chip">${esc([p.model, p.mode].filter(Boolean).join(" · "))}</span>` : ""}<span class="chip">${mine.length}개</span>${fresh ? `<span class="chip new">새 테이크 ${fresh}</span>` : ""}</div>
 ${cutHist(ckey, mine)}
 <div class="takes">${mine.map((t) => `<div class="take" data-key="${esc(t.key)}" data-status="${esc(t.status)}" data-new="${isNew(t) ? 1 : ""}">
-${t.video ? `<video src="${mediaUrl(t.abs, served)}" preload="metadata" muted playsinline></video>` : `<img src="${mediaUrl(t.abs, served)}" alt="${esc(t.key)}" loading="lazy">`}
-<div class="tf"><b>${esc(takeLabel(t))}${isNew(t) ? `<span class="newb">새로</span>` : ""}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}${t.range ? ` <span class="chip">${esc(t.range)}</span>` : ""}</b><span class="seg">${STATUSES.map((s) => `<button type="button" data-s="${s}">${s}</button>`).join("")}</span></div>
+${t.video ? `<video src="${takeUrl(t, served)}" preload="metadata" muted playsinline></video>` : `<img src="${takeUrl(t, served)}" alt="${esc(t.key)}" loading="lazy">`}
+<div class="tf"><b>${esc(takeLabel(t))}${isNew(t) ? `<span class="newb">새로</span>` : ""}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}${t.range ? ` <span class="chip">${esc(t.range)}</span>` : ""}${t.remote ? ` <span class="chip" title="아직 받지 않음 — 저장할 때 OK·보류만 받는다">앱</span>` : ""}</b><span class="seg">${STATUSES.map((s) => `<button type="button" data-s="${s}">${s}</button>`).join("")}</span></div>
 ${takeHist(t.key)}<textarea class="memo" placeholder="${round > 1 ? `${round}차 메모` : "이 테이크 메모"}"></textarea></div>`).join("")}</div>
 <textarea class="cmemo" placeholder="${round > 1 ? `${round}차 컷 메모 — 이번에 고칠 것` : "이 컷 메모 — 무엇을 고칠지"}"></textarea>
 ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre></details>` : ""}
@@ -438,7 +508,8 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
 <section id="한눈에"><h2>한눈에</h2><table class="ov"><thead><tr><th>폴더</th><th>OK</th><th>보류</th><th>미정</th><th>새로</th><th>탈락</th><th></th></tr></thead><tbody>${overview || `<tr><td colspan="7">받은 결과가 없다 — 보내기 스크립트 --save-to 로 이 작업 폴더의 종류별 폴더에 받는다.</td></tr>`}</tbody></table>
 <p class="intro">${round}차 검수 — 테이크마다 <b>OK</b>(쓸 것) · <b>보류</b>(다시 볼 것) · <b>탈락</b>(안 쓸 것)을 고르고 메모를 적은 뒤 저장한다.
 한 묶음에서 OK 를 고르면 나머지는 <b>고르지 않음</b>(탈락)으로 표시되고 저장할 때 정리된다 — 남길 건 보류로.
-${served ? (isFlat() ? "저장하면 그 자리에서 OK 는 컷 폴더에 그대로, 보류는 보류 폴더로 옮겨지고 탈락은 지워진다(앱 원본은 앱에 남는다). 기록에도 남는다."
+${served ? (isFlat() ? "저장하면 그 자리에서 OK 는 컷 폴더에 그대로, 보류는 보류 폴더로 옮겨지고 탈락은 지워진다(앱 원본은 앱에 남는다). 기록에도 남는다." +
+  (scanned.some((t) => t.remote) ? " <b>앱</b> 표시는 아직 받지 않은 영상이다 — 앱에서 바로 재생하고, 저장할 때 OK · 보류만 그 자리로 받는다(탈락은 받지 않는다)." : "")
   : "저장하면 그 자리에서 파일이 폴더 안 OK/ · 보류/ · 탈락/ 으로 옮겨지고 기록에 남는다.") :"이 페이지는 파일로 열려 있어 저장하면 다운로드 폴더에 JSON 이 생긴다 — 에이전트에게 '검수 페이지 열어 줘'라고 하면 바로 저장되는 주소로 열어 준다."}
 ${rounds.length ? ` 지난 ${rounds.length}회차의 메모는 컷 아래 <b>지난 피드백</b>으로 옮겨 두었고 입력칸은 이번 ${round}차 것만 적는다. 처음엔 <b>볼 것</b>(새로 · 미정 · 보류)만 보인다.` : ""}</p></section>
 <section id="검수"><h2>검수</h2>${review || "<p class=\"intro\">받은 컷이 없다.</p>"}${viewHtml}</section>
@@ -469,7 +540,7 @@ const BOOK_DATA = path.join(REVIEW_DIR, "북.json");
 const BOOK_CMD = () => `node make-prompt-book.mjs --work "${work}"`;
 function writeBook() {
   const reviewOn = reviewSetting(work).on;
-  const ok = scan().filter((t) => !viewOnly(t.folder) && (reviewOn ? t.status === "OK" : t.status !== "탈락"));
+  const ok = scan().filter((t) => !t.remote && !viewOnly(t.folder) && (reviewOn ? t.status === "OK" : t.status !== "탈락"));   // 아직 못 받은 OK 는 받은 뒤에
   const prompts = readPrompts();
   const rounds = readRounds();
   const memos = (t) => rounds.map((r) => r.takes?.[t.key]?.memo).filter(Boolean);
@@ -580,10 +651,11 @@ function save(){if(saving)return;var d=new Date();var out={page:'검수',work:D.
  if(D.served){
   saving=true;document.getElementById('save').disabled=true;
   document.querySelectorAll('video').forEach(function(v){v.pause();v.removeAttribute('src');v.load()});
-  note.textContent='저장하는 중…';
+  note.textContent=document.querySelector('.chip[title]')?'저장하는 중… (OK · 보류 영상을 앱에서 받는 중)':'저장하는 중…';
   fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json','X-Review':'1'},body:JSON.stringify(out)}).then(function(r){return r.json()}).then(function(j){
    if(!j.ok)throw new Error(j.error||'저장 실패');try{localStorage.removeItem(KEY)}catch(e){}
-   note.textContent=j.dup?'바뀐 것 없음 — '+j.round+'차 그대로':j.round+'차 저장됨 — 옮긴 파일 '+j.moved+'개'+(j.stuck?' · 못 옮김 '+j.stuck+'개(열려 있음)':'');setTimeout(function(){location.reload()},900)
+   note.textContent=(j.dup?'바뀐 것 없음 — '+j.round+'차 그대로':j.round+'차 저장됨 — 옮기거나 받은 파일 '+j.moved+'개')+(j.stuck?' · 못 옮김 '+j.stuck+'개(열려 있음)':'')+(j.failed?' · 못 받음 '+j.failed+'개(시댄스 앱을 켜고 다시 저장)':'');
+   if(j.failed)note.style.color='#c62828';setTimeout(function(){location.reload()},j.failed?5000:900)
   }).catch(function(e){saving=false;document.getElementById('save').disabled=false;note.textContent='저장 실패 — '+e.message;note.style.color='#c62828'});return}
  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:'application/json'}));
  a.download=D.work+'_검수_'+stamp(d)+'.json';document.body.appendChild(a);a.click();a.remove();
@@ -628,6 +700,36 @@ function sendFile(req, res, abs) {
   s.pipe(res);
 }
 
+// 앱에서 받은 그대로 흘려보낸다 — 파일로 남기지 않는다. 보는 쪽이 끊으면 앱 쪽도 끊는다
+async function relayMedia(req, res, task, ext) {
+  let up;
+  const ac = new AbortController();
+  const slow = setTimeout(() => ac.abort(), 60 * 1000);   // 앱이 답을 시작할 때까지만 — 재생이 멈춰 있는 동안은 끊지 않는다
+  try {
+    up = await fetch(`${SD}/api/media/${encodeURIComponent(task)}${/^\.[A-Za-z0-9]{1,5}$/.test(ext) ? `?ext=${ext}` : ""}`,
+      { headers: req.headers.range ? { Range: req.headers.range } : {}, signal: ac.signal });
+  } catch { res.writeHead(502); return res.end(); }
+  finally { clearTimeout(slow); }
+  if (!(up.ok || up.status === 206) || !up.body) { await up.body?.cancel().catch(() => {}); res.writeHead(up.status === 404 ? 404 : 502); return res.end(); }
+  const head = { "Cache-Control": "no-store" };
+  for (const h of ["content-type", "content-length", "content-range", "accept-ranges"]) { const v = up.headers.get(h); if (v) head[h] = v; }
+  res.writeHead(up.status, head);
+  const reader = up.body.getReader();
+  let gone = false;
+  res.on("close", () => { gone = true; reader.cancel().catch(() => {}); });
+  try {
+    while (!gone) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!res.write(value)) await new Promise((r) => {
+        const go = () => { res.off("drain", go); res.off("close", go); r(); };
+        res.on("drain", go); res.on("close", go);
+      });
+    }
+  } catch {}
+  res.end();
+}
+
 function runServer(port) {
   let lastHit = Date.now();
   const srv = http.createServer((req, res) => {
@@ -664,15 +766,23 @@ function runServer(port) {
             const saved = JSON.parse(body || "{}");
             for (const s of streams) s.destroy();   // 재생 중인 영상을 놓아야 옮길 수 있다
             const name = `저장_${String(saved.saved_at || new Date().toISOString()).replace(/[:.]/g, "-")}.json`;
-            const r = apply(saved, name);
-            if (!r.dup) { fs.mkdirSync(REVIEW_DIR, { recursive: true }); fs.writeFileSync(path.join(REVIEW_DIR, name), JSON.stringify(saved, null, 1)); }
-            writePage();
-            const stars = starHints(r.okCards);
-            console.log(`${r.round}차 저장${r.dup ? "(바뀐 것 없음 — 회차 그대로)" : ""} — 옮긴 파일 ${r.moved.length}개${r.stuck.length ? ` · 못 옮김 ${r.stuck.length}개` : ""}`);
-            json({ ok: true, round: r.round, dup: r.dup, moved: r.moved.length, stuck: r.stuck.length, stars });
+            apply(saved, name).then((r) => {
+              if (!r.dup) { fs.mkdirSync(REVIEW_DIR, { recursive: true }); fs.writeFileSync(path.join(REVIEW_DIR, name), JSON.stringify(saved, null, 1)); }
+              writePage();
+              const stars = starHints(r.okCards);
+              console.log(`${r.round}차 저장${r.dup ? "(바뀐 것 없음 — 회차 그대로)" : ""} — 옮기거나 받은 파일 ${r.moved.length}개${r.stuck.length ? ` · 못 옮김 ${r.stuck.length}개` : ""}` +
+                `${r.failed.length ? ` · 못 받음 ${r.failed.length}개\n  ${r.failed.join("\n  ")}` : ""}`);
+              json({ ok: true, round: r.round, dup: r.dup, moved: r.moved.length, stuck: r.stuck.length, failed: r.failed.length, stars });
+            }).catch((e) => json({ ok: false, error: e.message }, 500));
           } catch (e) { json({ ok: false, error: e.message }, 500); }
         });
         return;
+      }
+      if (req.method === "GET" && u.pathname.startsWith("/m/")) {
+        // 받지 않은 영상 — 앱 주소를 이어 준다(목록에 있는 task 만). 탐색(Range)도 그대로 넘긴다
+        const task = decodeURIComponent(u.pathname.slice(3));
+        if (!TASK_ID.test(task) || !(fs.existsSync(WORK_LIST) && readTsv(WORK_LIST).some((r) => r.task === task))) { res.writeHead(403); return res.end(); }
+        return void relayMedia(req, res, task, u.searchParams.get("ext") || "");
       }
       res.writeHead(404); res.end();
     } catch (e) { json({ ok: false, error: e.message }, 500); }
@@ -724,6 +834,40 @@ async function serverPlan() {
   return { port, launch: `explorer.exe "${vbs}"`, direct };
 }
 
+// ---------- 접촉 시트 ----------
+// 에이전트가 영상을 보는 법 — 0.5초 간격 시트(칸 하나 = 0.5초, 한 줄 6칸 = 3초). 이 스크립트는 ffmpeg 를 실행하지 않는다(커넥터 통신 검사) —
+// 명령을 찍어 주고 에이전트가 돌린다. 받지 않은 영상은 앱 주소에서 필요한 만큼만 읽어 영상 파일이 남지 않는다.
+// 시트는 임시 폴더 한 곳 — 7일 지난 것은 돌릴 때마다 지운다(작업 폴더에는 두지 않는다).
+function pruneSheets(days = 7) {
+  const cut = Date.now() - days * 864e5;
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, d.name);
+      if (d.isDirectory()) { walk(p); try { if (!fs.readdirSync(p).length) fs.rmdirSync(p); } catch {} }
+      else if (/\.(png|jpe?g)$/i.test(d.name) && fs.statSync(p).mtimeMs < cut) fs.rmSync(p, { force: true });
+    }
+  };
+  try { walk(SHEET_DIR); } catch {}
+}
+function printSheets(all) {
+  pruneSheets();
+  const dir = path.join(SHEET_DIR, `${path.basename(work).replace(/[^\p{L}\p{N}._-]+/gu, "_").slice(0, 40)}-${crypto.createHash("sha1").update(work.toLowerCase()).digest("hex").slice(0, 6)}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const prompts = readPrompts();
+  const list = scan().filter((t) => t.video && !viewOnly(t.folder) && (all || !t.status || t.status === "보류"));
+  if (!list.length) { console.log(`시트를 뽑을 영상이 없다${all ? "" : "(볼 것 — 미정 · 보류 — 없음. 전부는 --sheets all)"}`); return; }
+  console.log(`접촉 시트 ${list.length}개 — 아래 명령을 돌리고 시트를 열어 본다(칸 하나 = 0.5초, 한 줄 = 3초). 시트 폴더: ${dir}`);
+  for (const t of list) {
+    const sec = Number(prompts.get(t.cut)?.duration) || 15;
+    const rows = Math.min(20, Math.max(1, Math.ceil((sec * 2) / 6)));
+    const src = t.remote ? `${SD}/api/media/${encodeURIComponent(t.task)}?ext=${encodeURIComponent(path.extname(t.file))}` : t.abs;
+    const out = path.join(dir, `${path.basename(t.file, path.extname(t.file))}.png`);
+    console.log(`ffmpeg -v error -y -i "${src}" -vf "fps=2,scale=480:-1,tile=6x${rows}" -frames:v 1 "${out}"`);
+  }
+  if (list.some((t) => t.remote)) console.log(`(앱 주소는 시댄스 앱이 켜져 있어야 읽힌다. ffmpeg 가 없으면 앱이 장면 한 장씩 준다: ${SD}/api/media/<task>/frame?t=<초>)`);
+}
+
 // ---------- 실행 ----------
 async function main() {
   if (reviewArg) {
@@ -750,18 +894,20 @@ async function main() {
     return;
   }
   if (child) return runServer(childPort);
+  if (sheets) return printSheets(sheets === "all");
   if (applyFile) {
     let saved;
     try { saved = JSON.parse(readText(applyFile)); } catch (e) { console.error(`저장본을 못 읽음 — ${e.message}`); process.exit(1); }
     if (saved.work && saved.work !== path.basename(work)) console.log(`참고: 저장본의 작업(${saved.work})과 폴더 이름(${path.basename(work)})이 다르다 — 파일 이름이 같은 것만 옮긴다`);
-    const r = apply(saved, path.basename(applyFile));
+    const r = await apply(saved, path.basename(applyFile));
     fs.mkdirSync(REVIEW_DIR, { recursive: true });
     const keepCopy = path.join(REVIEW_DIR, path.basename(applyFile));
     if (path.resolve(keepCopy) !== path.resolve(applyFile)) fs.copyFileSync(applyFile, keepCopy);
     const page = writePage();
     const n = (s) => r.takes.filter((t) => (t.status || "") === s).length;
-    console.log(`${r.round}차 분류 적용${r.dup ? "(이미 적용한 저장본 — 회차는 그대로)" : ""} — OK ${n("OK")} · 보류 ${n("보류")} · 탈락 ${n("탈락")} · 미정 ${n("")} · 옮긴 파일 ${r.moved.length}개${r.stuck.length ? ` · 못 옮김 ${r.stuck.length}개(열려 있음)` : ""}`);
+    console.log(`${r.round}차 분류 적용${r.dup ? "(이미 적용한 저장본 — 회차는 그대로)" : ""} — OK ${n("OK")} · 보류 ${n("보류")} · 탈락 ${n("탈락")} · 미정 ${n("")} · 옮기거나 받은 파일 ${r.moved.length}개${r.stuck.length ? ` · 못 옮김 ${r.stuck.length}개(열려 있음)` : ""}`);
     for (const m of r.moved) console.log(`  ${m}`);
+    if (r.failed.length) console.log(`못 받음 ${r.failed.length}개 — 고른 것은 남겼다. 시댄스 앱을 켜고 같은 저장본으로 --apply 를 다시 돌린다:\n  ${r.failed.join("\n  ")}`);
     console.log(`_컷목록.tsv · 작업 페이지를 새로 썼다(이번 메모는 다음 회차에 '지난 피드백'으로 보인다): ${page}`);
     const stars = starHints(r.okCards);
     if (stars.length) { console.log(`OK 카드 ${stars.length}개 — 앱에서 채택(★)을 켠다(과금 없음):`); for (const s of stars) console.log(`  ${s}`); }

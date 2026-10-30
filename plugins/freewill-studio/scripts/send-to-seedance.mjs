@@ -45,7 +45,8 @@
 //                 사이드바 클릭과 같음, dry-run 도). 생략하면 지금 열린 것)",
 //     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 앱 전체에 하나, 앱을 켤 때마다 사람이 고른다. 다르면 안 보냄, 생략하면 지금 값)",
 //     "work": "작업 폴더(사용자가 알려 준 프로젝트 폴더) — dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의
-//              '보낼 것'에 그림으로 뜨고, 끝나면 영상을 받아 씬·컷 폴더에 놓는다(지켜보기를 켜지 않아도 기다렸다 놓는다)",
+//              '보낼 것'에 그림으로 뜨고, 끝나면 씬·컷 폴더 이름으로 목록에 적는다(지켜보기를 켜지 않아도 기다린다). 검수를 쓰면 받지 않고
+//              앱 주소로 검수 — 저장할 때 OK·보류만 받는다. 검수를 안 쓰거나 회사 보관소가 없는 앱이면 받아서 놓는다",
 //     "code": "프로젝트 코드(예: ABC) — 파일 이름 맨 앞. 한 번 적으면 _작업설정.json 에 남는다",
 //     작업마다 "scene": "S010", "cut": "C0010" → <작업>\S010\C0010\ABC_S010_C0010_V001_480.mov (번호는 그 컷에서 이어서, 꼬리는 해상도)
 //              여러 컷을 한 번에 뽑은 영상은 첫 컷에 두고 "covers": "C0010~C0040", A/B안은 "version": "A" (목록에 남김)
@@ -99,7 +100,9 @@ const readJsonArg = (raw) => {
 // 씬·컷: <작업>\S010\C0010\<코드>_S010_C0010_V001_480.mov — 그 컷에서 번호를 이어 붙인다(다시 만든 것 · A/B안도 이어서, 어느 안인지는 목록에).
 // 에셋: <작업>\01_에셋\<인물|로케이션|프랍|참고>\<작업 이름>_A.mov. 검수 뒤 OK 는 그 자리, 보류는 그 안 보류\, 탈락은 지운다(앱 원본은 앱에 남는다).
 // 어느 파일이 어디서 왔는지는 <작업>\_검수\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다.
-const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각"];
+// 받기: 검수를 쓰는 작업의 영상은 받지 않고(사용자 10/30 "검수하려고 다 받다 보니 용량이 꽉 참") "대기"로 적는다 — 검수 페이지가
+// 앱 주소(/api/media/<task>)로 재생하고, 저장할 때 OK·보류만 그 자리로 받아 "받음"으로 바꾼다. 빈칸 = 받아 둔 파일(예전 그대로).
+const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각", "받기"];
 const ASSET_KINDS = ["인물", "로케이션", "프랍", "참고"];
 const readJsonSafe = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch { return {}; } };
 const workCode = (spec, work) => String(spec.code || readJsonSafe(path.join(work, "_작업설정.json")).code || "").trim();
@@ -133,7 +136,37 @@ function appendWorkList(work, rows) {
   fs.mkdirSync(path.join(work, "_검수"), { recursive: true });
   const p = path.join(work, "_검수", "목록.tsv");
   const clean = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
+  // 예전 머리줄(칸이 모자람)이면 늘려 둔다 — 뒤에 붙은 칸이라 예전 줄은 빈칸으로 읽힌다
+  if (fs.existsSync(p)) {
+    const text = fs.readFileSync(p, "utf8");
+    const nl = text.indexOf("\n");
+    const head = (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, "").split("\t");
+    if (head.length < LIST_HEAD.length && head.every((h, i) => h === LIST_HEAD[i])) fs.writeFileSync(p, LIST_HEAD.join("\t") + (nl < 0 ? "\n" : text.slice(nl)));
+  }
   fs.appendFileSync(p, `${fs.existsSync(p) ? "" : `${LIST_HEAD.join("\t")}\n`}${rows.map((r) => LIST_HEAD.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
+}
+// 검수 화면을 쓰는지 — make-review 와 같은 규칙(작업 설정 → 이 PC 사용자 설정 → 안 정했으면 켬)
+function reviewOn(work) {
+  for (const f of [path.join(work, "_작업설정.json"), path.join(os.homedir(), ".freewill-studio", "settings.json")]) {
+    const v = readJsonSafe(f).review;
+    if (typeof v === "boolean") return v;
+  }
+  return true;
+}
+// 받지 않고 앱 주소로 검수할 수 있나 — 회사 보관소가 준비된 앱만(개인판은 24시간 링크뿐이라 받아 둔다)
+async function remoteReview(work) {
+  if (!reviewOn(work)) return false;
+  try { return (await get("/api/archive/status")).ready === true; } catch { return false; }
+}
+// 앱 주소가 그 영상을 내주는지 — 앞 1바이트만 읽어 본다. 내주면 확장자(.mov · .mp4), 못 하면 "" (그 영상은 받는다)
+async function mediaExt(task) {
+  try {
+    const r = await fetch(`${SD}/api/media/${encodeURIComponent(task)}`, { headers: { Range: "bytes=0-0" }, signal: AbortSignal.timeout(15000) });
+    const type = String(r.headers.get("content-type") || "");
+    await r.body?.cancel().catch(() => {});
+    if (!(r.status === 200 || r.status === 206) || !type.startsWith("video/")) return "";
+    return { "video/quicktime": ".mov", "video/webm": ".webm" }[type.split(";")[0].trim()] || ".mp4";
+  } catch { return ""; }
 }
 // 그 컷에서 다음 번호 — 목록(지운 탈락까지)과 폴더(보류 포함)를 다 본다
 function nextNumber(work, pl, kind) {
@@ -1150,40 +1183,62 @@ async function saveResults(sent, manual) {
 
 // 작업 폴더 — 끝난 카드를 받아(card.download) 씬·컷 폴더에 이름 규칙대로 옮긴다: <코드>_S010_C0010_V001_480.mov
 // (꼬리는 해상도 — 초안 480 · 본편 1080). 다운로드 폴더에는 남기지 않는다. 어느 카드가 어느 파일인지는 _검수/목록.tsv 에.
+// 검수를 쓰는 작업은 받지 않는다 — 이름만 정해 목록에 "대기"로 적고, 검수 페이지가 앱 주소로 보여 준 뒤 OK·보류만 받는다
+// (앱이 그 영상을 못 내주거나 회사 보관소가 없는 앱이면 예전처럼 받는다).
 const resTail = (st) => (st?.draft ? "_480" : /^(\d+)p$/i.test(String(st?.resolution || "")) ? `_${String(st.resolution).replace(/p$/i, "")}` : st?.resolution ? `_${st.resolution}` : "");
 async function placeResults(sent, spec, work) {
   const rows = [];
+  const remote = await remoteReview(work);
+  let held = 0;
   for (const x of sent) {
     const pl = placeOf(spec, x.j, work);   // 보내기 전에 확인했다
     const dir = path.join(work, pl.rel);
-    fs.mkdirSync(dir, { recursive: true });   // 씬 · 컷 폴더 — 있으면 그대로
     const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
     const done = (j.messages || []).filter((c) => c.status === "succeeded");
     for (const [k, c] of done.entries()) {
+      const tail = resTail(x.st);
+      const row = { 폴더: pl.rel, 작업: x.name, 테이크: String.fromCharCode(65 + k), 모델: x.st?.model || "", 카드: c.id, task: c.taskId || "",
+        씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", 해상도: tail.slice(1), "받은 시각": new Date().toISOString() };
+      const ext = remote && /^[A-Za-z0-9._-]+$/.test(c.taskId || "") ? await mediaExt(c.taskId) : "";
+      if (ext) {
+        // 번호를 이어 매기도록 한 줄씩 바로 적는다(파일이 없으니 폴더로는 못 센다)
+        const name = placeName(work, pl, "V", ext, x.name, tail);
+        appendWorkList(work, [{ ...row, 파일: name, 받기: "대기" }]);
+        held++;
+        log(`  ${pl.rel}/${name} — 받지 않음(앱 주소로 검수)`);
+        continue;
+      }
+      fs.mkdirSync(dir, { recursive: true });   // 씬 · 컷 폴더 — 있으면 그대로
       let r;
       try { r = await sendCommand(spec.manual, "card.download", { id: c.id }); }
       catch (e) { log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
       const src = r?.path || r?.file || r?.saved;
       if (!src || !fs.existsSync(src)) { log(`  못 받음 ${x.name} · 카드 ${c.id} — 앱이 저장 경로를 안 줬다`); continue; }
-      const tail = resTail(x.st);
       const name = placeName(work, pl, "V", path.extname(src) || ".mov", x.name, tail);
       const dest = path.join(dir, name);
       try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); }
-      rows.push({ 폴더: pl.rel, 파일: name, 작업: x.name, 테이크: String.fromCharCode(65 + k), 모델: x.st?.model || "", 카드: c.id, task: c.taskId || "",
-        씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", 해상도: tail.slice(1), "받은 시각": new Date().toISOString() });
+      rows.push({ ...row, 파일: name });
       log(`  ${pl.rel}/${name}`);
     }
   }
   appendWorkList(work, rows);
-  log(rows.length ? `영상 ${rows.length}개를 작업 폴더에 놓았다(다운로드 폴더에는 안 남김) · 목록 _검수/목록.tsv — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`
-    : "놓은 영상 없음 — 끝난 카드가 없거나 받지 못했다");
+  if (held) log(`영상 ${held}개는 받지 않았다 — 검수 페이지가 앱 주소로 보여 주고, 저장할 때 OK·보류만 그 자리로 받는다(탈락은 받지 않는다) · 목록 _검수/목록.tsv\n` +
+    `  에이전트가 볼 접촉 시트: node make-review.mjs "${work}" --sheets`);
+  if (rows.length) log(`영상 ${rows.length}개를 작업 폴더에 놓았다(다운로드 폴더에는 안 남김) · 목록 _검수/목록.tsv — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`);
+  if (!held && !rows.length) log("놓은 영상 없음 — 끝난 카드가 없거나 받지 못했다");
 }
 
 // 본편(card.final 1080p)을 받아 초안 옆에 같은 번호로 — ABC_S010_C0010_V001_480.mov → ABC_S010_C0010_V001_1080.mov
 async function saveFinal([draft, cardId]) {
   if (!draft || !cardId) fail("쓰는 법: --save-final <초안 파일> <본편 카드 id>");
   const draftPath = path.resolve(draft);
-  if (!fs.existsSync(draftPath)) fail(`초안 파일이 없다: ${draftPath}`);
+  // 받지 않은 초안(목록에 "대기" — 앱 주소로 검수)도 된다: 그 자리 이름으로 본편만 받는다
+  const listedWork = (() => {
+    let w = path.dirname(draftPath);
+    for (let i = 0; i < 4 && !fs.existsSync(path.join(w, "_검수")); i++) w = path.dirname(w);
+    return readWorkList(w).some((x) => x["파일"] === path.basename(draftPath) && x["받기"] === "대기") ? w : "";
+  })();
+  if (!fs.existsSync(draftPath) && !listedWork) fail(`초안 파일이 없다: ${draftPath}`);
   const manual = rememberedManual();
   if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual");
   const r = await sendCommand(manual, "card.download", { id: cardId });
@@ -1197,14 +1252,15 @@ async function saveFinal([draft, cardId]) {
   const dir = path.basename(draftDir) === "보류" ? path.dirname(draftDir) : draftDir;
   const dest = path.join(dir, name);
   if (fs.existsSync(dest)) fail(`이미 있다: ${dest} — 덮어쓰지 않는다`);
+  fs.mkdirSync(dir, { recursive: true });   // 초안을 받지 않았으면 컷 폴더가 아직 없다
   try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); }
   // 작업 폴더(_검수 가 있는 위 폴더)를 찾아 목록에 남긴다
-  let work = dir;
+  let work = listedWork || dir;
   for (let i = 0; i < 4 && !fs.existsSync(path.join(work, "_검수")); i++) work = path.dirname(work);
   if (fs.existsSync(path.join(work, "_검수"))) {
     const prev = readWorkList(work).find((x) => x["파일"] === path.basename(draftPath)) || {};
     appendWorkList(work, [{ ...prev, 폴더: path.relative(work, dir).split(path.sep).join("/"), 파일: name, 카드: cardId, task: "", 해상도: "1080",
-      "받은 시각": new Date().toISOString() }]);
+      "받은 시각": new Date().toISOString(), 받기: "" }]);
   }
   log(`본편을 받아 ${dest} 로 옮겼다(다운로드 폴더에는 안 남김)`);
 }
