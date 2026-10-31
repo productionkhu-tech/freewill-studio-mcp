@@ -41,6 +41,7 @@
       ]
     },
     "gemini-omni-flash-api": {
+      "kind": "skill",
       "vendor": "Google",
       "source": "google-gemini/gemini-skills",
       "mode": "auto",
@@ -48,16 +49,15 @@
         "gemini-omni-flash-preview",
         "gemini-omni-1.1-flash"
       ],
-      "version": null,
-      "hash": "96bcfe0814192a9921dea9788b4687bf22ff0f3a431afb74b339d048e1a3102d",
-      "digest": null,
-      "appliedAt": "2026-10-02",
-      "files": [
-        "SKILL.md"
-      ],
-      "kind": "skill",
       "families": [
         "gemini-omni"
+      ],
+      "version": null,
+      "hash": "b199a222445fc0d27754dfc7caa95b1af8a74982d48dcef7f3d8f24d1891007c",
+      "digest": null,
+      "appliedAt": "2026-10-31",
+      "files": [
+        "SKILL.md"
       ]
     },
     "imagegen": {
