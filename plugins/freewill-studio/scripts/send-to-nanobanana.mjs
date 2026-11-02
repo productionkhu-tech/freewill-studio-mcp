@@ -148,9 +148,9 @@ function writeLedger(fn) {
     const tmp = `${LEDGER}.${process.pid}.${crypto.randomUUID().slice(0, 8)}.tmp`;
     try {
       fs.writeFileSync(tmp, next);
-      if (fs.existsSync(LEDGER)) fs.copyFileSync(LEDGER, `${LEDGER}.bak`);   // 마지막 정상본(방금 읽어 확인한 것)
       fs.renameSync(tmp, LEDGER);
     } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
+    try { fs.writeFileSync(`${LEDGER}.bak`, next); } catch {}   // 마지막 정상본 — 못 써도 보내기는 막지 않는다
   });
 }
 // 넣기 전 기록 — 남겼는지 다시 읽어 확인한 뒤에만 보낸다(못 남긴 채 보내면 다시 실행할 때 또 나간다)
@@ -390,7 +390,6 @@ function keepJobs(work, jobsFile) {
     // 같은 원문 찾기 — 못 읽는 것(폴더 · 잠긴 파일)은 건너뛴다
     const same = (n) => { try { return fs.readFileSync(path.join(pd, n), "utf8") === JOBS_TEXT; } catch { return false; } };
     if (fs.readdirSync(pd).some((n) => /\.json$/i.test(n) && path.resolve(pd, n) !== self && same(n))) return;
-    if (path.dirname(self) === path.resolve(pd)) log("  참고: jobs.json 은 05_프롬프트 밖에 둘 것 — 이 폴더의 .json 은 모두 보낸 프롬프트로 읽혀, 보내지 않은 초안도 작업 페이지 · 북에 섞인다");
     const stem = path.parse(jobsFile).name, stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     let to = path.join(pd, `${stem}.json`);
     for (let n = 1; fs.existsSync(to); n++) to = path.join(pd, `${stem}_${stamp}${n > 1 ? `_${n}` : ""}.json`);
@@ -567,6 +566,9 @@ async function main() {
   }
   // 작업 폴더(사용자가 알려 준 프로젝트 폴더) — 결과를 씬·컷(또는 에셋 종류) 폴더에 놓는다. 자리를 못 정한 작업이 있으면 보내기 전에 멈춘다.
   const WORKDIR = spec.work ? path.resolve(String(spec.work)) : "";
+  if (WORKDIR && path.resolve(path.dirname(file)).toLowerCase() === path.join(WORKDIR, "05_프롬프트").toLowerCase()) {
+    log("  참고: jobs.json 은 05_프롬프트 밖에 둘 것 — 이 폴더의 .json 은 모두 보낸 프롬프트로 읽혀, 보내지 않은 초안도 작업 페이지 · 북에 섞인다");
+  }
   if (WORKDIR) {
     if (!fs.existsSync(WORKDIR)) fail(`작업 폴더가 없다: ${WORKDIR} — 사용자가 알려 준 프로젝트 폴더인지 확인할 것`);
     const probs = jobs.map((j) => [j, placeOf(spec, j, WORKDIR)]).filter(([, p]) => typeof p === "string");

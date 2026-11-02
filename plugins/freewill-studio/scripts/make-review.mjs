@@ -228,9 +228,19 @@ const promptFor = (prompts, t) => {
 // 판 순서는 그 판 결과를 처음 받은 시각(목록의 '받은 시각' — 파일 시각과 무관), 예전 결과는 맨 앞. 번호는 그 컷의 모든 테이크로 센다(OK 만이 아니라)
 function versionsOf(prompts, list) {
   const verOf = (t) => (t.prompt ? promptFor(prompts, t).print : "");
-  const first = new Map();
-  for (const t of list) { const v = verOf(t), at = t.at || "~"; if (!first.has(v) || at < first.get(v)) first.set(v, at); }
-  const vers = [...first.keys()].sort((a, b) => (!a ? -1 : !b ? 1 : first.get(a).localeCompare(first.get(b))));
+  // 판마다 처음 받은 때 — 목록 전체(탈락으로 지운 줄까지)에서 [시각, 목록 차례]. 시각이 없거나 못 읽으면 맨 뒤, 같으면 목록 차례
+  if (!prompts.seen) {
+    prompts.seen = new Map();
+    if (fs.existsSync(WORK_LIST)) readTsv(WORK_LIST).forEach((r, i) => {
+      const t = { cut: r["작업"] || r["파일"], prompt: r["프롬프트"] || "" };
+      const k = `${t.cut}\n${verOf(t)}`, ms = Date.parse(r["받은 시각"] || ""), at = [Number.isNaN(ms) ? Infinity : ms, i];
+      const o = prompts.seen.get(k);
+      if (!o || at[0] < o[0] || (at[0] === o[0] && at[1] < o[1])) prompts.seen.set(k, at);
+    });
+  }
+  const pos = (v) => prompts.seen.get(`${list[0]?.cut}\n${v}`) || [Infinity, Infinity];
+  const cmp = (x, y) => (x === y ? 0 : x < y ? -1 : 1);
+  const vers = [...new Set(list.map(verOf))].sort((a, b) => (!a ? -1 : !b ? 1 : cmp(pos(a)[0], pos(b)[0]) || cmp(pos(a)[1], pos(b)[1])));
   const hashed = vers.filter(Boolean);
   const tag = (v) => (vers.length < 2 ? "" : v ? `프롬프트 ${hashed.indexOf(v) + 1}` : "예전 결과");
   const promptOf = (v) => (v ? promptFor(prompts, list.find((t) => verOf(t) === v)) : prompts.get(list[0]?.cut));
@@ -616,7 +626,9 @@ function writeBook() {
   const refs = [], cuts = [];
   // 에셋 그림 → 그 판의 레퍼런스 id — 컷이 쓴 바로 그 그림의 판으로 잇는다(경로 먼저, 없으면 파일 이름). OK 가 아닌 에셋 그림이면 잇지 않는다
   const refIdByPath = new Map(), refIdByName = new Map();
-  const assetFiles = new Set(all.filter((t) => !/^S\d/.test(t.folder)).map((t) => path.basename(t.file).toLowerCase()));
+  const assetFiles = new Set([...all.filter((t) => !/^S\d/.test(t.folder)).map((t) => t.file),   // 탈락으로 지운 에셋 그림도(목록에 남은 줄)
+    ...(fs.existsSync(WORK_LIST) ? readTsv(WORK_LIST).filter((r) => r["폴더"] && !/^S\d/.test(r["폴더"])).map((r) => r["파일"] || "") : [])]
+    .filter(Boolean).map((f) => path.basename(f).toLowerCase()));
   const refName = (r) => {
     const b = path.basename(r).toLowerCase(), stem = path.basename(r).replace(/\.[^.]+$/, "");
     return refIdByPath.get(path.resolve(r).toLowerCase()) || refIdByName.get(b) || (assetFiles.has(b) ? stem : stem.replace(/_[A-Z]$/, ""));
