@@ -455,7 +455,8 @@ function ledgerLocked(fn) {
   const lock = `${LEDGER}.lock`;
   fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
   for (const t0 = Date.now(); ;) {
-    try { fs.writeFileSync(lock, String(process.pid), { flag: "wx" }); break; } catch (e) { if (e.code !== "EEXIST") throw e; }
+    // 윈도는 다른 실행이 잠금을 지우는 순간 EPERM 등을 준다 — 기다렸다 다시
+    try { fs.writeFileSync(lock, String(process.pid), { flag: "wx" }); break; } catch (e) { if (!["EEXIST", "EPERM", "EACCES", "EBUSY"].includes(e.code)) throw e; }
     try { if (Date.now() - fs.statSync(lock).mtimeMs > 10000) fs.rmSync(lock, { force: true }); } catch {}   // 주인이 죽은 잠금
     if (Date.now() - t0 > 30000) throw new Error("보낸 기록 잠금을 30초 동안 못 얻음");
     sleepSync(30 + Math.random() * 70);
@@ -463,16 +464,31 @@ function ledgerLocked(fn) {
   try { return fn(); } finally { try { fs.rmSync(lock, { force: true }); } catch {} }
 }
 function readLedger() {
+  let text;
+  for (let i = 0; ; i++) {   // 백신 · 다른 실행이 잠깐 잡고 있으면 조금 기다렸다 다시 읽는다
+    try { text = fs.readFileSync(LEDGER, "utf8"); break; } catch (e) {
+      if (e.code === "ENOENT") return [];
+      if (i >= 4) throw new Stop(`보낸 기록 파일을 못 읽음(${e.code}) — 두 번 과금될 수 있어 보내지 않는다. 잠시 뒤 다시 실행할 것`);
+      sleepSync(100);
+    }
+  }
   let l = null;
-  try { l = JSON.parse(fs.readFileSync(LEDGER, "utf8")); } catch (e) { if (e.code === "ENOENT") return []; }
-  if (!Array.isArray(l)) throw new Stop(`보낸 기록 파일이 깨졌다(${LEDGER}) — 두 번 과금될 수 있어 보내지 않는다. 사용자에게 알리고, 앱 카드를 확인한 뒤 그 파일을 고칠지 지울지 정하게 할 것`);
+  try { l = JSON.parse(text); } catch {}
+  if (!Array.isArray(l)) {
+    throw new Stop(`보낸 기록 파일이 깨졌다(${LEDGER}) — 두 번 과금될 수 있어 보내지 않는다. 그 파일을 지우지 말 것(지우면 24시간 안에 보낸 것을 또 보낼 수 있다). ` +
+      `사용자에게 알리고, 마지막 정상본(${LEDGER}.bak)으로 바꿔 놓을지 정하게 할 것 — 그 사이 보낸 것이 빠졌을 수 있으니 앱 카드를 먼저 확인`);
+  }
   return l.filter((x) => Date.now() - x.at < 24 * 3600e3);
 }
 function writeLedger(fn) {
   ledgerLocked(() => {
+    const next = JSON.stringify(fn(readLedger()));
     const tmp = `${LEDGER}.${process.pid}.${crypto.randomUUID().slice(0, 8)}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(fn(readLedger())));
-    fs.renameSync(tmp, LEDGER);
+    try {
+      fs.writeFileSync(tmp, next);
+      if (fs.existsSync(LEDGER)) fs.copyFileSync(LEDGER, `${LEDGER}.bak`);   // 마지막 정상본(방금 읽어 확인한 것)
+      fs.renameSync(tmp, LEDGER);
+    } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
   });
 }
 // 넣기 전 기록 — 남겼는지 다시 읽어 확인한 뒤에만 보낸다(못 남긴 채 보내면 다시 실행할 때 또 나간다)
@@ -489,14 +505,19 @@ const ledgerSet = (rid, patch) => {
   try { writeLedger((l) => (patch ? l.map((x) => (x.rid === rid ? { ...x, ...patch } : x)) : l.filter((x) => x.rid !== rid))); }
   catch (e) { log(`  참고: 보낸 기록을 못 고침 — ${e.message}`); }
 };
-// keys = [이 판 키, 11/2 낮 판 키(그때 남긴 기록과 맞추려고 — 11/4 뒤엔 없어도 됨)]
+// keys = [이 키, 11/2 낮 판 키(--do — 그때 남긴 기록과 맞추려고, 11/4 뒤엔 없어도 됨)]
 const lastSent = (keys) => readLedger().filter((x) => keys.includes(x.key)).pop();
+// 작업의 마지막 기록 — 11/2 낮 판 기록(같은 작업이 같은 키로 여러 줄)은 몇 번째인지로 짝짓는다(11/4 뒤엔 없어도 됨)
+const lastOf = (j) => { const l = readLedger(); return l.filter((x) => x.key === j.key).pop() || l.filter((x) => x.key === j.legacy)[j.nth - 1]; };
+// 이번 실행이 시작된 뒤 남은 그 작업의 기록 — 같은 명령을 동시에 돌린 다른 실행이 넣은 것(그 전 줄은 분류에서 이미 봤다)
+const sentSince = (j) => readLedger().filter((x) => x.key === j.key && x.at >= RUN_AT).pop();
 const sentWhen = (e) => new Date(e.at).toLocaleString("ko-KR", { hour12: false });
-// 앱이 알려 준 요청의 끝 — "다시"(확실히 안 만들어짐) · "모름"(들어갔는지 모름) · null(만들었거나 만드는 중).
-// 앱은 카드가 전부 실패해도 요청을 done 으로 올린다 — 카드가 있고 전부 실패면 상태와 상관없이 "다시"(11/2 검수)
+// 앱이 알려 준 요청의 끝 — "다시"(확실히 안 만들어짐) · "멈춤"(사람이 앱에서 취소) · "모름"(들어갔는지 모름) · null(만들었거나 만드는 중).
+// 앱은 카드가 전부 실패해도 요청을 done 으로 올린다 — 카드가 있고 전부 실패면 상태와 상관없이 "다시"(11/2 검수), 사람이 취소한 것이면 "멈춤"(다시 안 보냄)
+const CANCELLED = /취소했습니다|cancell?ed/i;
 const outcome = (j) => {
   const cards = j.messages || [];
-  if (cards.length && cards.every((c) => c.status === "failed")) return "다시";
+  if (cards.length && cards.every((c) => c.status === "failed")) return cards.some((c) => CANCELLED.test(String(c.error || ""))) ? "멈춤" : "다시";
   if (j.status !== "failed" || cards.length) return null;
   return UNSURE.test(String(j.error || "")) ? "모름" : "다시";
 };
@@ -816,7 +837,10 @@ function keepJobs(work, jobsFile) {
     const pd = path.join(work, "05_프롬프트");
     fs.mkdirSync(pd, { recursive: true });
     const self = path.resolve(jobsFile);
-    if (fs.readdirSync(pd).some((n) => /\.json$/i.test(n) && path.resolve(pd, n) !== self && fs.readFileSync(path.join(pd, n), "utf8") === JOBS_TEXT)) return;
+    // 같은 원문 찾기 — 못 읽는 것(폴더 · 잠긴 파일)은 건너뛴다
+    const same = (n) => { try { return fs.readFileSync(path.join(pd, n), "utf8") === JOBS_TEXT; } catch { return false; } };
+    if (fs.readdirSync(pd).some((n) => /\.json$/i.test(n) && path.resolve(pd, n) !== self && same(n))) return;
+    if (path.dirname(self) === path.resolve(pd)) log("  참고: jobs.json 은 05_프롬프트 밖에 둘 것 — 이 폴더의 .json 은 모두 보낸 프롬프트로 읽혀, 보내지 않은 초안도 작업 페이지 · 북에 섞인다");
     const stem = path.parse(jobsFile).name, stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     let to = path.join(pd, `${stem}.json`);
     for (let n = 1; fs.existsSync(to); n++) to = path.join(pd, `${stem}_${stamp}${n > 1 ? `_${n}` : ""}.json`);
@@ -1130,6 +1154,9 @@ async function main() {
   // 키 = 프로젝트 · 프롬프트(공백 정리) · 설정(글자로) · 레퍼런스(절대 경로) · 작업 폴더 자리. 이름과 --save-to 는 안 본다(받는 곳만 바꿔 다시 실행해도 이어 받기).
   // 같은 것을 일부러 여럿 적었으면 몇 번째인지(#2 …)로 가른다 — 다시 실행해도 같은 순서끼리 짝지어진다
   jobs.forEach((j, i) => { j.name ||= `job_${i + 1}`; });
+  // 작업 이름이 겹치면 보내지 않는다 — 보낸 기록 · --again · 결과 파일이 이름으로 가린다(겹치면 --again=이름 이 이미 보낸 것까지 또 보냄, 11/2 재검수)
+  const dupNames = [...new Set(jobs.map((j) => j.name).filter((n, i, a) => a.indexOf(n) !== i))];
+  if (dupNames.length) fail(`작업 이름이 겹친다: ${dupNames.join(", ")} — 작업마다 다른 이름으로(같은 장면을 일부러 여럿이면 이름 끝에 _2 처럼)`);
   if (AGAIN_ARG) {
     if (!AGAIN.size) fail("--again 은 또 만들 작업 이름과 같이: --again=이름,이름 — 사용자에게 물은 뒤 그 작업만(이름 없이 쓰면 이미 보낸 것까지 또 나간다)");
     const unknown = [...AGAIN].filter((n) => !jobs.some((j) => j.name === n));
@@ -1142,20 +1169,27 @@ async function main() {
   for (const j of jobs) {
     const key = hash([target?.id || project, String(j.prompt).replace(/\s+/g, " ").trim(), Object.entries(settingsOf(j)).map(([k, v]) => [k, String(v)]),
       j.refs.map((r) => [win(r.path), r.role || ""]), WORKDIR, placeRel(j)]);
-    seen[key] = (seen[key] || 0) + 1;
-    j.keys = [`${key}#${seen[key]}`];
-    if (seen[key] === 1) j.keys.push(hash([target?.id || project, String(j.prompt), settingsOf(j), j.refs.map((r) => [r.path, r.role || ""]), WORKDIR, placeRel(j) || SAVE_TO || ""]));
+    j.nth = seen[key] = (seen[key] || 0) + 1;
+    j.key = `${key}#${j.nth}`;
+    j.legacy = hash([target?.id || project, String(j.prompt), settingsOf(j), j.refs.map((r) => [r.path, r.role || ""]), WORKDIR, placeRel(j) || SAVE_TO || ""]);
   }
   const toSend = [], resumed = [], already = [], unsure = [];
   for (const j of jobs) {
-    const e = AGAIN.has(j.name) ? null : lastSent(j.keys);
+    const e = AGAIN.has(j.name) ? null : lastOf(j);
     if (!e) { toSend.push(j); continue; }
     const app = e.id ? await get(`/api/agent/jobs/${encodeURIComponent(e.id)}`) : null;
     const alive = app?.http === 200;
     const o = alive ? outcome(app) : e.state === "보냄" || e.state === "끝" ? null : "모름";
     if (o === "다시") { if (!DRY) ledgerSet(e.rid, null); toSend.push(j); continue; }
     if (o === "모름") { unsure.push({ name: j.name, why: (alive && app.error) || e.note || "보내는 중에 끊김" }); continue; }
-    if (alive && e.state !== "보냄" && e.state !== "끝" && !DRY) ledgerSet(e.rid, { state: "보냄" });   // 앱이 받은 걸 확인 — '모름'으로 굳지 않게
+    if (o === "멈춤") {
+      if (!DRY) ledgerSet(e.rid, { state: "끝", note: "앱에서 취소" });
+      already.push(`${j.name} — ${sentWhen(e)} 에 보냈는데 사람이 앱에서 취소함`);
+      continue;
+    }
+    // 앱이 화면으로 보냈거나 카드가 있으면 '보냄'으로 — 아직 대기(pending · taken)면 그대로 둔다(앱을 다시 켜면 사라질 수 있다)
+    const confirmed = alive && ((app.messages || []).length > 0 || app.status === "sent" || app.status === "done");
+    if (confirmed && e.state !== "보냄" && e.state !== "끝" && !DRY) ledgerSet(e.rid, { state: "보냄" });
     if (e.state !== "끝" && alive && (WATCH || WORKDIR)) { resumed.push({ id: e.id, name: j.name, j, st: settingsOf(j), rid: e.rid }); continue; }
     already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${e.state === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다")
       : alive ? `상태: --status ${e.id}` : "앱을 다시 켜 여기서는 결과를 못 이어 받는다(앱 카드에서 볼 것)"}`);
@@ -1170,7 +1204,10 @@ async function main() {
       `없으면 사용자 확인 뒤 --again=${unsure.map((x) => x.name).join(",")}`;
     if (!DRY && !toSend.length && !resumed.length) fail(msg);
     log(`  주의: ${msg}`);
-    if (!DRY) process.exitCode = 1;
+    if (!DRY) {
+      process.exitCode = 1;
+      process.on("exit", () => console.error(`확인할 것 — 앱에 들어갔는지 모르는 요청(보내지 않음): ${unsure.map((x) => x.name).join(", ")} · 위 '주의' 참고`));
+    }
   }
   if (!DRY && !toSend.length && !resumed.length) {
     log("보낼 것 없음 — 모두 24시간 안에 이미 보냈다(결과는 앱 · 작업 폴더에). 같은 것을 또 만들려면 사용자에게 물은 뒤 --again=작업 이름");
@@ -1231,8 +1268,8 @@ async function main() {
       out = await withSendLock("seedance", async () => {
         if ((await inFlight(spec.manual, project, sent.map((x) => x.id), target?.id || "")) + need > MAX_IN_FLIGHT) return null;
         // 잠금 안에서 기록을 다시 본다 — 분류한 뒤 같은 명령을 동시에 돌린 다른 실행이 이 작업을 넣었으면 건너뛴다
-        const other = lastSent(j.keys);
-        if (other && (!AGAIN.has(j.name) || other.at >= RUN_AT)) return { skip: other };
+        const other = sentSince(j);
+        if (other) return { skip: other };
         let rsv;
         try {
           rsv = await reserve(need, {
@@ -1244,7 +1281,7 @@ async function main() {
         }
         // 넣기 직전에 남긴다 — 여기서 끊기면(앱 답을 못 받음) 다음 실행은 '모름'으로 멈춘다. 못 남기면 보내지 않는다
         let rid;
-        try { rid = ledgerAdd({ key: j.keys[0], name: j.name, project, state: "보내는 중" }); }
+        try { rid = ledgerAdd({ key: j.key, name: j.name, project, state: "보내는 중" }); }
         catch (e) { await rsv.settle(0); if (e instanceof Stop) return { error: e.message }; throw e; }
         const r = await post("/api/agent/jobs", {
           manual: spec.manual, name: j.name, prompt: String(j.prompt), project, billing, ...(target ? { projectId: target.id } : {}),
@@ -1260,7 +1297,7 @@ async function main() {
         const res = await waitTaken(r.id);
         const cards = res.messages || [];
         const o = outcome(res);
-        ledgerSet(rid, o === "다시" ? null : { state: o === "모름" ? "모름" : "보냄", ...(o ? { note: String(res.error || "").slice(0, 200) } : {}) });
+        ledgerSet(rid, o === "다시" ? null : { state: o === "모름" ? "모름" : o === "멈춤" ? "끝" : "보냄", ...(o ? { note: String(res.error || o).slice(0, 200) } : {}) });
         await rsv.settle(res.status === "failed" ? cards.length : (cards.length || need));
         return { r, res, cards, rsv, rid, unsure: o === "모름" };
       });
