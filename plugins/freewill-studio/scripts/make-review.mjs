@@ -18,9 +18,9 @@
 //                                                                    한 곳(%TEMP%\freewill-review)에만 — 7일 지난 시트는 돌릴 때마다 지운다
 //   node make-review.mjs <작업 폴더> --apply <저장본.json>              → (파일로 연 페이지의 저장본) 분류대로 옮김 · 회차 · 페이지 다시
 //   node make-review.mjs [<작업 폴더>] --review on|off|status          → 검수를 켜고 끔(폴더를 주면 그 작업만, 안 주면 이 PC 사용자의 모든 작업)
-//   node make-review.mjs [<작업 폴더>] --book on|off|status            → 프롬프트 북 자동(on — OK 를 저장할 때마다 05_프롬프트 의
+//   node make-review.mjs [<작업 폴더>] --book on|off|status            → 프롬프트 북 OK 한 것만(on — OK 를 저장할 때마다 05_프롬프트 의
 //                                                                    「<작업 이름> 프롬프트 북.html」을 사내 양식으로 — 이 스크립트는 _검수/북.json 을 쓰고 make-prompt-book --work 가 그린다)
-//                                                                    / 수동(off — 만들어 달라고 할 때만). 어느 쪽이든 북에는 OK 컷만
+//                                                                    / 만들지 않음(off)
 //
 // 폴더: 받은 결과는 종류별 폴더(01_에셋/인물 · 01_에셋/로케이션 · 01_에셋/프랍, 02_이미지, 03_영상_초안, 04_영상_본편 …)의
 //       _목록.tsv(보내기 스크립트 --save-to 가 남김)로 찾는다. 검수 뒤에는 그 폴더 안이 OK/ · 보류/ · 탈락/ 으로 나뉜다.
@@ -206,16 +206,16 @@ function readRounds() {
 // 켬으로 치되 에이전트가 사용자에게 물어 남기게 알린다.
 const ASK_REVIEW = "검수 화면을 쓸지 아직 안 정함 — 사용자에게 한 번 묻는다(\"결과를 검수 화면에서 볼까요? 늘 쓰기 / 안 쓰기\") → " +
   "make-review --review on|off 로 남기면 다음부터 묻지 않는다";
-// 프롬프트 북도 같은 식으로 처음 한 번 고른다(10/22 "프롬프트북이랑 검수 둘다 처음에 선택") — 자동이면 OK 를 저장할 때마다 사내 양식으로.
-// 자동 · 수동 모두 북에는 OK 컷만 — 고르는 것은 언제 만드느냐다(11/2 "'넘길 때만' 말이 애매함")
-const ASK_BOOK = "프롬프트 북 자동 · 수동을 아직 안 정함 — 사용자에게 한 번 묻는다(\"프롬프트 북(OK 컷의 프롬프트·설정·결과를 모은 사내 양식 HTML)을 " +
-  "어떻게 만들까요? 자동 — OK 를 저장할 때마다 채움 / 수동 — 만들어 달라고 할 때만\") → make-review --book on|off 로 남기면 다음부터 묻지 않는다";
+// 프롬프트 북도 같은 식으로 처음 한 번 고른다(10/22 "프롬프트북이랑 검수 둘다 처음에 선택") — OK 한 것만 / 만들지 않음
+// (11/2 "'넘길 때만' 말이 애매함 — 만들지 않음 vs OK 한 것만이면 됨, 모든 프롬프트 저장은 필요 없음")
+const ASK_BOOK = "프롬프트 북을 아직 안 정함 — 사용자에게 한 번 묻는다(\"프롬프트 북(사내 양식 HTML)을 만들까요? " +
+  "OK 한 것만 — OK 를 저장할 때마다 그 컷의 프롬프트·설정·결과를 채움 / 만들지 않음\") → make-review --book on|off 로 남기면 다음부터 묻지 않는다";
 function userChoice(w, key) {
   const here = w ? readJson(path.join(w, "_작업설정.json"))[key] : undefined;
   const mine = readJson(ME_SETTINGS)[key];
   if (typeof here === "boolean") return { on: here, from: "이 작업 설정(_작업설정.json)" };
   if (typeof mine === "boolean") return { on: mine, from: "이 PC 사용자 설정(~/.freewill-studio/settings.json)" };
-  return { on: key === "review", from: "아직 안 정함", unset: true };   // 검수는 켬으로, 북은 끔(수동)으로 친다
+  return { on: key === "review", from: "아직 안 정함", unset: true };   // 검수는 켬으로, 북은 끔(만들지 않음)으로 친다
 }
 const reviewSetting = (w) => userChoice(w, "review");
 const bookSetting = (w) => userChoice(w, "book");
@@ -888,11 +888,11 @@ async function main() {
     if (!["on", "off", "status"].includes(bookArg)) { console.error(USAGE); process.exit(2); }
     if (bookArg !== "status") {
       const file = setChoice(work, "book", bookArg === "on");
-      console.log(`프롬프트 북 ${bookArg === "on" ? "자동" : "수동"} — ${work ? "이 작업만" : "이 PC 사용자의 모든 작업"} (${file})`);
+      console.log(`프롬프트 북 ${bookArg === "on" ? "OK 한 것만" : "만들지 않음"} — ${work ? "이 작업만" : "이 PC 사용자의 모든 작업"} (${file})`);
       if (work && bookArg === "on") console.log(`  ${writeBook()}`);
     }
     const b = bookSetting(work);
-    console.log(b.unset ? `지금: ${ASK_BOOK}` : `지금: 프롬프트 북 ${b.on ? "자동(OK 를 저장할 때마다 05_프롬프트 에 다시 씀)" : "수동(저절로 안 만듦 — 만들어 달라고 하면 make-prompt-book)"} · ${b.from}`);
+    console.log(b.unset ? `지금: ${ASK_BOOK}` : `지금: 프롬프트 북 ${b.on ? "OK 한 것만(OK 를 저장할 때마다 05_프롬프트 에 다시 씀)" : "만들지 않음(사용자가 직접 만들어 달라고 할 때만 make-prompt-book)"} · ${b.from}`);
     return;
   }
   if (child) return runServer(childPort);

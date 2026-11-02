@@ -323,8 +323,7 @@ if (which === "all" || which === "nanobanana") sections.push(await nanobanana())
 if (which === "all" || which === "seedance") sections.push(await seedance());
 // 검수 화면(make-review --serve 로 띄우는 검수 페이지)을 쓸지 — 사용자가 처음 한 번 고르고 기억한다(10/22 "극 초반부에 물어보기").
 // 아직 안 정했으면 에이전트가 첫 질문에 같이 묻게 여기서 알린다.
-// 프롬프트 북도 같은 식(10/22 "프롬프트북이랑 검수 둘다 처음에 선택") — 자동이면 OK 를 저장할 때마다 사내 프롬프트 북 양식으로 채운다.
-// 자동 · 수동 모두 북에는 OK 컷만 들어간다(11/2 '넘길 때만'이 애매하다 해서 이름을 바꿈).
+// 프롬프트 북도 같은 식(10/22 "프롬프트북이랑 검수 둘다 처음에 선택") — OK 한 것만(OK 를 저장할 때마다 사내 양식으로 채움) / 만들지 않음(11/2).
 {
   let set = {};
   try { set = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".freewill-studio", "settings.json"), "utf8").replace(/^[^{]*/, "")); } catch {}
@@ -335,9 +334,9 @@ if (which === "all" || which === "seedance") sections.push(await seedance());
       : "- 검수 화면: 아직 안 정함 → 처음 질문에 같이 묻는다: \"결과를 검수 화면(서버로 띄우는 검수 페이지)에서 볼까요? 늘 쓰기 / 안 쓰기\" — " +
         "답을 make-review --review on|off 로 남기면 다음부터 묻지 않는다",
     typeof set.book === "boolean"
-      ? `- 프롬프트 북: ${set.book ? "자동(OK 를 저장할 때마다 05_프롬프트 에 사내 양식으로)" : "수동(저절로 안 만듦 — 만들어 달라고 할 때만)"}(이 PC 사용자 설정) — 바꾸라고 할 때만 make-review --book ${set.book ? "off" : "on"}`
-      : "- 프롬프트 북: 아직 안 정함 → 처음 질문에 같이 묻는다: \"프롬프트 북(OK 컷의 프롬프트·설정·결과를 모은 사내 양식 HTML)을 어떻게 만들까요? " +
-        "자동 — OK 를 저장할 때마다 채움 / 수동 — 만들어 달라고 할 때만\" — " +
+      ? `- 프롬프트 북: ${set.book ? "OK 한 것만(OK 를 저장할 때마다 05_프롬프트 에 사내 양식으로)" : "만들지 않음(권하지도 않음 — 사용자가 직접 만들어 달라고 할 때만)"}(이 PC 사용자 설정) — 바꾸라고 할 때만 make-review --book ${set.book ? "off" : "on"}`
+      : "- 프롬프트 북: 아직 안 정함 → 처음 질문에 같이 묻는다: \"프롬프트 북(사내 양식 HTML)을 만들까요? " +
+        "OK 한 것만 — OK 를 저장할 때마다 그 컷의 프롬프트·설정·결과를 채움 / 만들지 않음\" — " +
         "답을 make-review --book on|off 로 남기면 다음부터 묻지 않는다",
   ]);
 }
