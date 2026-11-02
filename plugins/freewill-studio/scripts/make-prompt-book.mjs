@@ -2,7 +2,7 @@
 // 프롬프트 북 만들기 — 컨펌된 이미지·영상 작업을 HTML 한 장으로 정리한다(인라인 CSS·JS, 바깥 연결 없음).
 //
 //   node make-prompt-book.mjs <book.json | 전에 만든 북.html> --out <저장할 경로.html> [--link]
-//   node make-prompt-book.mjs --work <작업 폴더>     → 북을 늘 만드는 작업(make-review --book on): 검수 도구가 OK 를 저장할 때마다 쓰는
+//   node make-prompt-book.mjs --work <작업 폴더>     → 북을 'OK 한 것만'으로 고른 작업(make-review --book on): 검수 도구가 OK 를 저장할 때마다 쓰는
 //                                                    <작업 폴더>/_검수/북.json 으로 <작업 폴더>/05_프롬프트/<작업 이름> 프롬프트 북.html 을 다시 그린다.
 //                                                    그림·영상은 복사하지 않고 작업 폴더 안 상대 경로로 건다(폴더째 넘기면 그대로 열림)
 //

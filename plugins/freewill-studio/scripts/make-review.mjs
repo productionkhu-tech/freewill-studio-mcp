@@ -163,35 +163,58 @@ function scan() {
 const folderLabel = (f) => f.split("/").map((s) => s.replace(/^\d+_/, "").replace(/_/g, " ")).join(" · ");
 // 00_ 로 시작하는 폴더(원본 · 비교 영상)는 보기만 — 고를 것(OK · 보류 · 탈락)이 아니라 '볼 것'에 세지 않는다(10/22 "검수판이 엉망")
 const viewOnly = (folder) => /^00_/.test(String(folder).split("/")[0]);
-// 테이크 이름 — 씬·컷 배치는 파일 번호(I003 · V001_480), 예전 판은 A · B
-const takeLabel = (t) => (/_([IV]\d{3}(?:_[0-9A-Za-z]+)?)\.[^.]+$/.exec(t.file) || [])[1] || t.take || t.file;
+// 테이크 이름 — 씬·컷 배치는 파일 번호(I003 · V001_480), 에셋은 파일 끝 글자(hero_C → C — 묶음마다 A 부터 다시 세는 테이크 대신), 예전 판은 A · B
+const takeLabel = (t) => (/_([IV]\d{3}(?:_[0-9A-Za-z]+)?)\.[^.]+$/.exec(t.file) || /_([A-Z](?:_\d+)?)\.[^.]+$/.exec(t.file) || [])[1] || t.take || t.file;
 
-// 보낸 jobs.json 들 — 작업 이름 → 프롬프트·설정(마지막에 보낸 것). byKey 는 '작업 이름#프롬프트 지문' → 그 판의 프롬프트 —
-// 같은 이름으로 프롬프트를 고쳐 다시 보낸 판마다(목록의 '프롬프트' 칸, 11/2 "같은 컷 OK 여러 개면?")
-const promptKey = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
+// 판 지문 — 프롬프트 글(공백 정리) · 주요 설정 · 레퍼런스 파일 이름. 보내기 스크립트가 목록의 '프롬프트' 칸에 같은 식으로 적는다(jobs.json 원문 기준, 11/2)
+const PRINT_KEYS = ["model", "mode", "ratio", "aspect", "duration", "resolution", "quality"];
+const takePrint = (spec, j) => crypto.createHash("sha256").update(JSON.stringify([
+  String(j.prompt ?? "").replace(/\s+/g, " ").trim(),
+  ...PRINT_KEYS.map((k) => String(j[k] ?? spec.defaults?.[k] ?? "")),
+  (j.refs || []).map((r) => path.basename(String(typeof r === "string" ? r : r?.path || "")).toLowerCase()),
+])).digest("hex").slice(0, 12);
+// 11/2 낮 판이 남긴 지문(프롬프트 글만) — 그때 받은 줄도 찾게
+const promptOnly = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
+// 보낸 jobs.json 들(05_프롬프트, 보낸 차례 = 파일 시각) — 작업 이름 → 프롬프트·설정(마지막에 보낸 것).
+// byKey 는 '작업 이름#판 지문' → 그 판 — 같은 이름으로 고쳐 다시 보낸 판마다(11/2 "같은 컷 OK 여러 개면?"). order = 보낸 차례
 function readPrompts() {
   const map = new Map();
   map.byKey = new Map();
+  map.missing = new Map();
   const dir = path.join(work, "05_프롬프트");
   if (!fs.existsSync(dir)) return map;
-  for (const f of fs.readdirSync(dir).filter((n) => /\.json$/i.test(n)).sort()) {
+  const files = fs.readdirSync(dir).filter((n) => /\.json$/i.test(n)).map((n) => ({ n, t: fs.statSync(path.join(dir, n)).mtimeMs }))
+    .sort((a, b) => a.t - b.t || a.n.localeCompare(b.n)).map((x) => x.n);
+  let order = 0;
+  for (const f of files) {
     try {
       const spec = JSON.parse(readText(path.join(dir, f)));
       for (const j of spec.jobs || []) {
         if (!j?.name || !j.prompt) continue;
-        const p = { prompt: String(j.prompt), model: j.model ?? spec.defaults?.model ?? "", mode: j.mode ?? spec.defaults?.mode ?? "", file: f,
+        const print = takePrint(spec, j);
+        const p = map.byKey.get(`${j.name}#${print}`) || { name: j.name, print, order: order++, prompt: String(j.prompt), file: f,
+          model: j.model ?? spec.defaults?.model ?? "", mode: j.mode ?? spec.defaults?.mode ?? "",
           duration: j.duration ?? spec.defaults?.duration ?? "", ratio: j.ratio ?? j.aspect ?? spec.defaults?.ratio ?? spec.defaults?.aspect ?? "",
           refs: (j.refs || []).map((r) => (typeof r === "string" ? r : r?.path || "")).filter(Boolean),
           elements: [...new Set([...String(j.prompt).matchAll(/@\{([^}\n]+)\}/g)].map((m) => m[1].trim()))] };
         map.set(j.name, p);
-        map.byKey.set(`${j.name}#${promptKey(j.prompt)}`, p);
+        map.byKey.set(`${j.name}#${print}`, p);
+        if (!map.byKey.has(`${j.name}#${promptOnly(j.prompt)}`)) map.byKey.set(`${j.name}#${promptOnly(j.prompt)}`, p);
       }
     } catch {}
   }
   return map;
 }
-// 이 테이크를 만든 프롬프트 — 지문이 없는 예전 줄은 그 작업 이름으로 마지막에 보낸 것
-const promptFor = (prompts, t) => (t.prompt && prompts.byKey?.get(`${t.cut}#${t.prompt}`)) || prompts.get(t.cut);
+// 이 테이크를 만든 판 — 지문이 없는 예전 줄은 그 작업 이름으로 마지막에 보낸 것. 지문은 있는데 그 판 사본이 05_프롬프트 에 없으면
+// '사본 없음'(마지막 것을 말없이 대신 붙이지 않는다 — 11/2 검수)
+const promptFor = (prompts, t) => {
+  if (!t.prompt) return prompts.get(t.cut);
+  const key = `${t.cut}#${t.prompt}`;
+  if (prompts.byKey.has(key)) return prompts.byKey.get(key);
+  if (!prompts.missing.has(key)) prompts.missing.set(key, { name: t.cut, print: t.prompt, missing: true, prompt: "", refs: [], elements: [] });
+  return prompts.missing.get(key);
+};
+const NO_COPY = "이 결과를 만든 프롬프트 사본이 05_프롬프트 에 없다";
 
 // 지난 검수 회차 — 저장할 때마다 하나씩 쌓인다. 회차 기록이 없던 예전 판은 _컷목록.tsv 를 1차로 읽는다.
 // 회차 = { n, at, file(저장본 이름), keys(그때 있던 테이크), takes{키:{status, memo}}, cuts{컷:메모} }
@@ -451,7 +474,7 @@ ${t.video ? `<video src="${takeUrl(t, served)}" preload="metadata" muted playsin
 <div class="tf"><b>${esc(takeLabel(t))}${isNew(t) ? `<span class="newb">새로</span>` : ""}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}${t.range ? ` <span class="chip">${esc(t.range)}</span>` : ""}${t.remote ? ` <span class="chip" title="아직 받지 않음 — 저장할 때 OK·보류만 받는다">앱</span>` : ""}</b><span class="seg">${STATUSES.map((s) => `<button type="button" data-s="${s}">${s}</button>`).join("")}</span></div>
 ${takeHist(t.key)}<textarea class="memo" placeholder="${round > 1 ? `${round}차 메모` : "이 테이크 메모"}"></textarea></div>`).join("")}</div>
 <textarea class="cmemo" placeholder="${round > 1 ? `${round}차 컷 메모 — 이번에 고칠 것` : "이 컷 메모 — 무엇을 고칠지"}"></textarea>
-${(sentWith.length ? sentWith : p ? [p] : []).map((sp, i, all) => `<details><summary>보낸 프롬프트${all.length > 1 ? ` ${i + 1} — ${esc(mine.filter((t) => promptFor(prompts, t) === sp).map(takeLabel).join(" · "))}` : ""}</summary><pre>${esc(sp.prompt)}</pre></details>`).join("")}
+${(sentWith.length ? sentWith : p ? [p] : []).map((sp, i, all) => `<details><summary>보낸 프롬프트${all.length > 1 ? ` ${i + 1} — ${esc(mine.filter((t) => promptFor(prompts, t) === sp).map(takeLabel).join(" · "))}` : ""}</summary><pre>${esc(sp.missing ? `(${NO_COPY})` : sp.prompt)}</pre></details>`).join("")}
 </article>`;
     }).join("")}</section>`;
   }).join("");
@@ -501,8 +524,8 @@ ${(sentWith.length ? sentWith : p ? [p] : []).map((sp, i, all) => `<details><sum
       : `<img src="${mediaUrl(t.abs, served)}" alt="${esc(t.key)}" loading="lazy">`}<div class="tf"><b>${esc(t.cut)}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}</b><span class="path">${esc(t.file)}</span></div></div>`).join("")}</div></section>` : "";
 
   // 프롬프트 — 보낸 작업마다(같은 이름으로 고쳐 다시 보낸 판도 따로)
-  const promptHtml = prompts.size ? [...prompts.byKey.entries()].map(([key, p]) =>
-    `<details class="pr"><summary><b>${esc(key.replace(/#[0-9a-f]+$/, ""))}</b> <span class="chip">${esc([p.model, p.mode].filter(Boolean).join(" · "))}</span> <span class="path">${esc(p.file)}</span></summary><pre>${esc(p.prompt)}</pre></details>`).join("")
+  const promptHtml = prompts.size ? [...new Set(prompts.byKey.values())].map((p) =>
+    `<details class="pr"><summary><b>${esc(p.name)}</b> <span class="chip">${esc([p.model, p.mode].filter(Boolean).join(" · "))}</span> <span class="path">${esc(p.file)}</span></summary><pre>${esc(p.prompt)}</pre></details>`).join("")
     : `<p class="intro">05_프롬프트 에 보낸 jobs.json 이 없다.</p>`;
 
   const server = served ? null : readJson(SERVER_FILE);
@@ -557,32 +580,38 @@ function writeBook() {
   const memos = (t) => rounds.map((r) => r.takes?.[t.key]?.memo).filter(Boolean);
   const CAT = { 인물: "character", 로케이션: "location", 프랍: "prop" };
   const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v !== undefined && v !== null));
-  // 같은 프롬프트의 OK 는 한 칸에 모으고, 같은 작업을 프롬프트를 고쳐 다시 보냈으면 판마다 칸을 나눈다 — 결과 옆에는 그 결과를 만든 프롬프트(11/2)
-  const groups = [...new Map(ok.map((t) => {
-    const p = promptFor(prompts, t);
-    return [`${t.folder}/${t.cut}\n${p?.prompt ?? ""}`, { folder: t.folder, cut: t.cut, p }];
-  })).values()].sort((a, b) => a.folder.localeCompare(b.folder) || a.cut.localeCompare(b.cut));
+  // 판마다 칸 — 같은 판(프롬프트 · 설정 · 레퍼런스가 같음)의 OK 는 한 칸에, 고쳐 다시 보낸 판은 따로. 결과 옆에는 그 결과를 만든 프롬프트(11/2).
+  // 칸 id 는 판 지문으로 고정(OK 상태가 바뀌어도 북의 체크가 그 판에 남게), '프롬프트 n' 은 보낸 차례로 제목에만. 지문 없는 예전 결과는 예전 id 그대로
+  const verOf = (t) => (t.prompt ? promptFor(prompts, t).print : "");
+  const rank = (g) => (!g.ver ? -1 : g.p.missing ? 1e9 : g.p.order);
+  const groups = [...new Map(ok.map((t) => [`${t.folder}/${t.cut}\n${verOf(t)}`, { folder: t.folder, cut: t.cut, ver: verOf(t), p: promptFor(prompts, t) }])).values()]
+    .sort((a, b) => a.folder.localeCompare(b.folder) || a.cut.localeCompare(b.cut) || rank(a) - rank(b));
   const refs = [], cuts = [];
+  const refIdByFile = new Map();   // 에셋 그림 파일 이름 → 그 판의 레퍼런스 id — 컷이 쓴 바로 그 그림의 판으로 잇는다
   for (const g of groups) {
-    const takes = ok.filter((t) => t.folder === g.folder && t.cut === g.cut && promptFor(prompts, t) === g.p);
-    const p = g.p;
+    const takes = ok.filter((t) => t.folder === g.folder && t.cut === g.cut && verOf(t) === g.ver);
     const same = groups.filter((x) => x.folder === g.folder && x.cut === g.cut);
-    const n = same.length > 1 ? same.indexOf(g) + 1 : 0;   // 프롬프트 판 번호(보낸 차례)
-    const name = n ? `${g.cut} · 프롬프트 ${n}` : g.cut;
+    const n = same.length > 1 && g.ver ? same.filter((x) => x.ver).indexOf(g) + 1 : 0;
+    const old = same.length > 1 && !g.ver;   // 판이 여럿인데 지문 없는 예전 결과
+    const tag = n ? `프롬프트 ${n}` : old ? "예전 결과" : "";
+    const p = g.p?.missing ? null : g.p;
+    const note = g.p?.missing ? `${NO_COPY} — 프롬프트를 붙이지 않음` : old ? "받은 기록에 판 지문이 없는 예전 결과 — 이 이름으로 마지막에 보낸 프롬프트를 붙임(다를 수 있음)" : "";
+    const sfx = g.ver ? g.ver.slice(0, 6) : "";
     if (!/^S\d/.test(g.folder)) {
-      // 에셋은 이름을 그대로 둔다 — 컷의 레퍼런스가 이름으로 찾는다(같은 이름이면 마지막 판). 몇 번째 프롬프트인지는 역할 칸에
-      refs.push(clean({ id: `${g.folder}/${g.cut}${n ? `#${n}` : ""}`, name: g.cut, category: CAT[g.folder.split("/").pop()] || "",
-        role: n ? `${folderLabel(g.folder)} · 프롬프트 ${n}` : folderLabel(g.folder),
-        model: p?.model || takes[0].model, prompt: p?.prompt, images: takes.map((t) => t.abs) }));
+      // 에셋은 이름을 그대로 둔다(칩에 보이는 이름) — 몇 번째 판인지는 역할 칸에
+      const id = `${g.folder}/${g.cut}${sfx ? `#${sfx}` : ""}`;
+      for (const t of takes) refIdByFile.set(path.basename(t.file).toLowerCase(), id);
+      refs.push(clean({ id, name: g.cut, category: CAT[g.folder.split("/").pop()] || "", role: tag ? `${folderLabel(g.folder)} · ${tag}` : folderLabel(g.folder),
+        model: p?.model || takes[0].model, prompt: p?.prompt, note, images: takes.map((t) => t.abs) }));
       continue;
     }
-    cuts.push(clean({ id: `${g.folder.split("/").join("_")}_${g.cut}${n ? `_p${n}` : ""}`, title: name, group: folderLabel(g.folder),
+    cuts.push(clean({ id: `${g.folder.split("/").join("_")}_${g.cut}${sfx ? `_${sfx}` : ""}`, title: tag ? `${g.cut} · ${tag}` : g.cut, group: folderLabel(g.folder),
       settings: p ? clean({ model: p.model, mode: p.mode, ratio: p.ratio, duration: p.duration }) : takes[0].model ? { model: takes[0].model } : undefined,
-      refs: p ? [...p.elements, ...p.refs.map((r) => path.basename(r).replace(/\.[^.]+$/, "").replace(/_[A-Z]$/, ""))] : undefined,
+      refs: p ? [...p.elements, ...p.refs.map((r) => refIdByFile.get(path.basename(r).toLowerCase()) || path.basename(r).replace(/\.[^.]+$/, "").replace(/_[A-Z]$/, ""))] : undefined,
       prompt: p?.prompt,
       results: takes.filter((t) => !/_1080\.[^.]+$/.test(t.file)).map((t) => ({ file: t.abs, label: takeLabel(t), adopted: true })),
       finals: takes.filter((t) => /_1080\.[^.]+$/.test(t.file)).map((t) => ({ file: t.abs, label: `${takeLabel(t)} 본편` })),
-      memo: takes.flatMap(memos) }));
+      memo: [...(note ? [note] : []), ...takes.flatMap(memos)] }));
   }
   fs.mkdirSync(REVIEW_DIR, { recursive: true });
   fs.writeFileSync(BOOK_DATA, JSON.stringify({ id: path.basename(work), title: workTitle(), subtitle: `채택 ${ok.length}개`, refs, cuts }, null, 1));

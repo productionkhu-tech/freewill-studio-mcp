@@ -30,9 +30,10 @@
 //   node send-to-nanobanana.mjs jobs.json --save-to <폴더>
 //                                                    지켜본 뒤 새 그림을 그 폴더로 복사(<작업 이름>_A.png · _목록.tsv) —
 //                                                    앱 저장 폴더의 원본은 그대로 둔다(옮기면 앱 갤러리에서 사라진다)
-//   node send-to-nanobanana.mjs jobs.json --again    24시간 안에 이미 보낸 것도 또 보냄 — 사용자에게 물은 뒤에만(돈이 든다).
-//                                                    없으면 이미 보낸 것은 건너뛰고(새 앱은 안 끝난 것을 이어서 지켜보고 놓는다), 앱에
-//                                                    들어갔는지 모르는 것이 있으면 멈춘다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게
+//   node send-to-nanobanana.mjs jobs.json --again=a,b
+//                                                    24시간 안에 이미 보낸 a · b 를 또 보냄 — 사용자에게 물은 뒤에만(돈이 든다), 또 만들 작업만 이름으로.
+//                                                    없으면 이미 보낸 것은 건너뛰고(새 앱은 안 끝난 것을 이어서 지켜보고 놓는다), 앱에 들어갔는지
+//                                                    모르는 작업은 보내지 않는다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게
 //   node send-to-nanobanana.mjs jobs.json --keep     (옛 앱) 탭 입력값을 되돌리지 않음
 //   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다). 새 앱은 화면을 안 바꾸고 바로,
 //                                                    옛 앱은 K 가 화면에 없으면 사람이 K 를 누를 때까지 기다렸다 이어서 넣는다
@@ -104,23 +105,54 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 작업마다 사용자 폴더에 남긴다: 앱에 넣기 직전 '보내는 중' → 묶음 id 와 '보냄' → 결과까지 봤으면 '끝'.
 // 24시간 안에 같은 것(탭·프롬프트·설정·레퍼런스·놓을 곳 — 이름은 안 본다)을 다시 보내면 보냄·끝은 건너뛰고(새 앱은 안 끝난 것을
 // 이어서 지켜보고 놓는다), 앱에 들어갔는지 모르는 것은 멈춘다. 다 실패·취소된 묶음(그림 0장)은 기록에서 빼서 다시 보낼 수 있다.
-// 일부러 또 만들 때만 --again — 돈이 드니 사용자에게 물은 뒤.
-const AGAIN = process.argv.includes("--again");
+// 일부러 또 만들 때만 --again=<작업 이름,…> — 돈이 드니 사용자에게 물은 뒤, 또 만들 작업만 이름으로. 이름 없는 --again 은 받지 않는다
+// (파일 안의 이미 보낸 작업까지 또 나가므로 — 11/2 검수).
+const AGAIN_ARG = args.find((a) => a === "--again" || a.startsWith("--again="));
+const AGAIN = new Set((AGAIN_ARG || "").slice(8).split(",").map((s) => s.trim()).filter(Boolean));
+const RUN_AT = Date.now();
 const LEDGER = path.join(os.homedir(), ".freewill-studio", "nanobanana-sent.json");
-const readLedger = () => {
-  try { const l = JSON.parse(fs.readFileSync(LEDGER, "utf8")); return Array.isArray(l) ? l.filter((x) => Date.now() - x.at < 24 * 3600e3) : []; } catch { return []; }
-};
-function writeLedger(fn) {
-  try {
-    fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
-    fs.writeFileSync(`${LEDGER}.tmp`, JSON.stringify(fn(readLedger())));
-    fs.renameSync(`${LEDGER}.tmp`, LEDGER);
-  } catch (e) { log(`  참고: 보낸 기록을 못 남김 — ${e.message}`); }
+// 기록 파일은 여러 실행(Claude · Codex · 백그라운드)이 같이 쓴다 — 잠금 안에서 읽고 고치고 쓴다. 깨진 파일은 빈 기록으로 보지 않는다(보내지 않음).
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function ledgerLocked(fn) {
+  const lock = `${LEDGER}.lock`;
+  fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
+  for (const t0 = Date.now(); ;) {
+    try { fs.writeFileSync(lock, String(process.pid), { flag: "wx" }); break; } catch (e) { if (e.code !== "EEXIST") throw e; }
+    try { if (Date.now() - fs.statSync(lock).mtimeMs > 10000) fs.rmSync(lock, { force: true }); } catch {}   // 주인이 죽은 잠금
+    if (Date.now() - t0 > 30000) throw new Error("보낸 기록 잠금을 30초 동안 못 얻음");
+    sleepSync(30 + Math.random() * 70);
+  }
+  try { return fn(); } finally { try { fs.rmSync(lock, { force: true }); } catch {} }
 }
-const ledgerAdd = (e) => { const rid = crypto.randomUUID(); writeLedger((l) => [...l, { rid, at: Date.now(), ...e }]); return rid; };
-// patch 가 null 이면 기록에서 뺀다(확실히 안 만들어짐 — 다시 보내도 된다)
-const ledgerSet = (rid, patch) => writeLedger((l) => (patch ? l.map((x) => (x.rid === rid ? { ...x, ...patch } : x)) : l.filter((x) => x.rid !== rid)));
-const lastSent = (key) => readLedger().filter((x) => x.key === key).pop();
+function readLedger() {
+  let l = null;
+  try { l = JSON.parse(fs.readFileSync(LEDGER, "utf8")); } catch (e) { if (e.code === "ENOENT") return []; }
+  if (!Array.isArray(l)) throw new Stop(`보낸 기록 파일이 깨졌다(${LEDGER}) — 두 번 과금될 수 있어 보내지 않는다. 사용자에게 알리고, 앱 갤러리를 확인한 뒤 그 파일을 고칠지 지울지 정하게 할 것`);
+  return l.filter((x) => Date.now() - x.at < 24 * 3600e3);
+}
+function writeLedger(fn) {
+  ledgerLocked(() => {
+    const tmp = `${LEDGER}.${process.pid}.${crypto.randomUUID().slice(0, 8)}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(fn(readLedger())));
+    fs.renameSync(tmp, LEDGER);
+  });
+}
+// 넣기 전 기록 — 남겼는지 다시 읽어 확인한 뒤에만 보낸다(못 남긴 채 보내면 다시 실행할 때 또 나간다)
+const ledgerAdd = (e) => {
+  const rid = crypto.randomUUID();
+  try {
+    writeLedger((l) => [...l, { rid, at: Date.now(), ...e }]);
+    if (!readLedger().some((x) => x.rid === rid)) throw new Error("남긴 줄이 없다");
+  } catch (err) { throw err instanceof Stop ? err : new Stop(`보낸 기록을 못 남겨 보내지 않는다 — ${err.message}`); }
+  return rid;
+};
+// 보낸 뒤 고치기 — patch 가 null 이면 기록에서 뺀다(확실히 안 만들어짐 — 다시 보내도 된다). 못 고쳐도 이미 보냈으니 알리기만
+const ledgerSet = (rid, patch) => {
+  try { writeLedger((l) => (patch ? l.map((x) => (x.rid === rid ? { ...x, ...patch } : x)) : l.filter((x) => x.rid !== rid))); }
+  catch (e) { log(`  참고: 보낸 기록을 못 고침 — ${e.message}`); }
+};
+// keys = [이 판 키, 11/2 낮 판 키(그때 남긴 기록과 맞추려고 — 11/4 뒤엔 없어도 됨)]
+const lastSent = (keys) => readLedger().filter((x) => keys.includes(x.key)).pop();
 const sentWhen = (e) => new Date(e.at).toLocaleString("ko-KR", { hour12: false });
 
 // 같은 PC 에서 보내기가 둘 이상 겹칠 때(예: Claude 와 Codex 가 동시에) "자리 확인 → 한 작업 넣기" 를 한 번에 하나만 하게 하는
@@ -328,6 +360,22 @@ async function setRefs(paths) {
 
 // 작업 페이지(make-review)의 '보낼 것' — 보내기 전에 레퍼런스를 그림으로 본다(사용자 10/20 "돌리기 전에 어떤 레퍼런스 쓸 건지 시각적으로").
 // jobs.json 에 "work"(작업 폴더)가 있을 때만. 보낸 뒤에는 '보냄'으로 바꾸고, 보낸 jobs.json 을 그 작업 폴더의 05_프롬프트 에 남긴다.
+// 보낸 jobs.json 원문을 작업 폴더 05_프롬프트 에 남긴다 — 프롬프트 북 · 작업 페이지가 결과를 만든 프롬프트를 여기서 찾는다(목록의 판 지문).
+// 읽을 때 잡아 둔 원문 그대로(보내는 사이 파일을 고쳐도), 같은 원문이 이미 있으면 두지 않고, 이름이 겹치면 시각을 붙인다.
+// jobs 파일이 05_프롬프트 안에 있어도 따로 남긴다 — 제자리에서 고쳐 다시 보내면 앞 판이 사라지므로(11/2 검수). 작업마다 넣은 뒤 · 이어 받을 때 부른다
+let JOBS_TEXT = "";
+function keepJobs(work, jobsFile) {
+  try {
+    const pd = path.join(work, "05_프롬프트");
+    fs.mkdirSync(pd, { recursive: true });
+    const self = path.resolve(jobsFile);
+    if (fs.readdirSync(pd).some((n) => /\.json$/i.test(n) && path.resolve(pd, n) !== self && fs.readFileSync(path.join(pd, n), "utf8") === JOBS_TEXT)) return;
+    const stem = path.parse(jobsFile).name, stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+    let to = path.join(pd, `${stem}.json`);
+    for (let n = 1; fs.existsSync(to); n++) to = path.join(pd, `${stem}_${stamp}${n > 1 ? `_${n}` : ""}.json`);
+    fs.writeFileSync(to, JOBS_TEXT);
+  } catch (e) { log(`  참고: 보낸 jobs.json 을 05_프롬프트 에 못 남김 — ${e.message}`); }
+}
 function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
   if (!spec.work) return;
   const work = path.resolve(String(spec.work));
@@ -337,16 +385,7 @@ function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
     fs.mkdirSync(dir, { recursive: true });
     const now = new Date().toISOString();
     fs.writeFileSync(path.join(dir, "보낼것.json"), JSON.stringify({ ...plan, at: now, sent, ...(sent ? { sentAt: now } : {}) }, null, 1));
-    if (sent && jobsFile) {
-      // 같은 이름으로 또 보내면 덮어쓰지 않고 시각을 붙여 남긴다 — 앞에 보낸 프롬프트가 작업 페이지 · 프롬프트 북에서 사라지지 않게(10/22)
-      const pd = path.join(work, "05_프롬프트");
-      fs.mkdirSync(pd, { recursive: true });
-      let to = path.join(pd, path.basename(jobsFile));
-      if (fs.existsSync(to) && path.resolve(to) !== path.resolve(jobsFile) && fs.readFileSync(to, "utf8") !== fs.readFileSync(jobsFile, "utf8")) {
-        to = to.replace(/\.json$/i, `_${now.replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}.json`);
-      }
-      if (path.resolve(to) !== path.resolve(jobsFile)) fs.copyFileSync(jobsFile, to);
-    }
+    if (sent && jobsFile) keepJobs(work, jobsFile);
     log(`  작업 페이지 '보낼 것'${sent ? "을 보냄으로 바꿨다(jobs.json 은 05_프롬프트 에)" : "에 레퍼런스를 올렸다 — 페이지에서 그림으로 보여 준 뒤 확인 카드로"}: ${path.join(dir, "보낼것.json")}`);
   } catch (e) { log(`  참고: 보낼 것을 못 남김 — ${e.message}`); }
 }
@@ -355,9 +394,16 @@ function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
 // 씬·컷: <작업>\S010\C0010\<코드>_S010_C0010_I001.png — 그 컷에서 번호를 이어 붙인다(다시 만든 것 · A/B안도 이어서, 어느 안인지는 목록에).
 // 에셋: <작업>\01_에셋\<인물|로케이션|프랍|참고>\<작업 이름>_A.png. 검수 뒤 OK 는 그 자리, 보류는 그 안 보류\, 탈락은 지운다(앱 원본은 앱에 남는다).
 // 어느 파일이 어디서 왔는지는 <작업>\_검수\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다.
-// 시댄스와 같은 목록에 쓴다 — 칸도 같게. 프롬프트 = 그 그림을 만든 프롬프트의 지문(같은 작업 이름으로 고쳐 다시 보내도 북이 판마다 맞는 프롬프트를 붙이게, 11/2)
+// 시댄스와 같은 목록에 쓴다 — 칸도 같게. 프롬프트 = 그 그림을 만든 판의 지문(같은 작업 이름으로 고쳐 다시 보내도 북이 판마다 맞는 프롬프트를 붙이게, 11/2)
 const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각", "받기", "프롬프트"];
-const promptKey = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
+// 판 지문 — 프롬프트 글(공백 정리) · 주요 설정 · 레퍼런스 파일 이름. 보내기 스크립트 둘과 make-review 가 같은 식으로 센다(jobs.json 원문 기준)
+const PRINT_KEYS = ["model", "mode", "ratio", "aspect", "duration", "resolution", "quality"];
+const takePrint = (spec, j) => crypto.createHash("sha256").update(JSON.stringify([
+  String(j.prompt ?? "").replace(/\s+/g, " ").trim(),
+  ...PRINT_KEYS.map((k) => String(j[k] ?? spec.defaults?.[k] ?? "")),
+  (j.refs || []).map((r) => path.basename(String(typeof r === "string" ? r : r?.path || "")).toLowerCase()),
+])).digest("hex").slice(0, 12);
+const BOM = new RegExp("^" + String.fromCharCode(0xfeff));
 const ASSET_KINDS = ["인물", "로케이션", "프랍", "참고"];
 const readJsonSafe = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch { return {}; } };
 const workCode = (spec, work) => String(spec.code || readJsonSafe(path.join(work, "_작업설정.json")).code || "").trim();
@@ -382,7 +428,7 @@ function placeOf(spec, j, work) {
 function readWorkList(work) {
   const p = path.join(work, "_검수", "목록.tsv");
   if (!fs.existsSync(p)) return [];
-  const lines = fs.readFileSync(p, "utf8").split(/\r?\n/).filter((l) => l.trim());
+  const lines = fs.readFileSync(p, "utf8").replace(BOM, "").split(/\r?\n/).filter((l) => l.trim());
   const head = (lines.shift() || "").split("\t");
   return lines.map((l) => Object.fromEntries(l.split("\t").map((v, i) => [head[i] || `c${i}`, v])));
 }
@@ -391,13 +437,17 @@ function appendWorkList(work, rows) {
   fs.mkdirSync(path.join(work, "_검수"), { recursive: true });
   const p = path.join(work, "_검수", "목록.tsv");
   const clean = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
-  // 머리줄은 있던 칸 + 모자란 칸을 뒤에 — 예전 줄은 늘어난 칸을 빈칸으로 읽는다
-  const text = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
-  const nl = text.indexOf("\n");
-  const old = text ? (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, "").split("\t") : [];
+  // 머리줄은 make-review 처럼 찾고(BOM · 앞 빈 줄 건너뜀), 있던 칸 + 모자란 칸을 뒤에 — 예전 줄은 늘어난 칸을 빈칸으로 읽는다.
+  // 머리줄을 고쳐야 하면(칸이 늘거나 BOM · 앞 빈 줄) 다시 쓰고, 끝 줄바꿈이 없으면 붙인 뒤 잇는다
+  const raw = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
+  const lines = raw.replace(BOM, "").split("\n");
+  const hi = lines.findIndex((l) => l.trim());
+  const old = hi < 0 ? [] : lines[hi].replace(/\r$/, "").split("\t");
   const head = [...old, ...LIST_HEAD.filter((h) => !old.includes(h))];
-  if (old.length && head.length > old.length) fs.writeFileSync(p, head.join("\t") + (nl < 0 ? "\n" : text.slice(nl)));
-  fs.appendFileSync(p, `${old.length ? "" : `${head.join("\t")}\n`}${rows.map((r) => head.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
+  const body = `${rows.map((r) => head.map((h) => clean(r[h])).join("\t")).join("\n")}\n`;
+  if (hi < 0) return fs.writeFileSync(p, `${head.join("\t")}\n${body}`);
+  if (head.length > old.length || hi > 0 || BOM.test(raw)) fs.writeFileSync(p, [head.join("\t"), ...lines.slice(hi + 1)].join("\n"));
+  fs.appendFileSync(p, `${raw.endsWith("\n") ? "" : "\n"}${body}`);
 }
 // 그 컷에서 다음 번호 — 목록(지운 탈락까지)과 폴더(보류 포함)를 다 본다
 function nextNumber(work, pl, kind) {
@@ -482,7 +532,7 @@ async function main() {
   if (CREATE_TAB !== null) return createTab(String(CREATE_TAB || "").trim());
   if (!file) fail("작업 파일(jobs.json)을 주세요");
   let spec;
-  try { spec = JSON.parse(fs.readFileSync(file, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch (e) { fail(`작업 파일을 못 읽음 — ${e.message}`); }
+  try { JOBS_TEXT = fs.readFileSync(file, "utf8"); spec = JSON.parse(JOBS_TEXT.replace(BOM, "")); } catch (e) { fail(`작업 파일을 못 읽음 — ${e.message}`); }
   const defaults = spec.defaults || {};
   const jobs = (spec.jobs || []).filter((j) => j && String(j.prompt || "").trim());
   if (!jobs.length) fail("보낼 작업이 없음 (prompt 가 빈 작업은 뺀다)");
@@ -590,39 +640,68 @@ async function main() {
   if (big) fail(`한 작업은 ${MAX_IN_FLIGHT}장까지 — "${big.name || ""}" 은 ${countOf(big)}장. 작업을 나눠서 적을 것`);
 
   // 보낸 기록 — 24시간 안에 같은 것을 보냈으면 다시 보내지 않는다(끊긴 대화가 다시 실행 · 앱을 다시 켬). 새 앱은 안 끝난 것을 이어서 지켜보고 놓는다.
+  // 키 = 탭 · 프롬프트(공백 정리) · 설정(글자로) · 레퍼런스(절대 경로) · 작업 폴더 자리. 이름과 --save-to 는 안 본다(받는 곳만 바꿔 다시 실행해도 이어 받기).
+  // 같은 것을 일부러 여럿 적었으면 몇 번째인지(#2 …)로 가른다 — 다시 실행해도 같은 순서끼리 짝지어진다
   jobs.forEach((j, i) => { j.name ||= `job_${i + 1}`; });
-  const keyOf = (j) => crypto.createHash("sha256").update(JSON.stringify([tab.name, String(j.prompt),
-    SETTING_KEYS.map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, WORKDIR ? placeOf(spec, j, WORKDIR).rel : SAVE_TO || ""])).digest("hex").slice(0, 24);
+  if (AGAIN_ARG) {
+    if (!AGAIN.size) fail("--again 은 또 만들 작업 이름과 같이: --again=이름,이름 — 사용자에게 물은 뒤 그 작업만(이름 없이 쓰면 이미 보낸 것까지 또 나간다)");
+    const unknown = [...AGAIN].filter((n) => !jobs.some((j) => j.name === n));
+    if (unknown.length) fail(`--again 의 작업 이름이 jobs.json 에 없다: ${unknown.join(", ")}`);
+  }
+  const win = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
+  const placeRel = (j) => (WORKDIR ? placeOf(spec, j, WORKDIR).rel : "");
+  const hash = (v) => crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 24);
+  const seen = {};
+  for (const j of jobs) {
+    const key = hash([tab.name, String(j.prompt).replace(/\s+/g, " ").trim(),
+      SETTING_KEYS.map((k) => { const v = j[k] ?? defaults[k]; return v === undefined || v === null ? null : String(v); }),
+      j.refs.map((p) => win(path.resolve(p))), WORKDIR, placeRel(j)]);
+    seen[key] = (seen[key] || 0) + 1;
+    j.keys = [`${key}#${seen[key]}`];
+    if (seen[key] === 1) j.keys.push(hash([tab.name, String(j.prompt), SETTING_KEYS.map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, placeRel(j) || SAVE_TO || ""]));
+  }
   const encPid = encodeURIComponent(tab.pid);
-  // 전에 보낸 묶음이 지금 어떤지 — "끝" · "보냄"(만드는 중이거나 아직 안 놓음) · "다시"(그림 0장으로 끝남) · "모름" · "옛"(묶음 id 없는 옛 앱)
+  // 전에 보낸 묶음이 지금 어떤지 — "끝" · "보냄"(만드는 중이거나 아직 안 놓음) · "다시"(그림 0장으로 끝남) · "멈춤"(사람이 앱에서 멈춤) · "모름" · "옛"(묶음 id 없는 옛 앱)
   const stateOf = async (e) => {
     if (!e.id) return e.state === "보냄" || e.state === "끝" ? "옛" : "모름";
     const b = await get(`/api/batch?pid=${encPid}&batch_id=${encodeURIComponent(e.id)}`);
-    if (b?.ok) return !b.finished ? "보냄" : !b.done ? "다시" : e.state === "끝" ? "끝" : "보냄";
+    if (b?.ok) return !b.finished ? "보냄" : !b.done ? (b.cancelled ? "멈춤" : "다시") : e.state === "끝" ? "끝" : "보냄";
     // 앱을 다시 켜 집계가 사라졌으면 갤러리의 batch_id 로 — 그림이 있으면 만든 것, 없으면 들어갔는지 모른다
     const items = (await get(`/api/gallery?pid=${encPid}&strict=1&batch_id=${encodeURIComponent(e.id)}`))?.items || [];
     return e.state === "끝" ? "끝" : items.length ? "보냄" : "모름";
   };
   const toSend = [], resumed = [], already = [], unsure = [];
   for (const j of jobs) {
-    j.key = keyOf(j);
-    const e = AGAIN ? null : lastSent(j.key);
+    const e = AGAIN.has(j.name) ? null : lastSent(j.keys);
     if (!e) { toSend.push(j); continue; }
     const st = await stateOf(e);
-    if (st === "다시") { ledgerSet(e.rid, null); toSend.push(j); continue; }
-    if (st === "모름") { unsure.push(`${j.name} — ${sentWhen(e)} 에 보냈는데 앱에 들어갔는지 모른다(${e.note || (e.id ? "앱을 다시 켜 묶음도 그림도 없음" : "보내는 중에 끊김")})`); continue; }
+    if (st === "다시") { if (!DRY) ledgerSet(e.rid, null); toSend.push(j); continue; }
+    if (st === "모름") { unsure.push(j.name); continue; }
+    if (st === "멈춤") {
+      if (!DRY) ledgerSet(e.rid, { state: "끝", note: "앱에서 멈춤" });
+      already.push(`${j.name} — ${sentWhen(e)} 에 보냈는데 앱에서 멈춘 묶음(그림 0장)`);
+      continue;
+    }
+    if (st === "보냄" && e.state !== "보냄" && !DRY) ledgerSet(e.rid, { state: "보냄" });   // 앱이 받은 걸 확인 — '모름'으로 굳지 않게
     if (st === "보냄" && direct && (WATCH || WORKDIR)) { resumed.push({ j, id: e.id, model: j.model ?? defaults.model ?? base.model, rid: e.rid }); continue; }
     already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${st === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다") : `"${tab.name}" 탭 갤러리에서 볼 것`}`);
   }
-  if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again):\n${already.map((x) => `    ${x}`).join("\n")}`);
+  if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again=작업 이름):\n${already.map((x) => `    ${x}`).join("\n")}`);
   if (resumed.length) log(`  이미 보냄 — 이어서 지켜보고 놓는다: ${resumed.map((x) => x.j.name).join(", ")}`);
+  if (already.length || resumed.length || unsure.length) log(`  보낼 것 ${toSend.length}건 · 이어 받기 ${resumed.length}건 · 건너뜀 ${already.length + unsure.length}건`);
   if (unsure.length) {
-    const msg = `앱에 들어갔는지 모르는 작업이 있다 — 다시 보내면 두 번 과금될 수 있다:\n${unsure.map((x) => `    ${x}`).join("\n")}\n` +
-      `  사용자에게 나노바나나 "${tab.name}" 탭 갤러리에 그 그림이 생겼는지(만드는 중인지) 봐 달라고 할 것. 있으면 다시 보내지 않는다 — 없으면 사용자 확인 뒤 --again`;
-    if (DRY) log(`  주의: ${msg}`);
-    else fail(msg);
+    // 그 작업만 보내지 않는다 — 나머지는 보내고, 끝나면 실패 코드로 알린다
+    const msg = `앱에 들어갔는지 모르는 작업은 보내지 않는다(다시 보내면 두 번 과금될 수 있다): ${unsure.join(", ")}\n` +
+      `  사용자에게 나노바나나 "${tab.name}" 탭 갤러리에 그 그림이 생겼는지(만드는 중인지) 봐 달라고 할 것. 있으면 다시 보내지 않는다 — 없으면 사용자 확인 뒤 --again=${unsure.join(",")}`;
+    if (!DRY && !toSend.length && !resumed.length) fail(msg);
+    log(`  주의: ${msg}`);
+    if (!DRY) process.exitCode = 1;
   }
-  if (!DRY && !toSend.length && !resumed.length) fail("보낼 것이 없다 — 모두 24시간 안에 이미 보냈다(결과는 앱 갤러리 · 작업 폴더에). 같은 것을 또 만들려면 사용자에게 물은 뒤 --again");
+  if (!DRY && !toSend.length && !resumed.length) {
+    log("보낼 것 없음 — 모두 24시간 안에 이미 보냈다(결과는 앱 갤러리 · 작업 폴더에). 같은 것을 또 만들려면 사용자에게 물은 뒤 --again=작업 이름");
+    return;
+  }
+  if (WORKDIR && resumed.length && !DRY) keepJobs(WORKDIR, file);
 
   const total = toSend.reduce((a, j) => a + countOf(j), 0);
   const need = await loadTicket();   // 표가 없으면 요청 번호 — dry-run 은 알려만 주고(카드 전에 승인해 두면 바로 보낸다) 보내기는 멈춘다
@@ -689,8 +768,12 @@ async function main() {
     return `Generate 실패 (${who}): ${gr.error || gr.raw || "알 수 없음"}`;
   };
   // 새 앱 — 탭(pid)과 그 작업의 프롬프트·설정·레퍼런스를 한 요청으로. 장수(count)는 늘 보낸다(한도·기록과 맞춘다).
+  // 잠금 안에서 기록을 다시 본다 — 분류한 뒤 같은 명령을 동시에 돌린 다른 실행이 이 작업을 넣었으면 건너뛴다
+  const otherSent = (j) => { const e = lastSent(j.keys); return e && (!AGAIN.has(j.name) || e.at >= RUN_AT) ? e : null; };
   async function sendDirect(j, i, need) {
     if ((await inFlight()) + need > MAX_IN_FLIGHT) return false;
+    const other = otherSent(j);
+    if (other) return { skip: other };
     const model = j.model ?? defaults.model ?? base.model;
     const resolution = j.resolution ?? defaults.resolution ?? base.resolution;
     const rsv = await usageApi("POST", "/usage", {
@@ -704,8 +787,10 @@ async function main() {
       if (k !== "count" && v !== undefined && v !== null && v !== "") settings[k] = v;
     }
     const body = { pid: tab.pid, prompt: String(j.prompt), settings, ref_paths: j.refs.map((p) => path.resolve(p)) };
-    // 넣기 직전에 남긴다 — 앱 답을 못 받고 끊기면 다음 실행은 '모름'으로 멈춘다
-    const rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" });
+    // 넣기 직전에 남긴다 — 앱 답을 못 받고 끊기면 다음 실행은 '모름'으로 멈춘다. 못 남기면 보내지 않는다
+    let rid;
+    try { rid = ledgerAdd({ key: j.keys[0], name: j.name, tab: tab.name, state: "보내는 중" }); }
+    catch (e) { await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {}); throw e; }
     let gr = { ok: false }, answered = false;
     try {
       for (let attempt = 0; attempt < 12; attempt++) {
@@ -741,6 +826,8 @@ async function main() {
   async function sendOne(j, i, need) {
     if ((await inFlight()) + need > MAX_IN_FLIGHT) return false;
     if ((await activeTab())?.pid !== tab.pid) return false;
+    const other = otherSent(j);
+    if (other) return { skip: other };
     const snap = { settings: await get("/api/settings"), refs: (await get("/api/refs"))?.refs || [] };
     const model = j.model ?? defaults.model ?? snap.settings.model;
     const resolution = j.resolution ?? defaults.resolution ?? snap.settings.resolution;
@@ -765,7 +852,7 @@ async function main() {
       }
       const sr = await post("/api/settings", s);
       if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
-      rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" });
+      rid = ledgerAdd({ key: j.keys[0], name: j.name, tab: tab.name, state: "보내는 중" });
       for (let attempt = 0; attempt < 12; attempt++) {
         answered = false;
         gr = await post("/api/generate", {});
@@ -797,6 +884,8 @@ async function main() {
         if (!direct) await waitForTab(tab);
         done = await withSendLock("nanobanana", () => (direct ? sendDirect(j, i, need) : sendOne(j, i, need)));
       }
+      if (done.skip) { log(`  건너뜀 ${j.name} — 다른 실행이 ${sentWhen(done.skip)} 에 넣었다(같은 명령을 동시에 돌림)`); continue; }
+      if (WORKDIR) keepJobs(WORKDIR, file);
       if (direct) batches.push({ j, k: sentJobs.length, id: done.batch_id, model: done.model, rid: done.rid });
       sentJobs.push(j);
       sent++;
@@ -817,7 +906,7 @@ async function main() {
   // 결과까지 본 묶음은 '끝'(다시 실행해도 건너뜀) · 그림 0장으로 끝난 것은 기록에서 뺀다(다시 보낼 수 있게) · 안 끝난 것은 그대로(다시 실행하면 이어서)
   const markDone = () => {
     for (const b of batches) {
-      if (b.res?.finished) ledgerSet(b.rid, b.res.done ? { state: "끝" } : null);
+      if (b.res?.finished) ledgerSet(b.rid, b.res.done ? { state: "끝" } : b.res.cancelled ? { state: "끝", note: "앱에서 멈춤" } : null);
       else if (b.lost && groups[b.k]?.length) ledgerSet(b.rid, { state: "끝" });
     }
   };
@@ -896,8 +985,9 @@ async function main() {
         if (!fs.existsSync(i.filepath)) { log(`  못 옮김 — 원본이 없음: ${i.filepath}`); continue; }
         const name = placeName(WORKDIR, pl, "I", path.extname(i.filepath) || ".png", j.name);
         fs.copyFileSync(i.filepath, path.join(dir, name));
+        have.add(i.filepath);   // 같은 실행에서 같은 그림을 두 번 놓지 않게
         rows.push({ 폴더: pl.rel, 파일: name, 작업: j.name || `job_${k + 1}`, 테이크: String.fromCharCode(65 + t), 모델: i.model || "", 원본: i.filepath,
-          씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", "받은 시각": new Date().toISOString(), 프롬프트: promptKey(j.prompt) });
+          씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", "받은 시각": new Date().toISOString(), 프롬프트: takePrint(spec, j) });
         log(`  ${pl.rel}/${name}`);
       }
     }

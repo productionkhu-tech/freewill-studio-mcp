@@ -29,9 +29,10 @@
 //   node send-to-seedance.mjs jobs.json --watch     보내고 영상이 다 끝날 때까지 지켜봄
 //   node send-to-seedance.mjs jobs.json --save-to <폴더>
 //                                                   지켜보다 끝난 영상을 받아 그 폴더로 옮김(<작업 이름>_A.mp4 · _목록.tsv)
-//   node send-to-seedance.mjs jobs.json --again     24시간 안에 이미 보낸 것도 또 보냄 — 사용자에게 물은 뒤에만(돈이 든다).
+//   node send-to-seedance.mjs jobs.json --again=a,b
+//                                                   24시간 안에 이미 보낸 a · b 를 또 보냄 — 사용자에게 물은 뒤에만(돈이 든다), 또 만들 작업만 이름으로.
 //                                                   없으면 이미 보낸 것은 건너뛰고(안 끝난 것은 이어서 지켜보고 놓는다), 앱에 들어갔는지
-//                                                   모르는 것이 있으면 멈춘다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게(아래 '보낸 기록')
+//                                                   모르는 작업은 보내지 않는다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게(아래 '보낸 기록')
 //   node send-to-seedance.mjs --status <id> [<id>]  보낸 요청의 지금 상태
 //   node send-to-seedance.mjs --save-final <초안 파일> <본편 카드 id>
 //                                                   본편(card.final 1080p)을 받아 초안 옆에 같은 번호로(_480 → _1080)
@@ -105,9 +106,16 @@ const readJsonArg = (raw) => {
 // 어느 파일이 어디서 왔는지는 <작업>\_검수\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다.
 // 받기: 검수를 쓰는 작업의 영상은 받지 않고(사용자 10/30 "검수하려고 다 받다 보니 용량이 꽉 참") "대기"로 적는다 — 검수 페이지가
 // 앱 주소(/api/media/<task>)로 재생하고, 저장할 때 OK·보류만 그 자리로 받아 "받음"으로 바꾼다. 빈칸 = 받아 둔 파일(예전 그대로).
-// 프롬프트 = 그 영상을 만든 프롬프트의 지문(같은 작업 이름으로 고쳐 다시 보내도 북이 판마다 맞는 프롬프트를 붙이게, 11/2). 나노바나나도 같은 칸으로 쓴다
+// 프롬프트 = 그 영상을 만든 판의 지문(같은 작업 이름으로 고쳐 다시 보내도 북이 판마다 맞는 프롬프트를 붙이게, 11/2). 나노바나나도 같은 칸으로 쓴다
 const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각", "받기", "프롬프트"];
-const promptKey = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
+// 판 지문 — 프롬프트 글(공백 정리) · 주요 설정 · 레퍼런스 파일 이름. 보내기 스크립트 둘과 make-review 가 같은 식으로 센다(jobs.json 원문 기준)
+const PRINT_KEYS = ["model", "mode", "ratio", "aspect", "duration", "resolution", "quality"];
+const takePrint = (spec, j) => crypto.createHash("sha256").update(JSON.stringify([
+  String(j.prompt ?? "").replace(/\s+/g, " ").trim(),
+  ...PRINT_KEYS.map((k) => String(j[k] ?? spec.defaults?.[k] ?? "")),
+  (j.refs || []).map((r) => path.basename(String(typeof r === "string" ? r : r?.path || "")).toLowerCase()),
+])).digest("hex").slice(0, 12);
+const BOM = new RegExp("^" + String.fromCharCode(0xfeff));
 const ASSET_KINDS = ["인물", "로케이션", "프랍", "참고"];
 const readJsonSafe = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch { return {}; } };
 const workCode = (spec, work) => String(spec.code || readJsonSafe(path.join(work, "_작업설정.json")).code || "").trim();
@@ -132,7 +140,7 @@ function placeOf(spec, j, work) {
 function readWorkList(work) {
   const p = path.join(work, "_검수", "목록.tsv");
   if (!fs.existsSync(p)) return [];
-  const lines = fs.readFileSync(p, "utf8").split(/\r?\n/).filter((l) => l.trim());
+  const lines = fs.readFileSync(p, "utf8").replace(BOM, "").split(/\r?\n/).filter((l) => l.trim());
   const head = (lines.shift() || "").split("\t");
   return lines.map((l) => Object.fromEntries(l.split("\t").map((v, i) => [head[i] || `c${i}`, v])));
 }
@@ -141,13 +149,17 @@ function appendWorkList(work, rows) {
   fs.mkdirSync(path.join(work, "_검수"), { recursive: true });
   const p = path.join(work, "_검수", "목록.tsv");
   const clean = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
-  // 머리줄은 있던 칸 + 모자란 칸을 뒤에 — 예전 줄은 늘어난 칸을 빈칸으로 읽는다
-  const text = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
-  const nl = text.indexOf("\n");
-  const old = text ? (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, "").split("\t") : [];
+  // 머리줄은 make-review 처럼 찾고(BOM · 앞 빈 줄 건너뜀), 있던 칸 + 모자란 칸을 뒤에 — 예전 줄은 늘어난 칸을 빈칸으로 읽는다.
+  // 머리줄을 고쳐야 하면(칸이 늘거나 BOM · 앞 빈 줄) 다시 쓰고, 끝 줄바꿈이 없으면 붙인 뒤 잇는다
+  const raw = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
+  const lines = raw.replace(BOM, "").split("\n");
+  const hi = lines.findIndex((l) => l.trim());
+  const old = hi < 0 ? [] : lines[hi].replace(/\r$/, "").split("\t");
   const head = [...old, ...LIST_HEAD.filter((h) => !old.includes(h))];
-  if (old.length && head.length > old.length) fs.writeFileSync(p, head.join("\t") + (nl < 0 ? "\n" : text.slice(nl)));
-  fs.appendFileSync(p, `${old.length ? "" : `${head.join("\t")}\n`}${rows.map((r) => head.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
+  const body = `${rows.map((r) => head.map((h) => clean(r[h])).join("\t")).join("\n")}\n`;
+  if (hi < 0) return fs.writeFileSync(p, `${head.join("\t")}\n${body}`);
+  if (head.length > old.length || hi > 0 || BOM.test(raw)) fs.writeFileSync(p, [head.join("\t"), ...lines.slice(hi + 1)].join("\n"));
+  fs.appendFileSync(p, `${raw.endsWith("\n") ? "" : "\n"}${body}`);
 }
 // 검수 화면을 쓰는지 — make-review 와 같은 규칙(작업 설정 → 이 PC 사용자 설정 → 안 정했으면 켬)
 function reviewOn(work) {
@@ -430,27 +442,63 @@ const COSTLY = { "card.final": 1, "card.regenerate": 1 };   // 26.10.2004~ 재�
 // 요청마다 사용자 폴더에 남긴다: 앱에 넣기 직전 '보내는 중' → 앱 번호 → '보냄'(만드는 중) → 결과까지 봤으면 '끝'.
 // 24시간 안에 같은 것(프로젝트·프롬프트·설정·레퍼런스·놓을 곳 — 이름은 안 본다)을 다시 보내면 보냄·끝은 건너뛰고(안 끝난 것은 이어서
 // 지켜보고 놓는다), 앱에 들어갔는지 모르는 것은 멈춘다. 앱이 확실히 못 만든 것(10분 대기 취소 · 생성 실패)은 기록에서 빼서 다시 보낼 수 있다.
-// 일부러 또 만들 때만 --again — 돈이 드니 사용자에게 물은 뒤.
-const AGAIN = flag("--again");
+// 일부러 또 만들 때만 --again=<작업 이름,…> — 돈이 드니 사용자에게 물은 뒤, 또 만들 작업만 이름으로. 이름 없는 --again 은 --do 에만
+// (jobs.json 에 쓰면 파일 안의 이미 보낸 작업까지 또 나가므로 — 11/2 검수).
+const AGAIN_ARG = args.find((a) => a === "--again" || a.startsWith("--again="));
+const AGAIN = new Set((AGAIN_ARG || "").slice(8).split(",").map((s) => s.trim()).filter(Boolean));
+const RUN_AT = Date.now();
 const LEDGER = path.join(os.homedir(), ".freewill-studio", "seedance-sent.json");
-const UNSURE = /응답이 없습니다|연락이 끊겼|없는 작업|사라짐/;
-const readLedger = () => { const l = readJsonSafe(LEDGER); return Array.isArray(l) ? l.filter((x) => Date.now() - x.at < 24 * 3600e3) : []; };
-function writeLedger(fn) {
-  try {
-    fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
-    fs.writeFileSync(`${LEDGER}.tmp`, JSON.stringify(fn(readLedger())));
-    fs.renameSync(`${LEDGER}.tmp`, LEDGER);
-  } catch (e) { log(`  참고: 보낸 기록을 못 남김 — ${e.message}`); }
+const UNSURE = /응답이 없습니다|연락이 끊겼|없는 작업|없는 명령|사라짐/;
+// 기록 파일은 여러 실행(Claude · Codex · 백그라운드)이 같이 쓴다 — 잠금 안에서 읽고 고치고 쓴다. 깨진 파일은 빈 기록으로 보지 않는다(보내지 않음).
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function ledgerLocked(fn) {
+  const lock = `${LEDGER}.lock`;
+  fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
+  for (const t0 = Date.now(); ;) {
+    try { fs.writeFileSync(lock, String(process.pid), { flag: "wx" }); break; } catch (e) { if (e.code !== "EEXIST") throw e; }
+    try { if (Date.now() - fs.statSync(lock).mtimeMs > 10000) fs.rmSync(lock, { force: true }); } catch {}   // 주인이 죽은 잠금
+    if (Date.now() - t0 > 30000) throw new Error("보낸 기록 잠금을 30초 동안 못 얻음");
+    sleepSync(30 + Math.random() * 70);
+  }
+  try { return fn(); } finally { try { fs.rmSync(lock, { force: true }); } catch {} }
 }
-const ledgerAdd = (e) => { const rid = crypto.randomUUID(); writeLedger((l) => [...l, { rid, at: Date.now(), ...e }]); return rid; };
-// patch 가 null 이면 기록에서 뺀다(확실히 안 만들어짐 — 다시 보내도 된다)
-const ledgerSet = (rid, patch) => writeLedger((l) => (patch ? l.map((x) => (x.rid === rid ? { ...x, ...patch } : x)) : l.filter((x) => x.rid !== rid)));
-const lastSent = (key) => readLedger().filter((x) => x.key === key).pop();
+function readLedger() {
+  let l = null;
+  try { l = JSON.parse(fs.readFileSync(LEDGER, "utf8")); } catch (e) { if (e.code === "ENOENT") return []; }
+  if (!Array.isArray(l)) throw new Stop(`보낸 기록 파일이 깨졌다(${LEDGER}) — 두 번 과금될 수 있어 보내지 않는다. 사용자에게 알리고, 앱 카드를 확인한 뒤 그 파일을 고칠지 지울지 정하게 할 것`);
+  return l.filter((x) => Date.now() - x.at < 24 * 3600e3);
+}
+function writeLedger(fn) {
+  ledgerLocked(() => {
+    const tmp = `${LEDGER}.${process.pid}.${crypto.randomUUID().slice(0, 8)}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(fn(readLedger())));
+    fs.renameSync(tmp, LEDGER);
+  });
+}
+// 넣기 전 기록 — 남겼는지 다시 읽어 확인한 뒤에만 보낸다(못 남긴 채 보내면 다시 실행할 때 또 나간다)
+const ledgerAdd = (e) => {
+  const rid = crypto.randomUUID();
+  try {
+    writeLedger((l) => [...l, { rid, at: Date.now(), ...e }]);
+    if (!readLedger().some((x) => x.rid === rid)) throw new Error("남긴 줄이 없다");
+  } catch (err) { throw err instanceof Stop ? err : new Stop(`보낸 기록을 못 남겨 보내지 않는다 — ${err.message}`); }
+  return rid;
+};
+// 보낸 뒤 고치기 — patch 가 null 이면 기록에서 뺀다(확실히 안 만들어짐 — 다시 보내도 된다). 못 고쳐도 이미 보냈으니 알리기만
+const ledgerSet = (rid, patch) => {
+  try { writeLedger((l) => (patch ? l.map((x) => (x.rid === rid ? { ...x, ...patch } : x)) : l.filter((x) => x.rid !== rid))); }
+  catch (e) { log(`  참고: 보낸 기록을 못 고침 — ${e.message}`); }
+};
+// keys = [이 판 키, 11/2 낮 판 키(그때 남긴 기록과 맞추려고 — 11/4 뒤엔 없어도 됨)]
+const lastSent = (keys) => readLedger().filter((x) => keys.includes(x.key)).pop();
 const sentWhen = (e) => new Date(e.at).toLocaleString("ko-KR", { hour12: false });
-// 앱이 알려 준 요청의 끝 — "다시"(확실히 안 만들어짐) · "모름"(들어갔는지 모름) · null(만들었거나 만드는 중)
+// 앱이 알려 준 요청의 끝 — "다시"(확실히 안 만들어짐) · "모름"(들어갔는지 모름) · null(만들었거나 만드는 중).
+// 앱은 카드가 전부 실패해도 요청을 done 으로 올린다 — 카드가 있고 전부 실패면 상태와 상관없이 "다시"(11/2 검수)
 const outcome = (j) => {
-  if (j.status !== "failed" || (j.messages || []).some((c) => c.status !== "failed")) return null;
-  return !(j.messages || []).length && UNSURE.test(String(j.error || "")) ? "모름" : "다시";
+  const cards = j.messages || [];
+  if (cards.length && cards.every((c) => c.status === "failed")) return "다시";
+  if (j.status !== "failed" || cards.length) return null;
+  return UNSURE.test(String(j.error || "")) ? "모름" : "다시";
 };
 
 // 커넥터 — 사용 기록과 하루 한도.
@@ -759,6 +807,22 @@ async function waitTaken(id) {
   }
 }
 
+// 보낸 jobs.json 원문을 작업 폴더 05_프롬프트 에 남긴다 — 프롬프트 북 · 작업 페이지가 결과를 만든 프롬프트를 여기서 찾는다(목록의 판 지문).
+// 읽을 때 잡아 둔 원문 그대로(보내는 사이 파일을 고쳐도), 같은 원문이 이미 있으면 두지 않고, 이름이 겹치면 시각을 붙인다.
+// jobs 파일이 05_프롬프트 안에 있어도 따로 남긴다 — 제자리에서 고쳐 다시 보내면 앞 판이 사라지므로(11/2 검수). 작업마다 넣은 뒤 · 이어 받을 때 부른다
+let JOBS_TEXT = "";
+function keepJobs(work, jobsFile) {
+  try {
+    const pd = path.join(work, "05_프롬프트");
+    fs.mkdirSync(pd, { recursive: true });
+    const self = path.resolve(jobsFile);
+    if (fs.readdirSync(pd).some((n) => /\.json$/i.test(n) && path.resolve(pd, n) !== self && fs.readFileSync(path.join(pd, n), "utf8") === JOBS_TEXT)) return;
+    const stem = path.parse(jobsFile).name, stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+    let to = path.join(pd, `${stem}.json`);
+    for (let n = 1; fs.existsSync(to); n++) to = path.join(pd, `${stem}_${stamp}${n > 1 ? `_${n}` : ""}.json`);
+    fs.writeFileSync(to, JOBS_TEXT);
+  } catch (e) { log(`  참고: 보낸 jobs.json 을 05_프롬프트 에 못 남김 — ${e.message}`); }
+}
 // 작업 페이지(make-review)의 '보낼 것' — 보내기 전에 레퍼런스를 그림으로 본다(사용자 10/20 "돌리기 전에 어떤 레퍼런스 쓸 건지 시각적으로").
 // jobs.json 에 "work"(작업 폴더)가 있을 때만. 보낸 뒤에는 '보냄'으로 바꾸고, 보낸 jobs.json 을 그 작업 폴더의 05_프롬프트 에 남긴다.
 function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
@@ -770,16 +834,7 @@ function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
     fs.mkdirSync(dir, { recursive: true });
     const now = new Date().toISOString();
     fs.writeFileSync(path.join(dir, "보낼것.json"), JSON.stringify({ ...plan, at: now, sent, ...(sent ? { sentAt: now } : {}) }, null, 1));
-    if (sent && jobsFile) {
-      // 같은 이름으로 또 보내면 덮어쓰지 않고 시각을 붙여 남긴다 — 앞에 보낸 프롬프트가 작업 페이지 · 프롬프트 북에서 사라지지 않게(10/22)
-      const pd = path.join(work, "05_프롬프트");
-      fs.mkdirSync(pd, { recursive: true });
-      let to = path.join(pd, path.basename(jobsFile));
-      if (fs.existsSync(to) && path.resolve(to) !== path.resolve(jobsFile) && fs.readFileSync(to, "utf8") !== fs.readFileSync(jobsFile, "utf8")) {
-        to = to.replace(/\.json$/i, `_${now.replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}.json`);
-      }
-      if (path.resolve(to) !== path.resolve(jobsFile)) fs.copyFileSync(jobsFile, to);
-    }
+    if (sent && jobsFile) keepJobs(work, jobsFile);
     log(`  작업 페이지 '보낼 것'${sent ? "을 보냄으로 바꿨다(jobs.json 은 05_프롬프트 에)" : "에 레퍼런스를 올렸다 — 페이지에서 그림으로 보여 준 뒤 확인 카드로"}: ${path.join(dir, "보낼것.json")}`);
   } catch (e) { log(`  참고: 보낼 것을 못 남김 — ${e.message}`); }
 }
@@ -805,9 +860,10 @@ async function main() {
     if (need) {
       const manual = rememberedManual();
       if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual (그때 버전을 기억해 둔다)");
-      // 같은 카드를 24시간 안에 또 본편·재생성하지 않는다(끊긴 뒤 같은 명령을 다시 돌려도)
-      const key = `do:${name}:${JSON.stringify(cargs)}`;
-      const e = AGAIN ? null : lastSent(key);
+      // 같은 카드를 24시간 안에 또 본편·재생성하지 않는다(끊긴 뒤 같은 명령을 다시 돌려도). 인자 키 순서는 가리지 않는다
+      const sorted = (v) => (Array.isArray(v) ? v.map(sorted) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : v);
+      const key = `do:${name}:${JSON.stringify(sorted(cargs))}`;
+      const e = AGAIN_ARG ? null : lastSent([key, `do:${name}:${JSON.stringify(cargs)}`]);
       if (e) {
         fail(`${name} ${JSON.stringify(cargs)} 은 ${sentWhen(e)} 에 이미 보냈다${e.state === "보냄" ? "" : `(앱에 들어갔는지 모름 — ${e.note || "보내는 중에 끊김"})`} — ` +
           "두 번 과금될 수 있어 보내지 않는다. --do cards.list 로 그 카드를 먼저 찾을 것. 같은 것을 또 만들려면 사용자에게 물은 뒤 --again");
@@ -815,7 +871,7 @@ async function main() {
       await quota(need, name);
       const s = await appStatus(manual);
       rsv = await reserve(need, { kind: name, project: s.project, billing: s.billing, job: String(cargs?.id || "") });
-      rid = ledgerAdd({ key, name, project: s.project, state: "보내는 중" });
+      try { rid = ledgerAdd({ key, name, project: s.project, state: "보내는 중" }); } catch (err) { await rsv.settle(0); throw err; }
     }
     let result;
     try {
@@ -840,7 +896,7 @@ async function main() {
   const file = positional[0];
   if (!file) fail("작업 파일(jobs.json)을 주세요");
   let spec;
-  try { spec = JSON.parse(fs.readFileSync(file, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch (e) { fail(`작업 파일을 못 읽음 — ${e.message}`); }
+  try { JOBS_TEXT = fs.readFileSync(file, "utf8"); spec = JSON.parse(JOBS_TEXT.replace(BOM, "")); } catch (e) { fail(`작업 파일을 못 읽음 — ${e.message}`); }
   if (!spec.manual) fail("jobs.json 에 \"manual\"(읽은 설명서 버전)이 없다 — 먼저 --manual 로 앱의 설명서를 읽고 그 버전을 적을 것");
   if (FREEWILL_GUIDE && spec.guide !== FREEWILL_GUIDE) fail(GUIDE_STALE(spec.guide));
   const defaults = spec.defaults || {};
@@ -1071,32 +1127,56 @@ async function main() {
   if (noteText) log(noteText.slice(1));
 
   // 보낸 기록 — 24시간 안에 같은 것을 보냈으면 다시 보내지 않는다(끊긴 대화가 다시 실행 · 앱을 다시 켬). 안 끝난 것은 이어서 지켜보고 놓는다.
+  // 키 = 프로젝트 · 프롬프트(공백 정리) · 설정(글자로) · 레퍼런스(절대 경로) · 작업 폴더 자리. 이름과 --save-to 는 안 본다(받는 곳만 바꿔 다시 실행해도 이어 받기).
+  // 같은 것을 일부러 여럿 적었으면 몇 번째인지(#2 …)로 가른다 — 다시 실행해도 같은 순서끼리 짝지어진다
   jobs.forEach((j, i) => { j.name ||= `job_${i + 1}`; });
-  const keyOf = (j) => crypto.createHash("sha256").update(JSON.stringify([target?.id || project, String(j.prompt), settingsOf(j),
-    j.refs.map((r) => [r.path, r.role || ""]), WORKDIR, WORKDIR ? placeOf(spec, j, WORKDIR).rel : SAVE_TO || ""])).digest("hex").slice(0, 24);
+  if (AGAIN_ARG) {
+    if (!AGAIN.size) fail("--again 은 또 만들 작업 이름과 같이: --again=이름,이름 — 사용자에게 물은 뒤 그 작업만(이름 없이 쓰면 이미 보낸 것까지 또 나간다)");
+    const unknown = [...AGAIN].filter((n) => !jobs.some((j) => j.name === n));
+    if (unknown.length) fail(`--again 의 작업 이름이 jobs.json 에 없다: ${unknown.join(", ")}`);
+  }
+  const win = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
+  const placeRel = (j) => (WORKDIR ? placeOf(spec, j, WORKDIR).rel : "");
+  const hash = (v) => crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 24);
+  const seen = {};
+  for (const j of jobs) {
+    const key = hash([target?.id || project, String(j.prompt).replace(/\s+/g, " ").trim(), Object.entries(settingsOf(j)).map(([k, v]) => [k, String(v)]),
+      j.refs.map((r) => [win(r.path), r.role || ""]), WORKDIR, placeRel(j)]);
+    seen[key] = (seen[key] || 0) + 1;
+    j.keys = [`${key}#${seen[key]}`];
+    if (seen[key] === 1) j.keys.push(hash([target?.id || project, String(j.prompt), settingsOf(j), j.refs.map((r) => [r.path, r.role || ""]), WORKDIR, placeRel(j) || SAVE_TO || ""]));
+  }
   const toSend = [], resumed = [], already = [], unsure = [];
   for (const j of jobs) {
-    j.key = keyOf(j);
-    const e = AGAIN ? null : lastSent(j.key);
+    const e = AGAIN.has(j.name) ? null : lastSent(j.keys);
     if (!e) { toSend.push(j); continue; }
     const app = e.id ? await get(`/api/agent/jobs/${encodeURIComponent(e.id)}`) : null;
     const alive = app?.http === 200;
     const o = alive ? outcome(app) : e.state === "보냄" || e.state === "끝" ? null : "모름";
-    if (o === "다시") { ledgerSet(e.rid, null); toSend.push(j); continue; }
-    if (o === "모름") { unsure.push(`${j.name} — ${sentWhen(e)} 에 보냈는데 앱에 들어갔는지 모른다(${(alive && app.error) || e.note || "보내는 중에 끊김"})`); continue; }
+    if (o === "다시") { if (!DRY) ledgerSet(e.rid, null); toSend.push(j); continue; }
+    if (o === "모름") { unsure.push({ name: j.name, why: (alive && app.error) || e.note || "보내는 중에 끊김" }); continue; }
+    if (alive && e.state !== "보냄" && e.state !== "끝" && !DRY) ledgerSet(e.rid, { state: "보냄" });   // 앱이 받은 걸 확인 — '모름'으로 굳지 않게
     if (e.state !== "끝" && alive && (WATCH || WORKDIR)) { resumed.push({ id: e.id, name: j.name, j, st: settingsOf(j), rid: e.rid }); continue; }
     already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${e.state === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다")
       : alive ? `상태: --status ${e.id}` : "앱을 다시 켜 여기서는 결과를 못 이어 받는다(앱 카드에서 볼 것)"}`);
   }
-  if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again):\n${already.map((x) => `    ${x}`).join("\n")}`);
+  if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again=작업 이름):\n${already.map((x) => `    ${x}`).join("\n")}`);
   if (resumed.length) log(`  이미 보냄 — 이어서 지켜보고 놓는다: ${resumed.map((x) => x.name).join(", ")}`);
+  if (already.length || resumed.length || unsure.length) log(`  보낼 것 ${toSend.length}건 · 이어 받기 ${resumed.length}건 · 건너뜀 ${already.length + unsure.length}건`);
   if (unsure.length) {
-    const msg = `앱에 들어갔는지 모르는 요청이 있다 — 다시 보내면 두 번 과금될 수 있다:\n${unsure.map((x) => `    ${x}`).join("\n")}\n` +
-      `  사용자에게 시댄스 "${project}" 프로젝트에 그 카드가 생겼는지 봐 달라고 할 것(또는 --do cards.list). 카드가 있으면 다시 보내지 않는다 — 없으면 사용자 확인 뒤 --again`;
-    if (DRY) log(`  주의: ${msg}`);
-    else fail(msg);
+    // 그 작업만 보내지 않는다 — 나머지는 보내고, 끝나면 실패 코드로 알린다
+    const msg = `앱에 들어갔는지 모르는 요청은 보내지 않는다(다시 보내면 두 번 과금될 수 있다): ${unsure.map((x) => `${x.name}(${x.why})`).join(", ")}\n` +
+      `  사용자에게 시댄스 "${project}" 프로젝트에 그 카드가 생겼는지 봐 달라고 할 것(또는 --do cards.list). 카드가 있으면 다시 보내지 않는다 — ` +
+      `없으면 사용자 확인 뒤 --again=${unsure.map((x) => x.name).join(",")}`;
+    if (!DRY && !toSend.length && !resumed.length) fail(msg);
+    log(`  주의: ${msg}`);
+    if (!DRY) process.exitCode = 1;
   }
-  if (!DRY && !toSend.length && !resumed.length) fail("보낼 것이 없다 — 모두 24시간 안에 이미 보냈다(결과는 앱 · 작업 폴더에). 같은 것을 또 만들려면 사용자에게 물은 뒤 --again");
+  if (!DRY && !toSend.length && !resumed.length) {
+    log("보낼 것 없음 — 모두 24시간 안에 이미 보냈다(결과는 앱 · 작업 폴더에). 같은 것을 또 만들려면 사용자에게 물은 뒤 --again=작업 이름");
+    return;
+  }
+  if (WORKDIR && resumed.length && !DRY) keepJobs(WORKDIR, file);
 
   // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
   const videosOf = (j) => {
@@ -1150,6 +1230,9 @@ async function main() {
       await waitForRoom(spec.manual, project, need, sent.map((x) => x.id), target?.id || "");
       out = await withSendLock("seedance", async () => {
         if ((await inFlight(spec.manual, project, sent.map((x) => x.id), target?.id || "")) + need > MAX_IN_FLIGHT) return null;
+        // 잠금 안에서 기록을 다시 본다 — 분류한 뒤 같은 명령을 동시에 돌린 다른 실행이 이 작업을 넣었으면 건너뛴다
+        const other = lastSent(j.keys);
+        if (other && (!AGAIN.has(j.name) || other.at >= RUN_AT)) return { skip: other };
         let rsv;
         try {
           rsv = await reserve(need, {
@@ -1159,8 +1242,10 @@ async function main() {
           if (e instanceof Stop && !e.quiet) return { error: e.message };
           throw e;
         }
-        // 넣기 직전에 남긴다 — 여기서 끊기면(앱 답을 못 받음) 다음 실행은 '모름'으로 멈춘다
-        const rid = ledgerAdd({ key: j.key, name: j.name, project, state: "보내는 중" });
+        // 넣기 직전에 남긴다 — 여기서 끊기면(앱 답을 못 받음) 다음 실행은 '모름'으로 멈춘다. 못 남기면 보내지 않는다
+        let rid;
+        try { rid = ledgerAdd({ key: j.keys[0], name: j.name, project, state: "보내는 중" }); }
+        catch (e) { await rsv.settle(0); if (e instanceof Stop) return { error: e.message }; throw e; }
         const r = await post("/api/agent/jobs", {
           manual: spec.manual, name: j.name, prompt: String(j.prompt), project, billing, ...(target ? { projectId: target.id } : {}),
           settings: st, refs: j.refs,
@@ -1180,6 +1265,7 @@ async function main() {
         return { r, res, cards, rsv, rid, unsure: o === "모름" };
       });
     }
+    if (out.skip) { log(`  건너뜀 ${j.name} — 다른 실행이 ${sentWhen(out.skip)} 에 넣었다(같은 명령을 동시에 돌림)`); continue; }
     if (out.stale) {
       if (sent.length) log(`  (그 전까지 ${sent.length}건은 보냈다: ${sent.map((x) => x.name).join(", ")})`);
       await staleStop(out.stale);
@@ -1195,13 +1281,14 @@ async function main() {
       console.error(`멈춤: ${j.name} 실패 — ${res.error || "이유 없음"}`);
       if (out.unsure) {
         console.error(`  앱에 들어갔을 수 있다 — 다시 보내지 말 것(다시 실행해도 이 작업은 멈춘다). 사용자에게 시댄스 "${project}" 프로젝트에 ` +
-          "이 카드가 생겼는지 봐 달라고 하고(또는 --do cards.list), 없으면 사용자 확인 뒤 --again");
+          `이 카드가 생겼는지 봐 달라고 하고(또는 --do cards.list), 없으면 사용자 확인 뒤 --again=${j.name}`);
       }
       if (toSend.length - i - 1 > 0) console.error(`  안 보낸 작업: ${unsent(i + 1)}`);
       process.exitCode = 1;
       break;
     }
     sent.push({ id: r.id, name: j.name, j, st, rid });
+    if (WORKDIR) keepJobs(WORKDIR, file);
     log(`  보냄 ${sent.length}/${toSend.length} ${j.name} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
       ` · 오늘 ${rsv.used - need + (cards.length || need)}/${rsv.limit}개`);
     for (const c of cards) if (c.status === "failed") log(`    카드 ${cardLine(c)}`);
@@ -1247,10 +1334,15 @@ const safeName = (s) => String(s || "job").replace(/[\\/:*?"<>|]+/g, "_").trim()
 async function saveResults(sent, manual) {
   fs.mkdirSync(SAVE_TO, { recursive: true });
   const rows = [];
+  const list = path.join(SAVE_TO, "_목록.tsv");
+  // 끊긴 뒤 이어서 받을 때 이미 받은 카드는 건너뛴다(목록의 세 번째 칸이 카드)
+  const have = new Set((fs.existsSync(list) ? fs.readFileSync(list, "utf8") : "").split(/\r?\n/).map((l) => l.split("\t")[2]).filter(Boolean));
   for (const x of sent) {
     const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
     const done = (j.messages || []).filter((c) => c.status === "succeeded");
     for (const [k, c] of done.entries()) {
+      if (have.has(c.id)) continue;
+      have.add(c.id);
       let r;
       try { r = await sendCommand(manual, "card.download", { id: c.id }); }
       catch (e) { log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
@@ -1265,7 +1357,6 @@ async function saveResults(sent, manual) {
       log(`  저장 ${dest}`);
     }
   }
-  const list = path.join(SAVE_TO, "_목록.tsv");
   if (rows.length) fs.appendFileSync(list, `${fs.existsSync(list) ? "" : "작업\t테이크\t카드\ttask\t파일\n"}${rows.join("\n")}\n`);
   log(rows.length ? `영상 ${rows.length}개를 ${SAVE_TO} 로 옮겼다(다운로드 폴더에는 안 남김) · 목록 _목록.tsv` : "옮긴 영상 없음 — 끝난 카드가 없거나 받지 못했다");
 }
@@ -1290,7 +1381,8 @@ async function placeResults(sent, spec, work) {
       const tail = resTail(x.st);
       const row = { 폴더: pl.rel, 작업: x.name, 테이크: String.fromCharCode(65 + k), 모델: x.st?.model || "", 카드: c.id, task: c.taskId || "",
         씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", 해상도: tail.slice(1), "받은 시각": new Date().toISOString(),
-        프롬프트: promptKey(x.j.prompt) };
+        프롬프트: takePrint(spec, x.j) };
+      have.add(c.id);   // 같은 실행에서 같은 카드를 두 번 놓지 않게
       const ext = remote && /^[A-Za-z0-9._-]+$/.test(c.taskId || "") ? await mediaExt(c.taskId) : "";
       if (ext) {
         // 번호를 이어 매기도록 한 줄씩 바로 적는다(파일이 없으니 폴더로는 못 센다)
