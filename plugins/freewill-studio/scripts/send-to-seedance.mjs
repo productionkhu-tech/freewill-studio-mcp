@@ -29,6 +29,9 @@
 //   node send-to-seedance.mjs jobs.json --watch     보내고 영상이 다 끝날 때까지 지켜봄
 //   node send-to-seedance.mjs jobs.json --save-to <폴더>
 //                                                   지켜보다 끝난 영상을 받아 그 폴더로 옮김(<작업 이름>_A.mp4 · _목록.tsv)
+//   node send-to-seedance.mjs jobs.json --again     24시간 안에 이미 보낸 것도 또 보냄 — 사용자에게 물은 뒤에만(돈이 든다).
+//                                                   없으면 이미 보낸 것은 건너뛰고(안 끝난 것은 이어서 지켜보고 놓는다), 앱에 들어갔는지
+//                                                   모르는 것이 있으면 멈춘다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게(아래 '보낸 기록')
 //   node send-to-seedance.mjs --status <id> [<id>]  보낸 요청의 지금 상태
 //   node send-to-seedance.mjs --save-final <초안 파일> <본편 카드 id>
 //                                                   본편(card.final 1080p)을 받아 초안 옆에 같은 번호로(_480 → _1080)
@@ -422,6 +425,33 @@ const DONE = new Set(["succeeded", "failed", "cancelled", "canceled", "expired"]
 // 과금되는 명령과 만들 수 있는 영상 수(재생성은 원래 보낸 개수를 따르므로 최대로 잡는다).
 const COSTLY = { "card.final": 1, "card.regenerate": 1 };   // 26.10.2004~ 재생성은 늘 1편
 
+// 보낸 기록(사용자 11/2 "다시 켜도 두 번 안 보내게") — 끊긴 대화가 같은 명령을 다시 돌리거나 앱을 다시 켜도 같은 영상을 또 만들지 않게
+// 요청마다 사용자 폴더에 남긴다: 앱에 넣기 직전 '보내는 중' → 앱 번호 → '보냄'(만드는 중) → 결과까지 봤으면 '끝'.
+// 24시간 안에 같은 것(프로젝트·프롬프트·설정·레퍼런스·놓을 곳 — 이름은 안 본다)을 다시 보내면 보냄·끝은 건너뛰고(안 끝난 것은 이어서
+// 지켜보고 놓는다), 앱에 들어갔는지 모르는 것은 멈춘다. 앱이 확실히 못 만든 것(10분 대기 취소 · 생성 실패)은 기록에서 빼서 다시 보낼 수 있다.
+// 일부러 또 만들 때만 --again — 돈이 드니 사용자에게 물은 뒤.
+const AGAIN = flag("--again");
+const LEDGER = path.join(os.homedir(), ".freewill-studio", "seedance-sent.json");
+const UNSURE = /응답이 없습니다|연락이 끊겼|없는 작업|사라짐/;
+const readLedger = () => { const l = readJsonSafe(LEDGER); return Array.isArray(l) ? l.filter((x) => Date.now() - x.at < 24 * 3600e3) : []; };
+function writeLedger(fn) {
+  try {
+    fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
+    fs.writeFileSync(`${LEDGER}.tmp`, JSON.stringify(fn(readLedger())));
+    fs.renameSync(`${LEDGER}.tmp`, LEDGER);
+  } catch (e) { log(`  참고: 보낸 기록을 못 남김 — ${e.message}`); }
+}
+const ledgerAdd = (e) => { const rid = crypto.randomUUID(); writeLedger((l) => [...l, { rid, at: Date.now(), ...e }]); return rid; };
+// patch 가 null 이면 기록에서 뺀다(확실히 안 만들어짐 — 다시 보내도 된다)
+const ledgerSet = (rid, patch) => writeLedger((l) => (patch ? l.map((x) => (x.rid === rid ? { ...x, ...patch } : x)) : l.filter((x) => x.rid !== rid)));
+const lastSent = (key) => readLedger().filter((x) => x.key === key).pop();
+const sentWhen = (e) => new Date(e.at).toLocaleString("ko-KR", { hour12: false });
+// 앱이 알려 준 요청의 끝 — "다시"(확실히 안 만들어짐) · "모름"(들어갔는지 모름) · null(만들었거나 만드는 중)
+const outcome = (j) => {
+  if (j.status !== "failed" || (j.messages || []).some((c) => c.status !== "failed")) return null;
+  return !(j.messages || []).length && UNSURE.test(String(j.error || "")) ? "모름" : "다시";
+};
+
 // 커넥터 — 사용 기록과 하루 한도.
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
 // 옛 방식(원문에 박힌 표) — 시험에서만 쓴다. 지금 커넥터는 비워 두고 받는 사람만 아래에 채운다(두 줄 모양을 바꾸지 말 것).
@@ -770,21 +800,32 @@ async function main() {
     // 과금되는 명령도 하루 한도를 지킨다. 한 번에 3개까지(card.final 1 · card.regenerate 최대 3) — 앞에 돌고 있는 영상과 상관없이 보낸다.
     // 여러 카드를 본편으로 올릴 때는 3개씩 보내고 끝나는 걸 본 뒤 다음 3개(지침 7단계).
     const need = COSTLY[name] || 0;
-    let rsv = null;
+    let rsv = null, rid = "";
     if (need) {
       const manual = rememberedManual();
       if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual (그때 버전을 기억해 둔다)");
+      // 같은 카드를 24시간 안에 또 본편·재생성하지 않는다(끊긴 뒤 같은 명령을 다시 돌려도)
+      const key = `do:${name}:${JSON.stringify(cargs)}`;
+      const e = AGAIN ? null : lastSent(key);
+      if (e) {
+        fail(`${name} ${JSON.stringify(cargs)} 은 ${sentWhen(e)} 에 이미 보냈다${e.state === "보냄" ? "" : `(앱에 들어갔는지 모름 — ${e.note || "보내는 중에 끊김"})`} — ` +
+          "두 번 과금될 수 있어 보내지 않는다. --do cards.list 로 그 카드를 먼저 찾을 것. 같은 것을 또 만들려면 사용자에게 물은 뒤 --again");
+      }
       await quota(need, name);
       const s = await appStatus(manual);
       rsv = await reserve(need, { kind: name, project: s.project, billing: s.billing, job: String(cargs?.id || "") });
+      rid = ledgerAdd({ key, name, project: s.project, state: "보내는 중" });
     }
     let result;
     try {
       result = await runCommand(name, cargs);
     } catch (e) {
       if (rsv) await rsv.settle(0);
+      // 앱이 받았다가 끊긴 것(응답 없음 · 앱 재시작)은 '모름'으로 남겨 다시 보내지 않게, 앱이 거절한 것은 빼서 다시 보낼 수 있게
+      if (rid) ledgerSet(rid, e instanceof Stop && !UNSURE.test(e.message) ? null : { state: "모름", note: String(e.message).slice(0, 200) });
       throw e;
     }
+    if (rid) ledgerSet(rid, { state: "보냄" });
     if (rsv) await rsv.settle(Array.isArray(result?.cards) ? result.cards.length : 1);
     log(JSON.stringify(result, null, 2));
     return;
@@ -1028,22 +1069,52 @@ async function main() {
   if (problems.length) fail(`프롬프트를 고칠 것 (지침 4단계 '앱에 맞춘 규칙'):\n${problems.map((p) => `  - ${p}`).join("\n")}${noteText}`);
   if (noteText) log(noteText.slice(1));
 
+  // 보낸 기록 — 24시간 안에 같은 것을 보냈으면 다시 보내지 않는다(끊긴 대화가 다시 실행 · 앱을 다시 켬). 안 끝난 것은 이어서 지켜보고 놓는다.
+  jobs.forEach((j, i) => { j.name ||= `job_${i + 1}`; });
+  const keyOf = (j) => crypto.createHash("sha256").update(JSON.stringify([target?.id || project, String(j.prompt), settingsOf(j),
+    j.refs.map((r) => [r.path, r.role || ""]), WORKDIR, WORKDIR ? placeOf(spec, j, WORKDIR).rel : SAVE_TO || ""])).digest("hex").slice(0, 24);
+  const toSend = [], resumed = [], already = [], unsure = [];
+  for (const j of jobs) {
+    j.key = keyOf(j);
+    const e = AGAIN ? null : lastSent(j.key);
+    if (!e) { toSend.push(j); continue; }
+    const app = e.id ? await get(`/api/agent/jobs/${encodeURIComponent(e.id)}`) : null;
+    const alive = app?.http === 200;
+    const o = alive ? outcome(app) : e.state === "보냄" || e.state === "끝" ? null : "모름";
+    if (o === "다시") { ledgerSet(e.rid, null); toSend.push(j); continue; }
+    if (o === "모름") { unsure.push(`${j.name} — ${sentWhen(e)} 에 보냈는데 앱에 들어갔는지 모른다(${(alive && app.error) || e.note || "보내는 중에 끊김"})`); continue; }
+    if (e.state !== "끝" && alive && (WATCH || WORKDIR)) { resumed.push({ id: e.id, name: j.name, j, st: settingsOf(j), rid: e.rid }); continue; }
+    already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${e.state === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다")
+      : alive ? `상태: --status ${e.id}` : "앱을 다시 켜 여기서는 결과를 못 이어 받는다(앱 카드에서 볼 것)"}`);
+  }
+  if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again):\n${already.map((x) => `    ${x}`).join("\n")}`);
+  if (resumed.length) log(`  이미 보냄 — 이어서 지켜보고 놓는다: ${resumed.map((x) => x.name).join(", ")}`);
+  if (unsure.length) {
+    const msg = `앱에 들어갔는지 모르는 요청이 있다 — 다시 보내면 두 번 과금될 수 있다:\n${unsure.map((x) => `    ${x}`).join("\n")}\n` +
+      `  사용자에게 시댄스 "${project}" 프로젝트에 그 카드가 생겼는지 봐 달라고 할 것(또는 --do cards.list). 카드가 있으면 다시 보내지 않는다 — 없으면 사용자 확인 뒤 --again`;
+    if (DRY) log(`  주의: ${msg}`);
+    else fail(msg);
+  }
+  if (!DRY && !toSend.length && !resumed.length) fail("보낼 것이 없다 — 모두 24시간 안에 이미 보냈다(결과는 앱 · 작업 폴더에). 같은 것을 또 만들려면 사용자에게 물은 뒤 --again");
+
   // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
   const videosOf = (j) => {
     const n = Number(settingsOf(j).output_count);
     return n >= 1 ? Math.min(Math.round(n), PER_REQUEST) : PER_REQUEST;
   };
-  if (jobs.some((j) => !(Number(settingsOf(j).output_count) >= 1))) {
+  if (toSend.some((j) => !(Number(settingsOf(j).output_count) >= 1))) {
     log(`  참고: output_count 를 안 적은 작업은 앱 설정을 따르므로 ${PER_REQUEST}개로 잡고 센다(적어 두면 더 빨리 보낼 수 있다)`);
   }
-  const total = jobs.reduce((a, j) => a + videosOf(j), 0);
-  const q = await quota(total, `최대 ${total}개`);
-  log(`  이번 최대 ${total}개 · ${q} · 지금 "${project}" 에서 진행 중 ` +
-    `${await inFlight(spec.manual, project, [], target?.id || "")}개 (동시 ${MAX_IN_FLIGHT}개까지 — 2판 3덩이, 넘으면 앞의 것이 끝나는 대로 이어서)`);
+  const total = toSend.reduce((a, j) => a + videosOf(j), 0);
+  if (toSend.length) {
+    const q = await quota(total, `최대 ${total}개`);
+    log(`  이번 최대 ${total}개 · ${q} · 지금 "${project}" 에서 진행 중 ` +
+      `${await inFlight(spec.manual, project, [], target?.id || "")}개 (동시 ${MAX_IN_FLIGHT}개까지 — 2판 3덩이, 넘으면 앞의 것이 끝나는 대로 이어서)`);
+  }
   const planJobs = jobs.map((j) => ({ name: j.name || "", model: settingsOf(j).model ?? "", mode: settingsOf(j).mode ?? "", prompt: String(j.prompt),
     refs: j.refs, elements: mentions(j), settings: settingsOf(j), ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) }));
   if (DRY) {
-    for (const [i, j] of jobs.entries()) {
+    for (const [i, j] of toSend.entries()) {
       const st = settingsOf(j);
       log(`  ${i + 1}. ${j.name || ""} · ${Object.entries(st).map(([k, v]) => `${k}=${v}`).join(" ") || "(앱 지금 설정 그대로)"} · 레퍼런스 ${j.refs.length}개` +
         `${mentions(j).length ? ` · 엘리먼트 ${mentions(j).map((n) => `@{${n}}`).join(" ")}` : ""}`);
@@ -1069,8 +1140,8 @@ async function main() {
   // 2) 하나씩 — 자리가 나면 넣고, 앱이 보낼 때까지 기다린다. 하나라도 실패하면 거기서 멈춘다(같은 실수를 반복하지 않게).
   //    [자리 확인 → 기록 → 넣기 → 앱이 받을 때까지] 는 PC 잠금 안에서 — 같은 PC 의 다른 보내기와 한 요청씩 차례로 넣는다.
   const sent = [];
-  const unsent = (from) => jobs.slice(from).map((j, k) => j.name || `job_${from + k + 1}`).join(", ");
-  for (const [i, j] of jobs.entries()) {
+  const unsent = (from) => toSend.slice(from).map((j) => j.name).join(", ");
+  for (const [i, j] of toSend.entries()) {
     const need = videosOf(j);
     const st = settingsOf(j);
     let out = null;
@@ -1081,25 +1152,31 @@ async function main() {
         let rsv;
         try {
           rsv = await reserve(need, {
-            kind: "generate", model: st.model, resolution: st.draft ? "480p 초안" : st.resolution, project, billing, job: j.name || `job_${i + 1}`,
+            kind: "generate", model: st.model, resolution: st.draft ? "480p 초안" : st.resolution, project, billing, job: j.name,
           });
         } catch (e) {
           if (e instanceof Stop && !e.quiet) return { error: e.message };
           throw e;
         }
+        // 넣기 직전에 남긴다 — 여기서 끊기면(앱 답을 못 받음) 다음 실행은 '모름'으로 멈춘다
+        const rid = ledgerAdd({ key: j.key, name: j.name, project, state: "보내는 중" });
         const r = await post("/api/agent/jobs", {
-          manual: spec.manual, name: j.name || `job_${i + 1}`, prompt: String(j.prompt), project, billing, ...(target ? { projectId: target.id } : {}),
+          manual: spec.manual, name: j.name, prompt: String(j.prompt), project, billing, ...(target ? { projectId: target.id } : {}),
           settings: st, refs: j.refs,
         });
-        if (r.http === 409 && r.stale) { await rsv.settle(0); return { stale: r.error }; }
+        if (r.http === 409 && r.stale) { ledgerSet(rid, null); await rsv.settle(0); return { stale: r.error }; }
         if (r.http !== 200 || !r.id) {
+          ledgerSet(rid, null);
           await rsv.settle(0);
-          return { error: `요청을 못 넣음 (${j.name || i + 1}): ${r.error || r.raw || r.http}` };
+          return { error: `요청을 못 넣음 (${j.name}): ${r.error || r.raw || r.http}` };
         }
+        ledgerSet(rid, { id: r.id });
         const res = await waitTaken(r.id);
         const cards = res.messages || [];
+        const o = outcome(res);
+        ledgerSet(rid, o === "다시" ? null : { state: o === "모름" ? "모름" : "보냄", ...(o ? { note: String(res.error || "").slice(0, 200) } : {}) });
         await rsv.settle(res.status === "failed" ? cards.length : (cards.length || need));
-        return { r, res, cards, rsv };
+        return { r, res, cards, rsv, rid, unsure: o === "모름" };
       });
     }
     if (out.stale) {
@@ -1108,37 +1185,43 @@ async function main() {
     }
     if (out.error) {
       console.error(`멈춤: ${out.error}`);
-      console.error(`  ${sent.length}/${jobs.length}건까지 보냄 · 안 보낸 작업: ${unsent(i)}`);
+      console.error(`  ${sent.length}/${toSend.length}건까지 보냄 · 안 보낸 작업: ${unsent(i)}`);
       process.exitCode = 1;
       break;
     }
-    const { r, res, cards, rsv } = out;
+    const { r, res, cards, rsv, rid } = out;
     if (res.status === "failed") {
-      console.error(`멈춤: ${j.name || i + 1} 실패 — ${res.error || "이유 없음"}`);
-      if (jobs.length - i - 1 > 0) console.error(`  안 보낸 작업: ${unsent(i + 1)}`);
+      console.error(`멈춤: ${j.name} 실패 — ${res.error || "이유 없음"}`);
+      if (out.unsure) {
+        console.error(`  앱에 들어갔을 수 있다 — 다시 보내지 말 것(다시 실행해도 이 작업은 멈춘다). 사용자에게 시댄스 "${project}" 프로젝트에 ` +
+          "이 카드가 생겼는지 봐 달라고 하고(또는 --do cards.list), 없으면 사용자 확인 뒤 --again");
+      }
+      if (toSend.length - i - 1 > 0) console.error(`  안 보낸 작업: ${unsent(i + 1)}`);
       process.exitCode = 1;
       break;
     }
-    sent.push({ id: r.id, name: j.name || `job_${i + 1}`, j, st });
-    log(`  보냄 ${sent.length}/${jobs.length} ${j.name || ""} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
+    sent.push({ id: r.id, name: j.name, j, st, rid });
+    log(`  보냄 ${sent.length}/${toSend.length} ${j.name} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
       ` · 오늘 ${rsv.used - need + (cards.length || need)}/${rsv.limit}개`);
     for (const c of cards) if (c.status === "failed") log(`    카드 ${cardLine(c)}`);
   }
-  if (!sent.length) return;
-  writePlan(spec, { app: "seedance", project, billing, jobs: planJobs }, { sent: true, jobsFile: file });
+  if (!sent.length && !resumed.length) return;
+  if (sent.length) writePlan(spec, { app: "seedance", project, billing, jobs: planJobs }, { sent: true, jobsFile: file });
 
-  // 3) 지켜보기 — 카드 상태만 읽는다(앱 화면이 올려 준 것)
+  // 3) 지켜보기 — 카드 상태만 읽는다(앱 화면이 올려 준 것). 전에 보내 놓고 끊긴 것(resumed)도 같이
   if (!WATCH && !WORKDIR) {
     log(`앱에 생성 중 카드가 떠 있을 것. 나중에 상태: node send-to-seedance.mjs --status ${sent.map((x) => x.id).join(" ")}`);
     return;
   }
+  const all = [...resumed, ...sent];
   const deadline = Date.now() + 90 * 60 * 1000;
   const last = new Map();
-  let open = sent.map((x) => x.id);
+  const lost = new Set();   // 지켜보는 사이 앱을 다시 켜 작업함에서 사라진 것 — 놓지 못했으니 '끝'으로 적지 않는다
+  let open = all.map((x) => x.id);
   while (open.length && Date.now() < deadline) {
     for (const id of [...open]) {
       const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
-      if (j.http !== 200) { open = open.filter((x) => x !== id); continue; }
+      if (j.http !== 200) { lost.add(id); open = open.filter((x) => x !== id); continue; }
       const cards = j.messages || [];
       const line = cards.map((c) => c.status).join(", ");
       if (last.get(id) !== line) { log(`  ${j.name}: ${line || j.status}`); last.set(id, line); }
@@ -1146,10 +1229,15 @@ async function main() {
     }
     if (open.length) await sleep(5000);
   }
-  if (open.length) log(`아직 안 끝난 요청 ${open.length}건 — 앱 화면에서 계속 진행된다`);
-  await showStatus(sent.map((x) => x.id));
-  if (WORKDIR) await placeResults(sent, spec, WORKDIR);
-  else if (SAVE_TO) await saveResults(sent, spec.manual);
+  if (open.length) log(`아직 안 끝난 요청 ${open.length}건 — 앱 화면에서 계속 진행된다(같은 명령을 다시 실행하면 보내지 않고 이어서 지켜본다)`);
+  await showStatus(all.map((x) => x.id));
+  if (WORKDIR) await placeResults(all, spec, WORKDIR);
+  else if (SAVE_TO) await saveResults(all, spec.manual);
+  // 끝난 것은 '끝'(다시 실행해도 건너뜀) · 확실히 못 만든 것은 기록에서 뺀다(다시 보낼 수 있게) · 안 끝난 것은 그대로(다시 실행하면 이어서)
+  for (const x of all.filter((x) => !open.includes(x.id) && !lost.has(x.id))) {
+    const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
+    ledgerSet(x.rid, j.http === 200 && outcome(j) === "다시" ? null : { state: "끝" });
+  }
 }
 
 // 끝난 카드를 받아(card.download — 앱이 다운로드 폴더에 저장한다) 작업 폴더로 옮긴다: <작업 이름>_A.mp4, _B … 같은 이름이 있으면 _2.
@@ -1189,6 +1277,7 @@ const resTail = (st) => (st?.draft ? "_480" : /^(\d+)p$/i.test(String(st?.resolu
 async function placeResults(sent, spec, work) {
   const rows = [];
   const remote = await remoteReview(work);
+  const have = new Set(readWorkList(work).map((x) => x["카드"]).filter(Boolean));   // 끊긴 뒤 이어서 놓을 때 이미 놓은 카드는 건너뛴다
   let held = 0;
   for (const x of sent) {
     const pl = placeOf(spec, x.j, work);   // 보내기 전에 확인했다
@@ -1196,6 +1285,7 @@ async function placeResults(sent, spec, work) {
     const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
     const done = (j.messages || []).filter((c) => c.status === "succeeded");
     for (const [k, c] of done.entries()) {
+      if (have.has(c.id)) continue;
       const tail = resTail(x.st);
       const row = { 폴더: pl.rel, 작업: x.name, 테이크: String.fromCharCode(65 + k), 모델: x.st?.model || "", 카드: c.id, task: c.taskId || "",
         씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", 해상도: tail.slice(1), "받은 시각": new Date().toISOString() };
