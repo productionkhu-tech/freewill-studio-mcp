@@ -30,6 +30,9 @@
 //   node send-to-nanobanana.mjs jobs.json --save-to <폴더>
 //                                                    지켜본 뒤 새 그림을 그 폴더로 복사(<작업 이름>_A.png · _목록.tsv) —
 //                                                    앱 저장 폴더의 원본은 그대로 둔다(옮기면 앱 갤러리에서 사라진다)
+//   node send-to-nanobanana.mjs jobs.json --again    24시간 안에 이미 보낸 것도 또 보냄 — 사용자에게 물은 뒤에만(돈이 든다).
+//                                                    없으면 이미 보낸 것은 건너뛰고(새 앱은 안 끝난 것을 이어서 지켜보고 놓는다), 앱에
+//                                                    들어갔는지 모르는 것이 있으면 멈춘다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게
 //   node send-to-nanobanana.mjs jobs.json --keep     (옛 앱) 탭 입력값을 되돌리지 않음
 //   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다). 새 앱은 화면을 안 바꾸고 바로,
 //                                                    옛 앱은 K 가 화면에 없으면 사람이 K 를 누를 때까지 기다렸다 이어서 넣는다
@@ -96,6 +99,29 @@ const SCRIPT_OLD = (now) => `이 스크립트를 받은 뒤 지침이 바뀌었�
 let token = "";
 const log = (...m) => console.log(...m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 보낸 기록(사용자 11/2 "나노바나나도 똑같이") — 끊긴 대화가 같은 명령을 다시 돌리거나 앱을 다시 켜도 같은 그림을 또 만들지 않게
+// 작업마다 사용자 폴더에 남긴다: 앱에 넣기 직전 '보내는 중' → 묶음 id 와 '보냄' → 결과까지 봤으면 '끝'.
+// 24시간 안에 같은 것(탭·프롬프트·설정·레퍼런스·놓을 곳 — 이름은 안 본다)을 다시 보내면 보냄·끝은 건너뛰고(새 앱은 안 끝난 것을
+// 이어서 지켜보고 놓는다), 앱에 들어갔는지 모르는 것은 멈춘다. 다 실패·취소된 묶음(그림 0장)은 기록에서 빼서 다시 보낼 수 있다.
+// 일부러 또 만들 때만 --again — 돈이 드니 사용자에게 물은 뒤.
+const AGAIN = process.argv.includes("--again");
+const LEDGER = path.join(os.homedir(), ".freewill-studio", "nanobanana-sent.json");
+const readLedger = () => {
+  try { const l = JSON.parse(fs.readFileSync(LEDGER, "utf8")); return Array.isArray(l) ? l.filter((x) => Date.now() - x.at < 24 * 3600e3) : []; } catch { return []; }
+};
+function writeLedger(fn) {
+  try {
+    fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
+    fs.writeFileSync(`${LEDGER}.tmp`, JSON.stringify(fn(readLedger())));
+    fs.renameSync(`${LEDGER}.tmp`, LEDGER);
+  } catch (e) { log(`  참고: 보낸 기록을 못 남김 — ${e.message}`); }
+}
+const ledgerAdd = (e) => { const rid = crypto.randomUUID(); writeLedger((l) => [...l, { rid, at: Date.now(), ...e }]); return rid; };
+// patch 가 null 이면 기록에서 뺀다(확실히 안 만들어짐 — 다시 보내도 된다)
+const ledgerSet = (rid, patch) => writeLedger((l) => (patch ? l.map((x) => (x.rid === rid ? { ...x, ...patch } : x)) : l.filter((x) => x.rid !== rid)));
+const lastSent = (key) => readLedger().filter((x) => x.key === key).pop();
+const sentWhen = (e) => new Date(e.at).toLocaleString("ko-KR", { hour12: false });
 
 // 같은 PC 에서 보내기가 둘 이상 겹칠 때(예: Claude 와 Codex 가 동시에) "자리 확인 → 한 작업 넣기" 를 한 번에 하나만 하게 하는
 // 잠금. 그래야 동시 진행 한도를 둘이 같이 지킨다. 주인이 죽었거나(프로세스 없음) 15분 넘게 쥐고 있으면 풀어 준다.
@@ -554,7 +580,43 @@ async function main() {
   const countOf = (j) => Math.max(1, Math.round(Number(j.count ?? defaults.count ?? base.count) || 1));
   const big = jobs.find((j) => countOf(j) > MAX_IN_FLIGHT);
   if (big) fail(`한 작업은 ${MAX_IN_FLIGHT}장까지 — "${big.name || ""}" 은 ${countOf(big)}장. 작업을 나눠서 적을 것`);
-  const total = jobs.reduce((a, j) => a + countOf(j), 0);
+
+  // 보낸 기록 — 24시간 안에 같은 것을 보냈으면 다시 보내지 않는다(끊긴 대화가 다시 실행 · 앱을 다시 켬). 새 앱은 안 끝난 것을 이어서 지켜보고 놓는다.
+  jobs.forEach((j, i) => { j.name ||= `job_${i + 1}`; });
+  const keyOf = (j) => crypto.createHash("sha256").update(JSON.stringify([tab.name, String(j.prompt),
+    SETTING_KEYS.map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, WORKDIR ? placeOf(spec, j, WORKDIR).rel : SAVE_TO || ""])).digest("hex").slice(0, 24);
+  const encPid = encodeURIComponent(tab.pid);
+  // 전에 보낸 묶음이 지금 어떤지 — "끝" · "보냄"(만드는 중이거나 아직 안 놓음) · "다시"(그림 0장으로 끝남) · "모름" · "옛"(묶음 id 없는 옛 앱)
+  const stateOf = async (e) => {
+    if (!e.id) return e.state === "보냄" || e.state === "끝" ? "옛" : "모름";
+    const b = await get(`/api/batch?pid=${encPid}&batch_id=${encodeURIComponent(e.id)}`);
+    if (b?.ok) return !b.finished ? "보냄" : !b.done ? "다시" : e.state === "끝" ? "끝" : "보냄";
+    // 앱을 다시 켜 집계가 사라졌으면 갤러리의 batch_id 로 — 그림이 있으면 만든 것, 없으면 들어갔는지 모른다
+    const items = (await get(`/api/gallery?pid=${encPid}&strict=1&batch_id=${encodeURIComponent(e.id)}`))?.items || [];
+    return e.state === "끝" ? "끝" : items.length ? "보냄" : "모름";
+  };
+  const toSend = [], resumed = [], already = [], unsure = [];
+  for (const j of jobs) {
+    j.key = keyOf(j);
+    const e = AGAIN ? null : lastSent(j.key);
+    if (!e) { toSend.push(j); continue; }
+    const st = await stateOf(e);
+    if (st === "다시") { ledgerSet(e.rid, null); toSend.push(j); continue; }
+    if (st === "모름") { unsure.push(`${j.name} — ${sentWhen(e)} 에 보냈는데 앱에 들어갔는지 모른다(${e.note || (e.id ? "앱을 다시 켜 묶음도 그림도 없음" : "보내는 중에 끊김")})`); continue; }
+    if (st === "보냄" && direct && (WATCH || WORKDIR)) { resumed.push({ j, id: e.id, model: j.model ?? defaults.model ?? base.model, rid: e.rid }); continue; }
+    already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${st === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다") : `"${tab.name}" 탭 갤러리에서 볼 것`}`);
+  }
+  if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again):\n${already.map((x) => `    ${x}`).join("\n")}`);
+  if (resumed.length) log(`  이미 보냄 — 이어서 지켜보고 놓는다: ${resumed.map((x) => x.j.name).join(", ")}`);
+  if (unsure.length) {
+    const msg = `앱에 들어갔는지 모르는 작업이 있다 — 다시 보내면 두 번 과금될 수 있다:\n${unsure.map((x) => `    ${x}`).join("\n")}\n` +
+      `  사용자에게 나노바나나 "${tab.name}" 탭 갤러리에 그 그림이 생겼는지(만드는 중인지) 봐 달라고 할 것. 있으면 다시 보내지 않는다 — 없으면 사용자 확인 뒤 --again`;
+    if (DRY) log(`  주의: ${msg}`);
+    else fail(msg);
+  }
+  if (!DRY && !toSend.length && !resumed.length) fail("보낼 것이 없다 — 모두 24시간 안에 이미 보냈다(결과는 앱 갤러리 · 작업 폴더에). 같은 것을 또 만들려면 사용자에게 물은 뒤 --again");
+
+  const total = toSend.reduce((a, j) => a + countOf(j), 0);
   const need = await loadTicket();   // 표가 없으면 요청 번호 — dry-run 은 알려만 주고(카드 전에 승인해 두면 바로 보낸다) 보내기는 멈춘다
   const owner = ticketOwner();
   let quota = need === NO_TICKET ? "로그인 표 없음 — 보낼 때는 커넥터에서 받은 스크립트로" : "표 승인 전(아래)";
@@ -587,7 +649,7 @@ async function main() {
     log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
-    for (const [i, j] of jobs.entries()) {
+    for (const [i, j] of toSend.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
       log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)} · 레퍼런스 ${j.refs.length}장`);
       j.refs.forEach((p, k) => log(`     [Image ${k + 1}] ${path.basename(p)} — ${j.refWhy[k]}`));   // 확인 카드에 그대로 옮긴다
@@ -634,18 +696,23 @@ async function main() {
       if (k !== "count" && v !== undefined && v !== null && v !== "") settings[k] = v;
     }
     const body = { pid: tab.pid, prompt: String(j.prompt), settings, ref_paths: j.refs.map((p) => path.resolve(p)) };
-    let gr = { ok: false };
+    // 넣기 직전에 남긴다 — 앱 답을 못 받고 끊기면 다음 실행은 '모름'으로 멈춘다
+    const rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" });
+    let gr = { ok: false }, answered = false;
     try {
       for (let attempt = 0; attempt < 12; attempt++) {
+        answered = false;
         gr = await post("/api/generate", body);
+        answered = true;
         if (gr.ok || !/Queue full|Stopping previous batch/i.test(String(gr.error || ""))) break;
         await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
       }
     } finally {
       if (!gr.ok) await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});
+      ledgerSet(rid, gr.ok ? { id: gr.batch_id || "", state: "보냄" } : answered ? null : { state: "모름", note: "앱 답을 못 받음" });
     }
     if (!gr.ok) throw new Error(directError(gr, j, i));
-    return { model, resolution, rsv, batch_id: gr.batch_id };
+    return { model, resolution, rsv, batch_id: gr.batch_id, rid };
   }
   let refNoted = false;
   const restoreTab = async (snap, refsTouched) => {
@@ -677,7 +744,7 @@ async function main() {
     if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
     const refs = j.refs || [];
     const refsTouched = refs.length > 0 || snap.refs.some((r) => !r.empty);
-    let gr = { ok: false };
+    let gr = { ok: false }, rid = "", answered = false;
     try {
       if (refsTouched) {
         const err = await setRefs(refs);
@@ -690,25 +757,31 @@ async function main() {
       }
       const sr = await post("/api/settings", s);
       if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
+      rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" });
       for (let attempt = 0; attempt < 12; attempt++) {
+        answered = false;
         gr = await post("/api/generate", {});
+        answered = true;
         const e = String(gr.error || "");
         if (gr.ok || !/Queue full|Stopping previous batch/i.test(e)) break;
         await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
       }
     } finally {
       if (!gr.ok) await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});
+      // 옛 앱은 묶음 id 가 없다 — 보냈다는 것만 남긴다(다시 실행하면 건너뛰기만)
+      if (rid) ledgerSet(rid, gr.ok ? { state: "보냄" } : answered ? null : { state: "모름", note: "앱 답을 못 받음" });
       if (!KEEP) await restoreTab(snap, refsTouched);
     }
     if (gr.needs_billing) throw new Error("앱이 팀·프로젝트를 다시 골라 달라고 함");
     if (!gr.ok) throw new Error(`Generate 실패 (${j.name || i + 1}): ${gr.error || gr.raw || "알 수 없음"}`);
-    return { model, resolution, rsv };
+    return { model, resolution, rsv, rid };
   }
 
   let sent = 0;
-  const batches = [];   // 새 앱 — 보낸 작업마다 묶음 id
+  const sentJobs = resumed.map((b) => b.j);   // 지켜보고 놓을 작업 — 전에 보내 놓고 끊긴 것(새 앱)부터
+  const batches = resumed.map((b, k) => ({ ...b, k }));   // 새 앱 — 작업마다 묶음 id
   try {
-    for (const [i, j] of jobs.entries()) {
+    for (const [i, j] of toSend.entries()) {
       const need = countOf(j);
       let done = false;
       while (!done) {
@@ -716,29 +789,36 @@ async function main() {
         if (!direct) await waitForTab(tab);
         done = await withSendLock("nanobanana", () => (direct ? sendDirect(j, i, need) : sendOne(j, i, need)));
       }
-      if (direct) batches.push({ j, k: i, id: done.batch_id, model: done.model });
+      if (direct) batches.push({ j, k: sentJobs.length, id: done.batch_id, model: done.model, rid: done.rid });
+      sentJobs.push(j);
       sent++;
-      log(`  보냄 ${sent}/${jobs.length} ${j.name || ""} · ${done.model} ${done.resolution} ×${need} · 오늘 ${done.rsv.used}/${done.rsv.limit}장`);
+      log(`  보냄 ${sent}/${toSend.length} ${j.name} · ${done.model} ${done.resolution} ×${need} · 오늘 ${done.rsv.used}/${done.rsv.limit}장`);
       await sleep(250);
     }
   } catch (e) {
     console.error(`멈춤: ${e.message}`);
-    if (sent < jobs.length) {
-      console.error(`  ${sent}/${jobs.length}건까지 들어감 · 안 보낸 작업: ${jobs.slice(sent).map((j, k) => j.name || `job_${sent + k + 1}`).join(", ")}`);
+    if (sent < toSend.length) {
+      console.error(`  ${sent}/${toSend.length}건까지 들어감 · 안 보낸 작업: ${toSend.slice(sent).map((j) => j.name).join(", ")}`);
     }
     process.exitCode = 1;
   }
   if (sent && !KEEP && !direct) log(`  "${tab.name}" 탭 입력칸은 작업마다 원래대로 돌려놓았다`);
   if (sent && direct) log(`  "${tab.name}" 탭으로 보냈다 — 화면 탭("${screenTab}")과 그 탭의 입력칸은 그대로`);
-  if (!sent) return;
-  writePlan(spec, planOf(), { sent: true, jobsFile: file });
+  if (!sentJobs.length) return;
+  if (sent) writePlan(spec, planOf(), { sent: true, jobsFile: file });
+  // 결과까지 본 묶음은 '끝'(다시 실행해도 건너뜀) · 그림 0장으로 끝난 것은 기록에서 뺀다(다시 보낼 수 있게) · 안 끝난 것은 그대로(다시 실행하면 이어서)
+  const markDone = () => {
+    for (const b of batches) {
+      if (b.res?.finished) ledgerSet(b.rid, b.res.done ? { state: "끝" } : null);
+      else if (b.lost && groups[b.k]?.length) ledgerSet(b.rid, { state: "끝" });
+    }
+  };
 
   // 6) 지켜보기
   if (!WATCH && !WORKDIR) {
     log(`앱 "${tab.name}" 탭에 ${sent}건 분량이 진행 중일 것. 끝나면 그 탭 갤러리에 들어온다.`);
     return;
   }
-  const sentJobs = jobs.slice(0, sent);
   let groups = [], other = [], last = "";   // groups[k] = 그 작업의 그림 [{ filepath, model }]
   const deadline = Date.now() + 60 * 60 * 1000;
   if (direct) {
@@ -798,11 +878,13 @@ async function main() {
   // 작업 폴더 — 씬·컷(또는 에셋 종류) 폴더에 이름 규칙대로 복사한다. 앱 저장 폴더의 원본은 그대로 둔다(옮기면 앱 갤러리에서 사라진다).
   if (WORKDIR) {
     const rows = [];
+    const have = new Set(readWorkList(WORKDIR).map((x) => x["원본"]).filter(Boolean));   // 끊긴 뒤 이어서 놓을 때 이미 놓은 그림은 건너뛴다
     for (const [k, j] of sentJobs.entries()) {
       const pl = placeOf(spec, j, WORKDIR);   // 보내기 전에 확인했다
       const dir = path.join(WORKDIR, pl.rel);
       fs.mkdirSync(dir, { recursive: true });   // 씬 · 컷 폴더 — 있으면 그대로
       for (const [t, i] of (groups[k] || []).entries()) {
+        if (have.has(i.filepath)) continue;
         if (!fs.existsSync(i.filepath)) { log(`  못 옮김 — 원본이 없음: ${i.filepath}`); continue; }
         const name = placeName(WORKDIR, pl, "I", path.extname(i.filepath) || ".png", j.name);
         fs.copyFileSync(i.filepath, path.join(dir, name));
@@ -814,6 +896,7 @@ async function main() {
     appendWorkList(WORKDIR, rows);
     log(rows.length ? `그림 ${rows.length}장을 작업 폴더에 놓았다(앱 원본은 그대로) · 목록 _검수/목록.tsv — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`
       : "놓은 그림 없음");
+    markDone();
     return;
   }
   // --save-to(작업 폴더 없이): 그 폴더로 복사한다 — <작업 이름>_A.png, _B … 같은 이름이 있으면 _2. 어느 파일이 어디서 왔는지는 _목록.tsv 에.
@@ -821,8 +904,11 @@ async function main() {
     const safe = (s) => String(s || "job").replace(/[\\/:*?"<>|]+/g, "_").trim();
     fs.mkdirSync(SAVE_TO, { recursive: true });
     const rows = [];
+    const list = path.join(SAVE_TO, "_목록.tsv");
+    const have = new Set((fs.existsSync(list) ? fs.readFileSync(list, "utf8") : "").split("\n").map((l) => l.split("\t")[3]).filter(Boolean));
     for (const [k, j] of sentJobs.entries()) {
       for (const [t, i] of (groups[k] || []).entries()) {
+        if (have.has(i.filepath)) continue;   // 끊긴 뒤 이어서 — 이미 복사한 그림
         if (!fs.existsSync(i.filepath)) { log(`  못 옮김 — 원본이 없음: ${i.filepath}`); continue; }
         const name = safe(j.name || `job_${k + 1}`), take = String.fromCharCode(65 + t), ext = path.extname(i.filepath) || ".png";
         let dest = path.join(SAVE_TO, `${name}_${take}${ext}`);
@@ -831,10 +917,10 @@ async function main() {
         rows.push([j.name || `job_${k + 1}`, take, i.model || "", i.filepath, path.basename(dest)].join("\t"));
       }
     }
-    const list = path.join(SAVE_TO, "_목록.tsv");
     if (rows.length) fs.appendFileSync(list, `${fs.existsSync(list) ? "" : "작업\t테이크\t모델\t원본\t파일\n"}${rows.join("\n")}\n`);
     log(rows.length ? `그림 ${rows.length}장을 ${SAVE_TO} 로 복사했다(앱 원본은 그대로) · 목록 _목록.tsv` : "복사한 그림 없음");
   }
+  markDone();
 }
 
 main().catch((e) => {
