@@ -105,7 +105,9 @@ const readJsonArg = (raw) => {
 // 어느 파일이 어디서 왔는지는 <작업>\_검수\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다.
 // 받기: 검수를 쓰는 작업의 영상은 받지 않고(사용자 10/30 "검수하려고 다 받다 보니 용량이 꽉 참") "대기"로 적는다 — 검수 페이지가
 // 앱 주소(/api/media/<task>)로 재생하고, 저장할 때 OK·보류만 그 자리로 받아 "받음"으로 바꾼다. 빈칸 = 받아 둔 파일(예전 그대로).
-const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각", "받기"];
+// 프롬프트 = 그 영상을 만든 프롬프트의 지문(같은 작업 이름으로 고쳐 다시 보내도 북이 판마다 맞는 프롬프트를 붙이게, 11/2). 나노바나나도 같은 칸으로 쓴다
+const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각", "받기", "프롬프트"];
+const promptKey = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
 const ASSET_KINDS = ["인물", "로케이션", "프랍", "참고"];
 const readJsonSafe = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch { return {}; } };
 const workCode = (spec, work) => String(spec.code || readJsonSafe(path.join(work, "_작업설정.json")).code || "").trim();
@@ -139,14 +141,13 @@ function appendWorkList(work, rows) {
   fs.mkdirSync(path.join(work, "_검수"), { recursive: true });
   const p = path.join(work, "_검수", "목록.tsv");
   const clean = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
-  // 예전 머리줄(칸이 모자람)이면 늘려 둔다 — 뒤에 붙은 칸이라 예전 줄은 빈칸으로 읽힌다
-  if (fs.existsSync(p)) {
-    const text = fs.readFileSync(p, "utf8");
-    const nl = text.indexOf("\n");
-    const head = (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, "").split("\t");
-    if (head.length < LIST_HEAD.length && head.every((h, i) => h === LIST_HEAD[i])) fs.writeFileSync(p, LIST_HEAD.join("\t") + (nl < 0 ? "\n" : text.slice(nl)));
-  }
-  fs.appendFileSync(p, `${fs.existsSync(p) ? "" : `${LIST_HEAD.join("\t")}\n`}${rows.map((r) => LIST_HEAD.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
+  // 머리줄은 있던 칸 + 모자란 칸을 뒤에 — 예전 줄은 늘어난 칸을 빈칸으로 읽는다
+  const text = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
+  const nl = text.indexOf("\n");
+  const old = text ? (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, "").split("\t") : [];
+  const head = [...old, ...LIST_HEAD.filter((h) => !old.includes(h))];
+  if (old.length && head.length > old.length) fs.writeFileSync(p, head.join("\t") + (nl < 0 ? "\n" : text.slice(nl)));
+  fs.appendFileSync(p, `${old.length ? "" : `${head.join("\t")}\n`}${rows.map((r) => head.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
 }
 // 검수 화면을 쓰는지 — make-review 와 같은 규칙(작업 설정 → 이 PC 사용자 설정 → 안 정했으면 켬)
 function reviewOn(work) {
@@ -1288,7 +1289,8 @@ async function placeResults(sent, spec, work) {
       if (have.has(c.id)) continue;
       const tail = resTail(x.st);
       const row = { 폴더: pl.rel, 작업: x.name, 테이크: String.fromCharCode(65 + k), 모델: x.st?.model || "", 카드: c.id, task: c.taskId || "",
-        씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", 해상도: tail.slice(1), "받은 시각": new Date().toISOString() };
+        씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", 해상도: tail.slice(1), "받은 시각": new Date().toISOString(),
+        프롬프트: promptKey(x.j.prompt) };
       const ext = remote && /^[A-Za-z0-9._-]+$/.test(c.taskId || "") ? await mediaExt(c.taskId) : "";
       if (ext) {
         // 번호를 이어 매기도록 한 줄씩 바로 적는다(파일이 없으니 폴더로는 못 센다)

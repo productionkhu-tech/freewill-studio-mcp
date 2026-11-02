@@ -355,7 +355,9 @@ function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
 // 씬·컷: <작업>\S010\C0010\<코드>_S010_C0010_I001.png — 그 컷에서 번호를 이어 붙인다(다시 만든 것 · A/B안도 이어서, 어느 안인지는 목록에).
 // 에셋: <작업>\01_에셋\<인물|로케이션|프랍|참고>\<작업 이름>_A.png. 검수 뒤 OK 는 그 자리, 보류는 그 안 보류\, 탈락은 지운다(앱 원본은 앱에 남는다).
 // 어느 파일이 어디서 왔는지는 <작업>\_검수\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다.
-const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각"];
+// 시댄스와 같은 목록에 쓴다 — 칸도 같게. 프롬프트 = 그 그림을 만든 프롬프트의 지문(같은 작업 이름으로 고쳐 다시 보내도 북이 판마다 맞는 프롬프트를 붙이게, 11/2)
+const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각", "받기", "프롬프트"];
+const promptKey = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
 const ASSET_KINDS = ["인물", "로케이션", "프랍", "참고"];
 const readJsonSafe = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch { return {}; } };
 const workCode = (spec, work) => String(spec.code || readJsonSafe(path.join(work, "_작업설정.json")).code || "").trim();
@@ -389,7 +391,13 @@ function appendWorkList(work, rows) {
   fs.mkdirSync(path.join(work, "_검수"), { recursive: true });
   const p = path.join(work, "_검수", "목록.tsv");
   const clean = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
-  fs.appendFileSync(p, `${fs.existsSync(p) ? "" : `${LIST_HEAD.join("\t")}\n`}${rows.map((r) => LIST_HEAD.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
+  // 머리줄은 있던 칸 + 모자란 칸을 뒤에 — 예전 줄은 늘어난 칸을 빈칸으로 읽는다
+  const text = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
+  const nl = text.indexOf("\n");
+  const old = text ? (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, "").split("\t") : [];
+  const head = [...old, ...LIST_HEAD.filter((h) => !old.includes(h))];
+  if (old.length && head.length > old.length) fs.writeFileSync(p, head.join("\t") + (nl < 0 ? "\n" : text.slice(nl)));
+  fs.appendFileSync(p, `${old.length ? "" : `${head.join("\t")}\n`}${rows.map((r) => head.map((h) => clean(r[h])).join("\t")).join("\n")}\n`);
 }
 // 그 컷에서 다음 번호 — 목록(지운 탈락까지)과 폴더(보류 포함)를 다 본다
 function nextNumber(work, pl, kind) {
@@ -889,7 +897,7 @@ async function main() {
         const name = placeName(WORKDIR, pl, "I", path.extname(i.filepath) || ".png", j.name);
         fs.copyFileSync(i.filepath, path.join(dir, name));
         rows.push({ 폴더: pl.rel, 파일: name, 작업: j.name || `job_${k + 1}`, 테이크: String.fromCharCode(65 + t), 모델: i.model || "", 원본: i.filepath,
-          씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", "받은 시각": new Date().toISOString() });
+          씬: pl.scene || "", 컷: pl.cut || "", 범위: pl.range || "", 안: pl.version || "", "받은 시각": new Date().toISOString(), 프롬프트: promptKey(j.prompt) });
         log(`  ${pl.rel}/${name}`);
       }
     }

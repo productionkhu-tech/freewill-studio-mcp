@@ -135,7 +135,7 @@ function scan() {
       if (!folder || !file || seen.has(`${folder}/${file}`)) continue;
       seen.add(`${folder}/${file}`);
       const base = { key: `${folder}/${file}`, folder, cut: r["작업"] || file, take: r["테이크"] || "", card: r["카드"] || "", task: r["task"] || "",
-        model: r["모델"] || "", file, video: VIDEO.test(file), range: r["범위"] || "", version: r["안"] || "", res: r["해상도"] || "" };
+        model: r["모델"] || "", file, video: VIDEO.test(file), range: r["범위"] || "", version: r["안"] || "", res: r["해상도"] || "", prompt: r["프롬프트"] || "" };
       const where = locate(folder, file, dec);
       if (where) { takes.push({ ...base, abs: where.abs, status: where.status }); continue; }
       // 받지 않은 영상 — 앱 주소로 본다. 탈락으로 고른 것은 받을 일이 없어 목록에서 뺀다. 받은 뒤 없어진 것(사람이 지움)도 뺀다
@@ -166,24 +166,32 @@ const viewOnly = (folder) => /^00_/.test(String(folder).split("/")[0]);
 // 테이크 이름 — 씬·컷 배치는 파일 번호(I003 · V001_480), 예전 판은 A · B
 const takeLabel = (t) => (/_([IV]\d{3}(?:_[0-9A-Za-z]+)?)\.[^.]+$/.exec(t.file) || [])[1] || t.take || t.file;
 
-// 보낸 jobs.json 들 — 작업 이름 → 프롬프트·설정
+// 보낸 jobs.json 들 — 작업 이름 → 프롬프트·설정(마지막에 보낸 것). byKey 는 '작업 이름#프롬프트 지문' → 그 판의 프롬프트 —
+// 같은 이름으로 프롬프트를 고쳐 다시 보낸 판마다(목록의 '프롬프트' 칸, 11/2 "같은 컷 OK 여러 개면?")
+const promptKey = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
 function readPrompts() {
   const map = new Map();
+  map.byKey = new Map();
   const dir = path.join(work, "05_프롬프트");
   if (!fs.existsSync(dir)) return map;
   for (const f of fs.readdirSync(dir).filter((n) => /\.json$/i.test(n)).sort()) {
     try {
       const spec = JSON.parse(readText(path.join(dir, f)));
       for (const j of spec.jobs || []) {
-        if (j?.name && j.prompt) map.set(j.name, { prompt: String(j.prompt), model: j.model ?? spec.defaults?.model ?? "", mode: j.mode ?? spec.defaults?.mode ?? "", file: f,
+        if (!j?.name || !j.prompt) continue;
+        const p = { prompt: String(j.prompt), model: j.model ?? spec.defaults?.model ?? "", mode: j.mode ?? spec.defaults?.mode ?? "", file: f,
           duration: j.duration ?? spec.defaults?.duration ?? "", ratio: j.ratio ?? j.aspect ?? spec.defaults?.ratio ?? spec.defaults?.aspect ?? "",
           refs: (j.refs || []).map((r) => (typeof r === "string" ? r : r?.path || "")).filter(Boolean),
-          elements: [...new Set([...String(j.prompt).matchAll(/@\{([^}\n]+)\}/g)].map((m) => m[1].trim()))] });
+          elements: [...new Set([...String(j.prompt).matchAll(/@\{([^}\n]+)\}/g)].map((m) => m[1].trim()))] };
+        map.set(j.name, p);
+        map.byKey.set(`${j.name}#${promptKey(j.prompt)}`, p);
       }
     } catch {}
   }
   return map;
 }
+// 이 테이크를 만든 프롬프트 — 지문이 없는 예전 줄은 그 작업 이름으로 마지막에 보낸 것
+const promptFor = (prompts, t) => (t.prompt && prompts.byKey?.get(`${t.cut}#${t.prompt}`)) || prompts.get(t.cut);
 
 // 지난 검수 회차 — 저장할 때마다 하나씩 쌓인다. 회차 기록이 없던 예전 판은 _컷목록.tsv 를 1차로 읽는다.
 // 회차 = { n, at, file(저장본 이름), keys(그때 있던 테이크), takes{키:{status, memo}}, cuts{컷:메모} }
@@ -432,6 +440,7 @@ function render(served) {
     return `<section class="folder" id="${fid(folder)}"><h3>${esc(folderLabel(folder))}<span class="path">${esc(folder)}</span></h3>${cuts.map((cut) => {
       const mine = takes.filter((t) => t.folder === folder && t.cut === cut).sort((a, b) => a.take.localeCompare(b.take));
       const p = prompts.get(cut);
+      const sentWith = [...new Set(mine.map((t) => promptFor(prompts, t)).filter(Boolean))];   // 고쳐 다시 보냈으면 판마다
       const ckey = `${folder}/${cut}`;
       const fresh = mine.filter(isNew).length;
       return `<article class="cut" data-cut="${esc(ckey)}">
@@ -442,7 +451,7 @@ ${t.video ? `<video src="${takeUrl(t, served)}" preload="metadata" muted playsin
 <div class="tf"><b>${esc(takeLabel(t))}${isNew(t) ? `<span class="newb">새로</span>` : ""}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}${t.range ? ` <span class="chip">${esc(t.range)}</span>` : ""}${t.remote ? ` <span class="chip" title="아직 받지 않음 — 저장할 때 OK·보류만 받는다">앱</span>` : ""}</b><span class="seg">${STATUSES.map((s) => `<button type="button" data-s="${s}">${s}</button>`).join("")}</span></div>
 ${takeHist(t.key)}<textarea class="memo" placeholder="${round > 1 ? `${round}차 메모` : "이 테이크 메모"}"></textarea></div>`).join("")}</div>
 <textarea class="cmemo" placeholder="${round > 1 ? `${round}차 컷 메모 — 이번에 고칠 것` : "이 컷 메모 — 무엇을 고칠지"}"></textarea>
-${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre></details>` : ""}
+${(sentWith.length ? sentWith : p ? [p] : []).map((sp, i, all) => `<details><summary>보낸 프롬프트${all.length > 1 ? ` ${i + 1} — ${esc(mine.filter((t) => promptFor(prompts, t) === sp).map(takeLabel).join(" · "))}` : ""}</summary><pre>${esc(sp.prompt)}</pre></details>`).join("")}
 </article>`;
     }).join("")}</section>`;
   }).join("");
@@ -491,9 +500,9 @@ ${p ? `<details><summary>보낸 프롬프트</summary><pre>${esc(p.prompt)}</pre
     `<div class="takes">${views.map((t) => `<div class="vtake">${t.video ? `<video src="${mediaUrl(t.abs, served)}" preload="metadata" muted playsinline controls></video>`
       : `<img src="${mediaUrl(t.abs, served)}" alt="${esc(t.key)}" loading="lazy">`}<div class="tf"><b>${esc(t.cut)}${t.version ? ` <span class="chip">${esc(t.version)}안</span>` : ""}</b><span class="path">${esc(t.file)}</span></div></div>`).join("")}</div></section>` : "";
 
-  // 프롬프트 — 보낸 작업마다
-  const promptHtml = prompts.size ? [...prompts.entries()].map(([name, p]) =>
-    `<details class="pr"><summary><b>${esc(name)}</b> <span class="chip">${esc([p.model, p.mode].filter(Boolean).join(" · "))}</span> <span class="path">${esc(p.file)}</span></summary><pre>${esc(p.prompt)}</pre></details>`).join("")
+  // 프롬프트 — 보낸 작업마다(같은 이름으로 고쳐 다시 보낸 판도 따로)
+  const promptHtml = prompts.size ? [...prompts.byKey.entries()].map(([key, p]) =>
+    `<details class="pr"><summary><b>${esc(key.replace(/#[0-9a-f]+$/, ""))}</b> <span class="chip">${esc([p.model, p.mode].filter(Boolean).join(" · "))}</span> <span class="path">${esc(p.file)}</span></summary><pre>${esc(p.prompt)}</pre></details>`).join("")
     : `<p class="intro">05_프롬프트 에 보낸 jobs.json 이 없다.</p>`;
 
   const server = served ? null : readJson(SERVER_FILE);
@@ -548,18 +557,26 @@ function writeBook() {
   const memos = (t) => rounds.map((r) => r.takes?.[t.key]?.memo).filter(Boolean);
   const CAT = { 인물: "character", 로케이션: "location", 프랍: "prop" };
   const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v !== undefined && v !== null));
-  const groups = [...new Map(ok.map((t) => [`${t.folder}/${t.cut}`, { folder: t.folder, cut: t.cut }])).values()]
-    .sort((a, b) => a.folder.localeCompare(b.folder) || a.cut.localeCompare(b.cut));
+  // 같은 프롬프트의 OK 는 한 칸에 모으고, 같은 작업을 프롬프트를 고쳐 다시 보냈으면 판마다 칸을 나눈다 — 결과 옆에는 그 결과를 만든 프롬프트(11/2)
+  const groups = [...new Map(ok.map((t) => {
+    const p = promptFor(prompts, t);
+    return [`${t.folder}/${t.cut}\n${p?.prompt ?? ""}`, { folder: t.folder, cut: t.cut, p }];
+  })).values()].sort((a, b) => a.folder.localeCompare(b.folder) || a.cut.localeCompare(b.cut));
   const refs = [], cuts = [];
   for (const g of groups) {
-    const takes = ok.filter((t) => t.folder === g.folder && t.cut === g.cut);
-    const p = prompts.get(g.cut);
+    const takes = ok.filter((t) => t.folder === g.folder && t.cut === g.cut && promptFor(prompts, t) === g.p);
+    const p = g.p;
+    const same = groups.filter((x) => x.folder === g.folder && x.cut === g.cut);
+    const n = same.length > 1 ? same.indexOf(g) + 1 : 0;   // 프롬프트 판 번호(보낸 차례)
+    const name = n ? `${g.cut} · 프롬프트 ${n}` : g.cut;
     if (!/^S\d/.test(g.folder)) {
-      refs.push(clean({ id: `${g.folder}/${g.cut}`, name: g.cut, category: CAT[g.folder.split("/").pop()] || "", role: folderLabel(g.folder),
+      // 에셋은 이름을 그대로 둔다 — 컷의 레퍼런스가 이름으로 찾는다(같은 이름이면 마지막 판). 몇 번째 프롬프트인지는 역할 칸에
+      refs.push(clean({ id: `${g.folder}/${g.cut}${n ? `#${n}` : ""}`, name: g.cut, category: CAT[g.folder.split("/").pop()] || "",
+        role: n ? `${folderLabel(g.folder)} · 프롬프트 ${n}` : folderLabel(g.folder),
         model: p?.model || takes[0].model, prompt: p?.prompt, images: takes.map((t) => t.abs) }));
       continue;
     }
-    cuts.push(clean({ id: `${g.folder.split("/").join("_")}_${g.cut}`, title: g.cut, group: folderLabel(g.folder),
+    cuts.push(clean({ id: `${g.folder.split("/").join("_")}_${g.cut}${n ? `_p${n}` : ""}`, title: name, group: folderLabel(g.folder),
       settings: p ? clean({ model: p.model, mode: p.mode, ratio: p.ratio, duration: p.duration }) : takes[0].model ? { model: takes[0].model } : undefined,
       refs: p ? [...p.elements, ...p.refs.map((r) => path.basename(r).replace(/\.[^.]+$/, "").replace(/_[A-Z]$/, ""))] : undefined,
       prompt: p?.prompt,
@@ -861,7 +878,7 @@ function printSheets(all) {
   if (!list.length) { console.log(`시트를 뽑을 영상이 없다${all ? "" : "(볼 것 — 미정 · 보류 — 없음. 전부는 --sheets all)"}`); return; }
   console.log(`접촉 시트 ${list.length}개 — 아래 명령을 돌리고 시트를 열어 본다(칸 하나 = 0.5초, 한 줄 = 3초). 시트 폴더: ${dir}`);
   for (const t of list) {
-    const sec = Number(prompts.get(t.cut)?.duration) || 15;
+    const sec = Number(promptFor(prompts, t)?.duration) || 15;
     const rows = Math.min(20, Math.max(1, Math.ceil((sec * 2) / 6)));
     const src = t.remote ? `${SD}/api/media/${encodeURIComponent(t.task)}?ext=${encodeURIComponent(path.extname(t.file))}` : t.abs;
     const out = path.join(dir, `${path.basename(t.file, path.extname(t.file))}.png`);
