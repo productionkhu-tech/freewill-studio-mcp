@@ -395,6 +395,17 @@
       ],
       "use": "루트 자료 — /vocab(시네마 어휘 사전) · /prompt-examples(장르별 예시) · /image-models(이미지 모델) · /production-benchmarks(실제로 된 것) · /skills/shared/house-rulings(판정 모음) · /skills/shared/negative-constraints(부정어 쓰는 법) · /templates/…(장르 10 · seedance 11 · ad-asset-prep · character-design · text-overlays)",
       "skip": "루트 SKILL.md 의 Higgsfield 플랫폼 안내·앱에 없는 모델(Kling·Veo·Soul·Flux 등) — 앱 규칙이 먼저"
+    },
+    {
+      "skill": "ark-docs-reader",
+      "vendor": "BytePlus",
+      "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "use": "전체",
+      "skip": "—",
+      "adoptedAt": "2026-11-03"
     }
   ],
   "docs": [

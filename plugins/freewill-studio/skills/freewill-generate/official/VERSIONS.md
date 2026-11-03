@@ -16,6 +16,10 @@
 | `gemini-.*image` · `nano-banana` | `official:nano-banana` | Google 공식 문서 | 전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations | — | #99b20e9a · 2026-10-12 |
 | `veo` | `official:veo` | Google 공식 문서 | 전체 | — | #5c35e0fa · 2026-10-12 |
 
+모델 계열을 못 짐작한 새 공식 가이드 — 설명을 보고 맞는 모델이면 쓴다:
+
+- `official:ark-docs-reader` (BytePlus) — #0a64ffbb · 2026-11-03
+
 **커뮤니티 참고 가이드(MIT)** — 모델 회사 공식이 아니다. 사내 쓰는 법(`seedance-prompting`)·공식 가이드를 보충하는 작성법·어휘로 쓰고,
 그 안의 형식·길이 규칙, 다른 플랫폼 파라미터, `@Image 1` 표기는 따르지 않는다(사용자 지시 > 앱 규칙 > 사내 쓰는 법이 먼저).
 

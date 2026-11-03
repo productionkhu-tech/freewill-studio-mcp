@@ -2,6 +2,10 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-11-03
+
+- **ark-docs-reader** (BytePlus) 처음 반영 #0a64ffbb · 파일 3개, +595 −0줄
+
 ## 2026-10-31
 
 - **gemini-omni-flash-api** (Google) #96bcfe08 → #b199a222 · 파일 1개, +2 −2줄

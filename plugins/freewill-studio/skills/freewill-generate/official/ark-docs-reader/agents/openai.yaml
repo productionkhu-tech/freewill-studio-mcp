@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ark documentation reader"
+  short_description: "Read Volcengine Ark or ModelArk official docs by target-site capability and keep evidence"
+  default_prompt: "Use $ark-docs-reader to search and verify the latest official documentation relevant to my question, then give the conclusion and actual sources."

@@ -542,6 +542,21 @@
         "templates/text-overlays/subtitle.md",
         "vocab.md"
       ]
+    },
+    "ark-docs-reader": {
+      "kind": "skill",
+      "vendor": "BytePlus",
+      "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": null,
+      "hash": "0a64ffbb2104cf6997b01738d27d010d9de9c4cae92cd034e48bce36a774e3fd",
+      "digest": "sha256:6a40e81066ec5fa210c68617ae370708f76248399922f81d0242a118900962a8",
+      "appliedAt": "2026-11-03",
+      "files": [
+        "SKILL.md"
+      ]
     }
   },
   "held": {
@@ -549,10 +564,12 @@
   },
   "known": {
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [
+      "ark-docs-reader",
       "sd2-pe",
       "sd25-pe"
     ],
     "google-gemini/gemini-skills": [
+      "gemini-api-cli",
       "gemini-api-dev",
       "gemini-live-api-dev",
       "gemini-omni-flash-api"
