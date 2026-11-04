@@ -140,9 +140,9 @@
         "veo"
       ],
       "version": null,
-      "hash": "5c35e0fafdb97d8ee46d77f48d7b623dc3cabcfaa046636ae094b9bde698211c",
+      "hash": "71e99f0b13755f6944fe1682ad3b5f4c9aa7585d7ffc42c57f823625b5c1b5ca",
       "digest": null,
-      "appliedAt": "2026-10-12",
+      "appliedAt": "2026-11-04",
       "files": [
         "GUIDE.md"
       ],
@@ -560,7 +560,8 @@
     }
   },
   "held": {
-    "higgsfield": "dc0377a481aff139ec8c0af12c985dd7140dc69dc82f37869cfbd27d9ef59f09"
+    "higgsfield": "dc0377a481aff139ec8c0af12c985dd7140dc69dc82f37869cfbd27d9ef59f09",
+    "nano-banana": "ca5b736fa170f5b7faf8a4635d926f51518a92695d0a68355766d3e68f04073b"
   },
   "known": {
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [

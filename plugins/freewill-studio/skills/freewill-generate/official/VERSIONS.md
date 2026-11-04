@@ -14,7 +14,7 @@
 | `gpt-image` | `official:gpt-image` | OpenAI 공식 문서(원문에서 바로) | 전체 — 모델 고르기(2.5 Flare·Sunburst), 프롬프트 기본, 만들기·편집·여러 턴 예시 프롬프트 | 코드 예시(SDK) | #8724e047 · 2026-10-24 |
 | `seedream` | `official:seedream` | BytePlus 공식 문서(원문에서 바로) | 전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다) | — | #62bb2d0c · 2026-10-12 |
 | `gemini-.*image` · `nano-banana` | `official:nano-banana` | Google 공식 문서 | 전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations | — | #99b20e9a · 2026-10-12 |
-| `veo` | `official:veo` | Google 공식 문서 | 전체 | — | #5c35e0fa · 2026-10-12 |
+| `veo` | `official:veo` | Google 공식 문서 | 전체 | — | #71e99f0b · 2026-11-04 |
 
 모델 계열을 못 짐작한 새 공식 가이드 — 설명을 보고 맞는 모델이면 쓴다:
 

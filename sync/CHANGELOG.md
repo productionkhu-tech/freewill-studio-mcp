@@ -2,6 +2,10 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-11-04
+
+- **veo** (Google) #5c35e0fa → #71e99f0b · 파일 1개, +128 −77줄
+
 ## 2026-11-03
 
 - **ark-docs-reader** (BytePlus) 처음 반영 #0a64ffbb · 파일 3개, +595 −0줄
