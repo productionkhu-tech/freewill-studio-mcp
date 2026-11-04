@@ -36,7 +36,7 @@
 //                                                    없으면 이미 보낸 것은 건너뛰고(새 앱은 안 끝난 것을 이어서 지켜보고 놓는다), 앱에 들어갔는지
 //                                                    모르는 작업은 보내지 않는다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게
 //   node send-to-nanobanana.mjs jobs.json --keep     (옛 앱) 탭 입력값을 되돌리지 않음
-//   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다). 새 앱은 화면을 안 바꾸고 바로,
+//   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다 — 둘이 다르면 멈춘다). 새 앱은 화면을 안 바꾸고 바로,
 //                                                    옛 앱은 K 가 화면에 없으면 사람이 K 를 누를 때까지 기다렸다 이어서 넣는다
 //   node send-to-nanobanana.mjs --create-tab "K"     (새 앱, 사용자가 "만들어"라고 했을 때만) 화면을 안 바꾸고 K 탭을 만든다 —
 //                                                    새 탭은 과금이 비어 있다. 내주는 명단에서 사용자가 고른다
@@ -48,8 +48,9 @@
 // jobs.json:
 //   {
 //     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
-//     "tab": "보낼 탭 이름 — 사용자가 이 작업용으로 만들어 둔 탭(팀·프로젝트가 골라져 있어야 한다). 비우면 지금 화면의 탭",
-//     "billing": "확인 카드에 보여 준 과금 — dry-run 의 '과금 TA팀 · [26P47]…' 이름 그대로. 보낼 때 그 탭 과금과 다르면 멈춘다",
+//     "tab": "보낼 탭 이름 — 사용자가 이 작업용으로 만들어 둔 탭(팀·프로젝트가 골라져 있어야 한다). 탭이 둘 이상이면 꼭 적는다(비우면 멈춘다).
+//             과금은 탭에 달려 있어 한 파일은 한 탭 — 프로젝트(탭)가 여럿이면 탭마다 파일 하나(작업 줄에 tab · billing 을 적으면 멈춘다)",
+//     "billing": "확인 카드에 보여 준 과금 — dry-run 의 '과금 TA팀 · [26P47]…' 이름 그대로(팀까지). 보낼 때 꼭 적는다. 그 탭 과금과 다르거나 보내는 도중 바뀌면 멈춘다",
 //     "work": "작업 폴더(사용자가 알려 준 프로젝트 폴더) — dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의
 //              '보낼 것'에 그림으로 뜨고, 끝나면 결과를 씬·컷 폴더에 놓는다(지켜보기를 켜지 않아도 기다렸다 놓는다)",
 //     "code": "프로젝트 코드(예: ABC) — 파일 이름 맨 앞. 한 번 적으면 _작업설정.json 에 남는다",
@@ -190,7 +191,8 @@ async function withSendLock(name, fn) {
       fs.writeFileSync(file, mine, { flag: "wx" });
       break;
     } catch (e) {
-      if (e.code !== "EEXIST") throw e;
+      // 윈도는 다른 실행이 잠금을 지우는 순간 EPERM 등을 준다 — 기다렸다 다시(탭마다 동시에 보낼 때)
+      if (!["EEXIST", "EPERM", "EACCES", "EBUSY"].includes(e.code)) throw e;
     }
     let stale = false;
     try {
@@ -567,6 +569,7 @@ async function billingChoices(tabName) {
     "  - 선택지가 버튼에 들어가면 버튼으로(Claude AskUserQuestion 4개 · Codex freewill_ask 6개까지, default 없이), 넘으면 위 번호 목록을 대화에 그대로 보여 주고 번호나 이름으로 받는다. 답이 애매하면 다시 묻는다.",
     `  - 답을 받으면 이 스크립트에 --set-billing --tab "${tabName || "탭 이름"}" --team "팀 이름" --project "프로젝트 이름" (명단 이름 그대로) — 화면 탭은 안 바뀐다.`,
     `  - 사용자가 앱에서 고르겠다고 하면 ${inApp}. 탭을 옮기지 않아도 된다.`,
+    "  - 프로젝트(탭)가 여럿이면 탭마다 따로 묻는다 — 한 답을 여러 탭에 넣지 않는다(사용자가 \"다 같은 걸로\"라고 했을 때만). 보낼 때는 탭마다 jobs.json 한 파일(맨 위에 tab · billing), 확인 카드는 탭마다 한 줄, dry-run · 보내기도 파일마다 따로.",
   ].join("\n");
 }
 
@@ -624,7 +627,7 @@ async function setBilling() {
   const stateUrl = `/api/billing/state?pid=${encodeURIComponent(tab.pid)}`;
   const now = await get(stateUrl);
   if (now?.ok === false) fail(`"${tab.name}" 탭 과금을 못 읽음(${now.error || "알 수 없음"}) — 넣지 않았다`);
-  const next = `jobs.json 의 "billing" 에 "${label}" 를 그대로 적고 dry-run 부터 다시 돌릴 것`;
+  const next = `이 탭의 jobs.json 맨 위에 "tab": "${tab.name}", "billing": "${label}" 를 그대로 적고 dry-run 부터 다시 돌릴 것(프로젝트가 여럿이면 탭마다 파일 하나)`;
   if (now?.confirmed && now.team_id === team.id && now.project_id === proj.id) { log(`"${tab.name}" 탭은 이미 과금 ${label} 다 — 바꾸지 않았다. ${next}`); return; }
   const before = now?.confirmed && now.team_id && now.project_id ? await billingName(now) : "";
   if (before && !flag("--change")) fail(`"${tab.name}" 탭은 이미 과금 "${before}" 로 골라져 있다 — 넣지 않았다. 사용자가 "${label}" 로 바꾸라고 했을 때만 --change 를 붙일 것`);
@@ -645,6 +648,14 @@ async function main() {
   const defaults = spec.defaults || {};
   const jobs = (spec.jobs || []).filter((j) => j && String(j.prompt || "").trim());
   if (!jobs.length) fail("보낼 작업이 없음 (prompt 가 빈 작업은 뺀다)");
+  // 과금은 탭에 달린다 — 한 파일은 한 탭(사용자 11/4 "프로젝트마다 과금과 팀이 달라도 안 꼬이게"). 다른 자리에 적은 탭 · 과금은 아무도 안 읽어, 그대로 보내면 엉뚱한 탭으로 기록된다.
+  const WHO = ["team", "team_id", "project", "project_id"];
+  const stray = [
+    ...WHO.filter((k) => spec[k] !== undefined).map((k) => `맨 위 "${k}"`),
+    ...["tab", "billing", ...WHO].filter((k) => defaults[k] !== undefined).map((k) => `defaults 의 "${k}"`),
+    ...(spec.jobs || []).flatMap((j) => ["tab", "billing", ...WHO].filter((k) => j?.[k] !== undefined).map((k) => `${j.name || "(이름 없음)"} 의 "${k}"`)),
+  ];
+  if (stray.length) fail(`탭 · 과금을 적은 자리가 틀렸다(${stray.join(", ")}) — 보내지 않았다. 과금은 탭에 달려 있어 한 jobs.json 은 탭 하나다: 맨 위에 "tab" 과 "billing" 만 적고, 프로젝트(탭)가 여럿이면 탭마다 파일을 나눌 것`);
   if (FREEWILL_GUIDE && spec.guide !== FREEWILL_GUIDE) fail(GUIDE_STALE(spec.guide));
   // refs 는 {"path","why"} — why 는 그 그림에서 가져올 것과 같이 끌려올 수 있는 것을 어떻게 막는지 한 줄(사용자 10/20 "생각 없이 넣지 말고")
   for (const j of jobs) {
@@ -676,9 +687,14 @@ async function main() {
   await connect();
 
   // 2) 어느 탭으로 들어가는지, 팀·프로젝트가 골라져 있는지.
+  if (TAB && spec.tab && String(TAB) !== String(spec.tab)) fail(`--tab "${TAB}" 와 jobs.json 의 "tab" "${spec.tab}" 이 다르다 — 보내지 않았다. 어느 탭인지 확인하고 하나로 맞출 것`);
   const want = TAB || String(spec.tab || "");
   const pr0 = await get("/api/projects");
   const tabs0 = pr0?.projects || [];
+  if (!want && tabs0.length > 1) {
+    fail(`jobs.json 에 "tab" 이 없는데 앱에 탭이 ${tabs0.length}개다(${tabs0.map((p) => `"${p.name}"`).join(", ")}) — 보내지 않았다. 화면 탭으로 보내면 엉뚱한 과금으로 기록될 수 있다. ` +
+      `--choices 로 어느 탭인지 물어 "tab" 에 적을 것`);
+  }
   // 새 앱(v2026-10-2001~, agent_pid): 탭을 pid 로 지정해 보낸다 — 화면 탭도 그 탭 입력칸도 안 바뀐다(사용자 10/20 "탭 이동 없이")
   const direct = isDirect(pr0);
   let tab = tabs0.find((p) => p.pid === pr0?.active) || null;
@@ -725,9 +741,11 @@ async function main() {
   const billLabel = await billingName(billing);
   // 확인 카드에 보여 준 과금(jobs.json "billing" — dry-run 의 "과금 …" 이름)과 지금 그 탭 과금이 다르면 보내지 않는다.
   // 카드와 보내기 사이에 사람이 탭 과금을 바꾸면 카드와 다른 곳으로 기록된다(10/20 석영 탭이 그사이 KBS → USA_CPT 로 바뀐 일).
-  if (spec.billing && ![billLabel, billing.project_id].includes(String(spec.billing).trim())) {
+  // 프로젝트 id 만으로는 대조하지 않는다 — 같은 프로젝트를 팀만 달리 고른 탭이 있을 수 있다(11/4).
+  if (spec.billing && sameName(spec.billing) !== sameName(billLabel)) {
     fail(`"${tab.name}" 탭의 과금이 지금 "${billLabel}" — 확인 카드의 "${spec.billing}" 와 다르다. 보내지 않는다 — 사용자에게 어느 쪽이 맞는지 묻고 카드를 다시`);
   }
+  if (!spec.billing && !DRY) fail(`jobs.json 에 "billing" 이 없다 — 보내지 않았다. 확인 카드에 보여 준 이 탭 과금을 그대로 적을 것: "billing": "${billLabel}"`);
   log(`탭 "${tab.name}" · 과금 ${billLabel} 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"}` +
     `${direct && tab.name !== screenTab ? ` — 화면 탭("${screenTab}")은 그대로 둔다` : ""}`);
   if (DRY && !direct && tab.name !== screenTab) {
@@ -884,11 +902,24 @@ async function main() {
     if (gr.error === "ref_duplicate") return `${who}: 레퍼런스 ${gr.index}번이 ${gr.same_as}번과 같은 그림 — 하나만`;
     return `Generate 실패 (${who}): ${gr.error || gr.raw || "알 수 없음"}`;
   };
+  // 넣기 직전에 그 탭 · 그 과금이 그대로인지 다시 본다 — 앞 작업을 기다리는 사이 과금이 바뀌거나 앱을 다시 켜면(pid 가 다른 탭이 될 수 있다)
+  // 확인 카드 · 사용 기록과 앱 과금이 어긋난다(11/4 시험: 30장이 옛 과금 10 · 새 과금 20 으로 갈렸는데 사용 기록은 전부 옛 과금).
+  async function checkTabUnchanged() {
+    const now = await get(`/api/billing/state?pid=${enc}`);
+    const again = "나머지는 보내지 않는다 — 사용자에게 물은 뒤 dry-run 부터 다시(이미 보낸 것은 다시 안 나간다)";
+    if (now?.ok === false || (now?.tab !== undefined && now.tab !== tab.name)) throw new Error(`"${tab.name}" 탭이 보내는 사이 닫혔거나 앱이 다시 켜졌다. ${again}`);
+    if (!now?.confirmed) throw new Error(`"${tab.name}" 탭의 팀·프로젝트 확인이 보내는 사이 풀렸다. --choices 로 명단을 받아 다시 고르게 할 것. ${again}`);
+    if (now.team_id === billing.team_id && now.project_id === billing.project_id) return;
+    // 시트 이관으로 앱이 옛 id 를 새 id 로 바꾼 것이면 같은 과금이다
+    if (now.team_id === billing.team_id && (await readCatalog())?.aliases?.[billing.project_id] === now.project_id) return;
+    throw new Error(`"${tab.name}" 탭 과금이 보내는 사이 "${billLabel}" 에서 "${await billingName(now)}" 로 바뀌었다. ${again}`);
+  }
   // 새 앱 — 탭(pid)과 그 작업의 프롬프트·설정·레퍼런스를 한 요청으로. 장수(count)는 늘 보낸다(한도·기록과 맞춘다).
   // 잠금 안에서 기록을 다시 본다 — 분류한 뒤 같은 명령을 동시에 돌린 다른 실행이 이 작업을 넣었으면 건너뛴다
   const otherSent = sentSince;
   async function sendDirect(j, i, need) {
     if ((await inFlight()) + need > MAX_IN_FLIGHT) return false;
+    await checkTabUnchanged();
     const other = otherSent(j);
     if (other) return { skip: other };
     const model = j.model ?? defaults.model ?? base.model;

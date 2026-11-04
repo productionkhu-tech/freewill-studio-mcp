@@ -412,7 +412,7 @@ async function withSendLock(name, fn) {
       fs.writeFileSync(file, mine, { flag: "wx" });
       break;
     } catch (e) {
-      if (e.code !== "EEXIST") throw e;
+      if (!["EEXIST", "EPERM", "EACCES", "EBUSY"].includes(e.code)) throw e;   // 윈도는 다른 실행이 잠금을 지우는 순간 EPERM 등을 준다
     }
     let stale = false;
     try {
