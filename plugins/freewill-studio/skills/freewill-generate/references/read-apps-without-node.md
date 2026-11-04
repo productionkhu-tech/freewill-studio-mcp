@@ -16,7 +16,7 @@ curl.exe -s http://127.0.0.1:5656/static/app.js -o "<임시 폴더>/nb-app.js"
 ```
 
 - `version` 이 응답하지 않으면 꺼져 있는 것 → 켜 달라고 한다.
-- `billing/state` 의 `confirmed` 가 false 거나 `project_id` 가 비었으면 → 앱에서 팀·프로젝트를 먼저 고르게 하고 멈춘다.
+- `billing/state` 의 `confirmed` 가 false 거나 `project_id` 가 비었으면 → 보내지 않고 사용자에게 고르게 한다(아래 "Node 없이 보내기 — 나노바나나"의 과금 고르기, 옛 앱은 앱에서).
 - `settings` 에서는 model · resolution · aspect · quality · count · output_dir · ref_limit 만 본다. 프롬프트 칸은 보지 않는다.
 - 받아 둔 `nb-app.js` 에서 `MODEL_SPECS = {` 줄을 찾아(Grep -n) 그 줄부터 닫는 `};` 까지 읽는다 (Read, 약 100줄).
 - **`/api/status` 와 `/api/events` 는 부르지 않는다.** 앱의 닫기 신호를 지우고 화면 팝업을 가로챈다.
@@ -134,7 +134,11 @@ $before = Get-NB "/api/settings"
 ```powershell
 $tabs = (Get-NB "/api/projects").projects
 $tabPid = ($tabs | Where-Object { $_.name -eq "K" }).pid          # 같은 이름이 둘이면 멈추고 묻는다
-$bill = Get-NB "/api/billing/state?pid=$tabPid"                  # confirmed 가 아니면 멈춤 → 사람이 탭 옆 ! 로 고른다
+$bill = Get-NB "/api/billing/state?pid=$tabPid"                  # confirmed 가 아니면 보내지 않고 아래 과금 고르기
+# 과금 고르기 — teams · projects 의 name 을 번호 목록으로, 미리 고른 값 · 추천 없이 보여 주고 사용자가 대화에서 고른 것만 넣는다. 짐작 금지.
+# 이미 다른 과금이 골라진 탭은 사용자가 바꾸라고 했을 때만. pid 를 빼면 화면 탭에 들어가니 꼭 넣는다.
+$cat = Get-NB "/api/billing/catalog"
+Send-NB "/api/billing/set" @{ pid = $tabPid; team_id = "고른 팀의 id"; project_id = "고른 프로젝트의 id" }
 $r = Send-NB "/api/generate" @{ pid = $tabPid; prompt = "프롬프트"
        settings = @{ model = "gpt-image-2.5-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
        ref_paths = @("C:\경로\ref1.png") }                        # 거절이면 error(needs_billing · bad_aspect+allowed · ref_*)

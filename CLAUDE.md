@@ -26,7 +26,8 @@
    갱신은 이 저장소가 한다.
 5. **나노바나나의 `/api/status`·`/api/events` 를 부르지 말 것.** status 는 읽는 순간 '창 닫기 요청' 신호를 지우고,
    events 는 꺼내 가는 큐라 앱 화면의 팝업을 가로챈다. 읽기는 `/api/version`·`/api/settings`·`/api/projects`·
-   `/api/billing/state`·`/static/app.js` 만.
+   `/api/billing/state`·`/api/billing/catalog`·`/static/app.js` 만. `/api/billing/set` 은 `--set-billing` 으로만 — 사용자가 대화에서 고른 값,
+   명단 이름 그대로, pid 필수(빠지면 화면 탭에 들어간다, 앱 v2026-10-2001~). 사용자 11/4.
 6. **앱 규칙은 저장소가 아니라 이 PC 의 앱에서 읽는다** (`scripts/read-local-apps.mjs`). 저장소가 더 새 버전이어도
    이 PC 가 업데이트 전이면 그 기능은 없다. 릴리즈는 "업데이트 있음" 알림에만 쓴다.
 7. **GitHub API 를 사용자 PC 에서 부르지 말 것.** 로그인 없이 IP 당 시간 60회라 사무실에서 금방 막힌다.

@@ -9,7 +9,8 @@
 // 그 전 앱: 탭을 지정할 수 없어 정한 탭이 화면에 떠 있을 때 그 탭 입력칸에 넣고 Generate → 입력칸을 원래대로 돌려놓는다
 // (탭이 화면에 없으면 사람이 누를 때까지 기다린다). 앱은 작업마다 그 순간의 설정을 스냅샷으로 저장해 각자 제 설정으로 생성된다.
 //
-// 팀·프로젝트(과금)는 사람만 고른다 — 확인 안 된 탭이면 보내지 않고 골라 달라고 한다(새 앱은 탭 옆 "!" · 우클릭으로 탭을 안 옮기고 고른다).
+// 팀·프로젝트(과금)는 사람이 고른다 — 에이전트가 짐작해 넣지 않는다. 확인 안 된 탭이면 보내지 않고 명단을 내주고, 사용자가 대화에서 고른 값만
+// --set-billing 으로 그 탭에 넣는다(사용자 11/4). 앱에서 고르겠다면 탭 옆 "!" · 우클릭(탭을 안 옮기고 고른다).
 //
 // 읽기에 /api/status 와 /api/events 는 절대 쓰지 않는다 — status 는 읽는 순간 앱의 '창 닫기
 // 요청' 신호를 지우고, events 는 꺼내 가는 큐라 앱 화면의 팝업을 가로챈다. 진행 상황은
@@ -38,7 +39,11 @@
 //   node send-to-nanobanana.mjs --tab "K" jobs.json  K 탭으로 보냄(jobs.json 의 "tab" 과 같다). 새 앱은 화면을 안 바꾸고 바로,
 //                                                    옛 앱은 K 가 화면에 없으면 사람이 K 를 누를 때까지 기다렸다 이어서 넣는다
 //   node send-to-nanobanana.mjs --create-tab "K"     (새 앱, 사용자가 "만들어"라고 했을 때만) 화면을 안 바꾸고 K 탭을 만든다 —
-//                                                    팀·프로젝트는 사람이 그 탭 옆 "!" 로 고른다
+//                                                    새 탭은 과금이 비어 있다. 내주는 명단에서 사용자가 고른다
+//   node send-to-nanobanana.mjs --choices            탭 · 팀 · 프로젝트 명단과 묻는 법 — 사용자에게 줄 선택지. 아무것도 안 바꾼다
+//   node send-to-nanobanana.mjs --set-billing --tab "K" --team "팀 이름" --project "프로젝트 이름"
+//                                                    (새 앱, 사용자가 대화에서 고른 값만) K 탭 과금을 넣는다 — 명단 이름 그대로만 받고, 화면 탭은 안 바뀐다.
+//                                                    이미 다른 과금이 골라진 탭은 사용자가 바꾸라고 했을 때만 --change
 //
 // jobs.json:
 //   {
@@ -68,9 +73,11 @@ import crypto from "node:crypto";
 const NB = process.env.FREEWILL_NB_URL || "http://127.0.0.1:5656";
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
-const opt = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : null; };
-const file = args.find((a, i) => !a.startsWith("--") && !["--tab", "--save-to", "--create-tab"].includes(args[i - 1]));
+const opt = (f) => { const i = args.indexOf(f); if (i >= 0) return args[i + 1]; const e = args.find((a) => a.startsWith(`${f}=`)); return e ? e.slice(f.length + 1) : null; };
+const file = args.find((a, i) => !a.startsWith("--") && !["--tab", "--save-to", "--create-tab", "--team", "--project"].includes(args[i - 1]));
 const CREATE_TAB = opt("--create-tab");
+const CHOICES = flag("--choices");
+const SET_BILLING = flag("--set-billing");
 const SAVE_TO = opt("--save-to");
 const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const KEEP = flag("--keep");
@@ -535,7 +542,35 @@ async function billingName(b) {
   return `${team} · ${proj}`;
 }
 
-// 사용자가 "만들어"라고 한 탭을 화면을 안 바꾸고 만든다(새 앱만). 과금은 사람이 그 탭 옆 "!" 로 고른다.
+// 앱의 팀·프로젝트 창과 같은 명단. 이름이 없으면 그 창처럼 id 를 쓴다.
+const nameOf = (x) => String(x?.name || x?.id || "");
+const sameName = (s) => String(s ?? "").normalize("NFC").replace(/\s+/g, " ").trim();
+// 같은 이름이 둘일 때만 id 를 보여 준다 — 평소에 사람이 보는 건 이름이다
+const numbered = (list) => list.map((x, i) => `  ${i + 1}) ${nameOf(x)}${list.filter((y) => nameOf(y) === nameOf(x)).length > 1 ? ` (id ${x.id})` : ""}`);
+async function readCatalog() {
+  let c = null;
+  try { c = await get("/api/billing/catalog"); } catch {}
+  return c?.ok && c.teams?.length && c.projects?.length ? c : null;
+}
+const OLD_APP = "이 나노바나나는 탭을 지정해 과금을 넣을 수 없다(v2026-10-2001 전) — 사용자에게 앱에서 그 탭을 열고 팀·프로젝트를 골라 달라고 할 것(앱을 껐다 켜면 새 버전이 깔린다)";
+// 사용자에게 줄 선택지 — 보내기가 멈출 때도 --choices 에서도 같은 글이라, 어느 에이전트든 다른 문서 없이 그대로 묻는다
+async function billingChoices(tabName) {
+  const c = await readCatalog();
+  const inApp = `탭 줄의 ${tabName ? `"${tabName}"` : "그 탭"} 옆 "!"(또는 탭 우클릭 "팀·프로젝트…")`;
+  if (!c) return `과금 명단을 못 읽었다 — 사용자에게 나노바나나 ${inApp}로 골라 달라고 할 것. 탭을 옮기지 않아도 된다`;
+  return [
+    ...(c.warning ? [`참고: ${c.warning}`] : []),
+    `팀 ${c.teams.length}개:`, ...numbered(c.teams),
+    `프로젝트 ${c.projects.length}개:`, ...numbered(c.projects),
+    "사용자에게 물을 것 — 과금은 사람이 고른다:",
+    "  - 미리 고른 값 · 추천 없이 묻는다. 지난번 값이나 탭 · 폴더 이름으로 짐작해 넣지 않는다(비용이 그 프로젝트로 기록된다).",
+    "  - 선택지가 버튼에 들어가면 버튼으로(Claude AskUserQuestion 4개 · Codex freewill_ask 6개까지, default 없이), 넘으면 위 번호 목록을 대화에 그대로 보여 주고 번호나 이름으로 받는다. 답이 애매하면 다시 묻는다.",
+    `  - 답을 받으면 이 스크립트에 --set-billing --tab "${tabName || "탭 이름"}" --team "팀 이름" --project "프로젝트 이름" (명단 이름 그대로) — 화면 탭은 안 바뀐다.`,
+    `  - 사용자가 앱에서 고르겠다고 하면 ${inApp}. 탭을 옮기지 않아도 된다.`,
+  ].join("\n");
+}
+
+// 사용자가 "만들어"라고 한 탭을 화면을 안 바꾸고 만든다(새 앱만). 새 탭은 과금이 비어 있으니 명단을 같이 내준다.
 async function createTab(name) {
   if (!name) fail("--create-tab 에 탭 이름을 줄 것");
   await connect();
@@ -544,12 +579,66 @@ async function createTab(name) {
   if ((pr.projects || []).some((p) => p.name === name)) { log(`"${name}" 탭이 이미 있다 — 만들지 않았다`); return; }
   const r = await post("/api/projects/new", { title: name, activate: false });
   if (!r.ok) fail(`탭을 못 만듦: ${r.error || r.raw || "알 수 없음"}`);
-  log(`"${name}" 탭을 만들었다(${r.pid}) — 화면 탭은 그대로. 사용자에게 탭 줄의 "${name}" 옆 "!"(또는 우클릭 "팀·프로젝트…")로 ` +
-    "팀·프로젝트를 골라 달라고 할 것(에이전트가 고르지 않는다)");
+  log(`"${name}" 탭을 만들었다(${r.pid}) — 화면 탭은 그대로. 새 탭은 과금이 비어 있다.\n${await billingChoices(name)}`);
+}
+
+async function showChoices() {
+  await connect();
+  const pr = await get("/api/projects");
+  const tabs = pr?.projects || [];
+  const c = await readCatalog();
+  const label = (id, list) => nameOf(list?.find((x) => x.id === id)) || id;
+  log(`나노바나나 탭 ${tabs.length}개 (지금 화면 "${tabs.find((t) => t.pid === pr?.active)?.name ?? "?"}"):`);
+  tabs.forEach((t, i) => log(`  ${i + 1}) ${t.name} — ${t.billing_team_id && t.billing_project_id ? `과금 ${label(t.billing_team_id, c?.teams)} · ${label(t.billing_project_id, c?.projects)}` : "과금 안 골라짐"}`));
+  log(`이 작업을 둘 탭을 물을 때 "새 탭 만들기"도 넣는다 — 고르면 --create-tab "이름", 있는 탭이면 jobs.json "tab" 에 이름 그대로.`);
+  log(isDirect(pr) ? await billingChoices("") : OLD_APP);
+}
+
+// 사용자가 대화에서 고른 팀·프로젝트를 그 탭에 넣는다(사용자 11/4 — 앱의 "!" 창과 같은 기능, 화면 탭은 그대로). 고르는 건 사람이다:
+// 명단 이름 그대로만 받고 비슷한 이름으로 짐작하지 않으며, 이미 다른 과금이 골라진 탭은 --change 없이 안 바꾼다.
+function pickOne(list, want, what, flagName) {
+  const w = sameName(want);
+  if (!w) fail(`${flagName} 에 사용자가 고른 ${what} 이름을 줄 것`);
+  const hit = list.filter((x) => x.id === w || sameName(nameOf(x)) === w);
+  if (hit.length > 1) fail(`"${w}" 라는 ${what}이(가) ${hit.length}개다 — 사용자에게 어느 쪽인지 묻고 ${flagName} 에 id 를 줄 것(${hit.map((x) => x.id).join(" · ")})`);
+  if (!hit.length) fail(`"${w}" 는 명단에 없는 ${what} — 넣지 않았다. 짐작하지 말고 사용자가 고른 것을 명단 이름 그대로 줄 것:\n${numbered(list).join("\n")}`);
+  return hit[0];
+}
+async function setBilling() {
+  await connect();
+  const pr = await get("/api/projects");
+  if (!isDirect(pr)) fail(OLD_APP);
+  const tabs = pr.projects || [];
+  const names = tabs.map((p) => `"${p.name}"`).join(", ");
+  const want = String(TAB || "").trim();
+  if (!want) fail(`--tab 에 넣을 탭 이름을 줄 것(지금 탭: ${names})`);
+  const same = tabs.filter((p) => p.name === want);
+  if (!same.length) fail(`나노바나나에 "${want}" 탭이 없다(지금 탭: ${names}) — 넣지 않았다`);
+  if (same.length > 1) fail(`나노바나나에 "${want}" 탭이 ${same.length}개다 — 넣지 않았다. 어느 탭인지 사용자에게 물을 것(탭 이름을 바꿔 구분)`);
+  const tab = same[0];
+  const c = await readCatalog();
+  if (!c) fail(`과금 명단을 못 읽어 넣지 않았다 — 사용자에게 나노바나나 탭 줄의 "${tab.name}" 옆 "!" 로 골라 달라고 할 것`);
+  const team = pickOne(c.teams, opt("--team"), "팀", "--team");
+  const proj = pickOne(c.projects, opt("--project"), "프로젝트", "--project");
+  const label = `${nameOf(team)} · ${nameOf(proj)}`;
+  const stateUrl = `/api/billing/state?pid=${encodeURIComponent(tab.pid)}`;
+  const now = await get(stateUrl);
+  if (now?.ok === false) fail(`"${tab.name}" 탭 과금을 못 읽음(${now.error || "알 수 없음"}) — 넣지 않았다`);
+  const next = `jobs.json 의 "billing" 에 "${label}" 를 그대로 적고 dry-run 부터 다시 돌릴 것`;
+  if (now?.confirmed && now.team_id === team.id && now.project_id === proj.id) { log(`"${tab.name}" 탭은 이미 과금 ${label} 다 — 바꾸지 않았다. ${next}`); return; }
+  const before = now?.confirmed && now.team_id && now.project_id ? await billingName(now) : "";
+  if (before && !flag("--change")) fail(`"${tab.name}" 탭은 이미 과금 "${before}" 로 골라져 있다 — 넣지 않았다. 사용자가 "${label}" 로 바꾸라고 했을 때만 --change 를 붙일 것`);
+  const r = await post("/api/billing/set", { pid: tab.pid, team_id: team.id, project_id: proj.id });
+  if (!r?.ok) fail(r?.error === "no_such_tab" ? `"${tab.name}" 탭이 그사이 닫혔다 — 사용자에게 물을 것` : `과금을 못 넣음: ${r?.error || r?.raw || "알 수 없음"}`);
+  const after = await get(stateUrl);
+  if (!(after?.confirmed && after.team_id === team.id && after.project_id === proj.id)) fail(`"${tab.name}" 탭 과금을 넣었는데 확인이 안 된다 — 보내지 말고 사용자에게 탭 옆 "!" 를 봐 달라고 할 것`);
+  log(`"${tab.name}" 탭 과금을 ${before ? `"${before}" 에서 ` : ""}${label} 로 넣었다 — 화면 탭은 그대로. ${next}`);
 }
 
 async function main() {
   if (CREATE_TAB !== null) return createTab(String(CREATE_TAB || "").trim());
+  if (CHOICES) return showChoices();
+  if (SET_BILLING) return setBilling();
   if (!file) fail("작업 파일(jobs.json)을 주세요");
   let spec;
   try { JOBS_TEXT = fs.readFileSync(file, "utf8"); spec = JSON.parse(JOBS_TEXT.replace(BOM, "")); } catch (e) { fail(`작업 파일을 못 읽음 — ${e.message}`); }
@@ -610,8 +699,7 @@ async function main() {
     }
     billing = await get(`/api/billing/state?pid=${encodeURIComponent(tab.pid)}`);
     if (!(billing?.ok !== false && billing?.confirmed && billing.team_id && billing.project_id)) {
-      fail(`"${tab.name}" 탭의 팀·프로젝트가 확인되지 않았다 — 사용자에게 나노바나나 탭 줄의 "${tab.name}" 옆 "!"(또는 탭 우클릭 ` +
-        `"팀·프로젝트…")로 골라 달라고 할 것. 탭을 옮기지 않아도 된다. 에이전트가 고르지 않는다(앱을 다시 켜면 탭마다 한 번 다시 확인한다)`);
+      fail(`"${tab.name}" 탭의 팀·프로젝트가 확인되지 않아 보내지 않았다(앱을 다시 켜면 탭마다 한 번 다시 확인한다).\n${await billingChoices(tab.name)}`);
     }
   } else if (want && tab.name !== want) {
     // 옛 앱: 생성(/api/generate)·레퍼런스 기능이 화면에 떠 있는 탭에만 들어간다 — 탭을 지정하는 칸이 없다. 탭 전환 API 는 있지만
@@ -787,7 +875,7 @@ async function main() {
   const galleryBefore = direct ? null : new Set(((await get(`/api/gallery?pid=${enc}`))?.items || []).map((i) => i.filepath));
   const directError = (gr, j, i) => {
     const who = j.name || `job_${i + 1}`;
-    if (gr.needs_billing) return `"${tab.name}" 탭의 팀·프로젝트를 앱이 다시 골라 달라고 한다 — 사용자에게 탭 옆 "!" 로 골라 달라고 할 것(${gr.error || ""})`;
+    if (gr.needs_billing) return `"${tab.name}" 탭의 팀·프로젝트를 앱이 다시 골라 달라고 한다(${gr.error || ""}) — 이 스크립트 --choices 로 명단을 받아 사용자에게 물을 것`;
     if (gr.error === "no_such_tab") return `"${tab.name}" 탭이 그사이 닫혔다 — 사용자에게 물을 것`;
     if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — 고를 수 있는 값: ${(gr.allowed || []).join(", ")}`;
     if (gr.error === "unknown_model") return `${who}: 앱이 모르는 모델 ${gr.model} — read-local-apps 가 보여 준 모델 id 로`;

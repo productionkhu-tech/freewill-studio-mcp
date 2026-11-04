@@ -40,6 +40,7 @@
 //                                                   앱 기능 명령(26.10.305~) — 프로젝트 · 어셋 라이브러리 · 카드 ·
 //                                                   과금 목록. 명령 목록은 설명서에. 결과는 JSON 으로 출력한다.
 //                                                   설명서 버전은 --manual 로 읽을 때 기억해 둔 것을 쓴다.
+//   node send-to-seedance.mjs --choices             사이드바 프로젝트 명단 · 지금 과금과 묻는 법 — 사용자에게 줄 선택지. 아무것도 안 바꾼다
 //
 // jobs.json:
 //   {
@@ -47,7 +48,7 @@
 //     "manual": "읽은 설명서 버전 (--manual 이 알려 준 값 그대로) — 앱이 바뀌었으면 앱이 받지 않는다",
 //     "project": "보낼 사이드바 프로젝트 이름 (사용자가 이 작업용으로 만들어 둔 것 — 안 열려 있으면 스크립트가 연다(project.open,
 //                 사이드바 클릭과 같음, dry-run 도). 생략하면 지금 열린 것)",
-//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 앱 전체에 하나, 앱을 켤 때마다 사람이 고른다. 다르면 안 보냄, 생략하면 지금 값)",
+//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 앱 전체에 하나, 사람이 앱에서 고른다. 다르면 안 보냄, 생략하면 지금 값)",
 //     "work": "작업 폴더(사용자가 알려 준 프로젝트 폴더) — dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의
 //              '보낼 것'에 그림으로 뜨고, 끝나면 씬·컷 폴더 이름으로 목록에 적는다(지켜보기를 켜지 않아도 기다린다). 검수를 쓰면 받지 않고
 //              앱 주소로 검수 — 저장할 때 OK·보류만 받는다. 검수를 안 쓰거나 회사 보관소가 없는 앱이면 받아서 놓는다",
@@ -89,6 +90,7 @@ const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const STATUS = flag("--status");
 const MANUAL = flag("--manual");
 const DO = flag("--do");
+const CHOICES = flag("--choices");
 const SAVE_FINAL = flag("--save-final");
 const positional = args.filter((a, i) => !a.startsWith("--") && !(saveAt >= 0 && i === saveAt + 1));
 // --manual 로 읽은 설명서 버전을 기억해 두는 곳(--do 가 쓴다). 앱 주소마다 따로 — 시험 서버와 섞이지 않게.
@@ -862,7 +864,25 @@ function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
   } catch (e) { log(`  참고: 보낼 것을 못 남김 — ${e.message}`); }
 }
 
+// 사용자에게 줄 선택지 — 어느 에이전트든 다른 문서 없이 그대로 묻게 묻는 법까지 같이 낸다. 읽기만 하므로 지금 설명서 버전으로 묻는다
+// (기억해 둔 버전이 옛것이어도 여기서 멈추지 않는다 — 그건 보낼 때 dry-run 이 잡는다).
+async function showChoices() {
+  const s = await appStatus();
+  if (!s.screenAlive) fail("시댄스 서버는 켜져 있지만 앱 화면이 응답하지 않는다 — 앱 창이 열려 있는지 확인해 달라고 할 것");
+  const pl = await sendCommand((await readManual()).version, "projects.list", {});
+  const list = Array.isArray(pl) ? pl : pl?.projects || [];
+  const code = list.find((p) => p.billing?.name)?.billing.name || s.billing || "";
+  log(code ? `과금(프로젝트 코드): "${code}" — 앱 전체에 하나라 새 프로젝트도 같다. 묻지 않고 확인 카드에 보여 준다. 바꾸는 건 사람이 앱 설정 패널 맨 위에서`
+    : "과금(프로젝트 코드): 안 골라짐 — 사용자에게 앱 설정 패널 맨 위 '프로젝트 코드'를 골라 달라고 할 것(앱에서만 고른다)");
+  log(`사이드바 프로젝트 ${list.length}개 (지금 열림 "${s.project || "없음"}"):`);
+  list.forEach((p, i) => log(`  ${i + 1}) ${p.name}${p.group ? ` — 그룹 ${p.group}` : ""}${list.filter((x) => x.name === p.name).length > 1 ? ` (id ${p.id})` : ""}`));
+  log("사용자에게 물을 것 — 이 작업을 어느 프로젝트에 둘지:\n" +
+    "  - 선택지가 버튼에 들어가면 버튼으로(Claude AskUserQuestion 4개 · Codex freewill_ask 6개까지, \"새로 만들기\" 포함), 넘으면 위 번호 목록을 대화에 그대로 보여 주고 번호나 이름으로 받는다. 너무 길면 그룹이나 이름 일부를 먼저 묻고 좁혀 보여 준다.\n" +
+    "  - 고르면 jobs.json \"project\" 에 이름 그대로(같은 이름이 둘이면 \"projectId\" 에 id). \"새로 만들기\"면 --do project.create 에 {\"name\",\"group\",\"open\":false} — 화면은 안 바뀐다.");
+}
+
 async function main() {
+  if (CHOICES) return showChoices();
   if (MANUAL) {
     await appStatus();
     const m = await readManual();
@@ -952,8 +972,8 @@ async function main() {
   if (!s.screenAlive) fail("시댄스 서버는 켜져 있지만 앱 화면이 응답하지 않는다 — 앱 창이 열려 있는지 확인해 달라고 할 것");
   if (s.manualStale) await staleStop(s.notice || "앱이 업데이트됐다");
   // 새 앱(26.10.2002~, features "send-any-project"): 열린 프로젝트를 바꾸지 않고 지정한 프로젝트(projectId)로 보낸다 — 작성 칸·설정·
-  // 레퍼런스 칸도 그대로, 카드만 그 프로젝트에 생긴다(사용자 10/20 "탭 이동 없이"). 과금('프로젝트 코드')은 왼쪽 프로젝트마다 저장되고,
-  // 그 프로젝트의 코드로 과금된다 — 코드가 없거나 확인 카드와 다르면 보내지 않고 사람에게 묻는다((가) 과금은 사람만).
+  // 레퍼런스 칸도 그대로, 카드만 그 프로젝트에 생긴다(사용자 10/20 "탭 이동 없이"). 과금('프로젝트 코드')은 앱 전체에 하나고(26.10.2004~),
+  // 코드가 없거나 확인 카드와 다르면 보내지 않고 사람에게 묻는다((가) 과금은 사람만).
   const anyProject = (s.features || []).includes("send-any-project");
   let target = null;   // { id, name, group, billing: { name, id } | null, allowedModels, fourK }
   if (anyProject) {
@@ -971,8 +991,8 @@ async function main() {
     } else if (spec.project) {
       const same = list.filter((p) => p.name === spec.project);
       if (!same.length) {
-        fail(`시댄스 사이드바에 "${spec.project}" 프로젝트가 없다 — 이름을 사이드바 그대로 적거나, 사용자에게 만들어 달라고 할 것. 사용자가 "만들어"라고 하면 ` +
-          `--do project.create 에 {"name","group","open":false} (화면은 안 바뀐다 — 새 프로젝트는 프로젝트 코드가 비어 있어 사람이 골라야 한다)`);
+        fail(`시댄스 사이드바에 "${spec.project}" 프로젝트가 없다 — 이 스크립트 --choices 명단에서 사용자에게 물을 것. 사용자가 "만들어"라고 하면 ` +
+          `--do project.create 에 {"name","group","open":false} (화면은 안 바뀐다 — 과금은 앱 전체에 하나라 새로 고를 것 없다)`);
       }
       if (same.length > 1) {
         fail(`"${spec.project}" 프로젝트가 ${same.length}개다(${same.map((p) => `그룹 "${p.group || "없음"}" — id ${p.id}`).join(" · ")}) — 어느 쪽인지 사용자에게 묻고 ` +
@@ -981,7 +1001,7 @@ async function main() {
       target = same[0];
     } else {
       target = list.find((p) => p.current) || null;
-      if (!target) fail("보낼 프로젝트가 없다 — jobs.json 에 \"project\"(사이드바 이름)를 적을 것. 모르면 사용자에게 물을 것");
+      if (!target) fail("보낼 프로젝트가 없다 — jobs.json 에 \"project\"(사이드바 이름)를 적을 것. 모르면 이 스크립트 --choices 명단에서 사용자에게 물을 것");
       log(`  참고: jobs.json 에 "project" 가 없어 지금 열린 "${target.name}" 으로 보낸다 — 이 작업용 프로젝트가 따로 있으면 "project" 에 적을 것`);
     }
     if (!target.billing?.name) {

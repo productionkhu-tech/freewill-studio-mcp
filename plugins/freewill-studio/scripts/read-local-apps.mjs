@@ -36,18 +36,23 @@ async function nanobanana() {
   }
   out.push(`- 실행 중 · 이 PC 버전 **${ver.version}**${releaseNote(ver.version, latest)}`);
 
-  const [billing, projects, settings, js] = await Promise.all([
-    getJson(`${NB}/api/billing/state`, 1500),
+  const [catalog, projects, settings, js] = await Promise.all([
+    getJson(`${NB}/api/billing/catalog`, 3000),
     getJson(`${NB}/api/projects`, 1500),
     getJson(`${NB}/api/settings`, 1500),
     getText(`${NB}/static/app.js`, 4000),
   ]);
-  const tab = projects?.projects?.find((p) => p.pid === projects.active);
+  const tabs = projects?.projects || [];
+  const tab = tabs.find((p) => p.pid === projects.active);
   if (tab) out.push(`- 지금 탭: "${tab.name}"${tab.generating ? ` (생성 중 ${tab.done}/${tab.total})` : ""}`);
-  if (billing) {
-    out.push(billing.confirmed && billing.project_id
-      ? `- 팀·프로젝트: **${billing.team_id} / ${billing.project_id}** (사람이 앱에서 고른 것)`
-      : "- 팀·프로젝트: **선택 안 됨** → 보내기 전에 앱에서 팀·프로젝트를 골라 달라고 할 것");
+  // 탭마다 과금이 따로다 — 앱 화면의 이름으로(명단을 못 읽으면 id)
+  const named = (id, list) => list?.find((x) => x.id === id)?.name || id;
+  if (tabs.length) {
+    out.push("- 탭 · 과금:");
+    for (const t of tabs) {
+      out.push(`  - "${t.name}" — ${t.billing_team_id && t.billing_project_id ? `${named(t.billing_team_id, catalog?.teams)} · ${named(t.billing_project_id, catalog?.projects)}` : "**안 골라짐**"}`);
+    }
+    out.push("- 어느 탭에 둘지 · 안 골라진 탭의 과금은 `send-to-nanobanana --choices` 명단으로 사용자에게 묻는다. 과금은 짐작해 넣지 않는다.");
   }
   if (settings) {
     const s = settings;
@@ -79,7 +84,7 @@ async function seedance() {
   }
   out.push(`- ${team ? "실행 중" : probe.off ? "꺼져 있음 (설치 파일에서 읽음)" : "연결 못 함 (설치 파일에서 읽음)"} · 이 PC 버전 **${version || "?"}**${releaseNote(version, latest)}`);
   if (team?.known) out.push(`- 팀: ${team.team}`);
-  out.push("- 프로젝트는 앱 화면에서 고른다. 프로젝트마다 쓸 수 있는 모델이 다르고, 권한 없는 모델은 앱이 막는다.");
+  out.push("- 어느 사이드바 프로젝트에 둘지는 `send-to-seedance --choices` 명단으로 사용자에게 묻는다. 과금('프로젝트 코드')은 앱 전체에 하나고 사람이 앱에서 고른다 — 권한 없는 모델은 앱이 막는다.");
   // 자동 보내기(에이전트 작업함, 26.10.304~). 켜져 있으면 지금 화면 상태까지, 꺼져 있으면 버전으로만 판단한다.
   const agent = team ? await getJson(`${SD}/api/agent/status`, 1500) : null;
   if (agent?.ok) {
