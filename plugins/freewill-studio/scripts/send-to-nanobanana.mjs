@@ -59,7 +59,8 @@
 //              "version": "A"(A/B안 — 목록에 남김), "covers": "C0010~C0040"(한 장이 여러 컷을 덮으면)
 //     "defaults": { "model": "gpt-image-2.6-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
-//     "complexity": GPT Image 2.6 전용(low · medium · high) — 렌더링 전에 얼마나 계획할지. 요금은 같고 비우면 그 탭 값(기본 high). 다른 모델에 적으면 앱이 거절한다
+//     "complexity": GPT Image 2.6 전용(low · medium · high) — defaults 또는 작업마다. 렌더링 전에 얼마나 계획할지, 요금은 같고 비우면 그 탭 값(앱 기본 high). 다른 모델에 적으면 앱이 거절한다.
+//              한 곳만 고치는 편집은 low(높으면 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high — references/image-prompting.md 1절
 //     "jobs": [
 //       { "name": "char_01", "prompt": "...", "refs": [{ "path": "C:/path/a.png", "why": "her face and hair only — the outfit comes from the text" }] },
 //       { "name": "loc_01", "prompt": "...", "model": "seedream-5-0-pro-260628", "resolution": "2K" }
@@ -865,16 +866,19 @@ async function main() {
   log(`  이번 ${total}장 · ${quota} · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
     `(동시 ${MAX_IN_FLIGHT}장까지 — 넘으면 앞의 것이 끝나야 다음 작업을 넣는다)`);
   if (!owner && need && need !== NO_TICKET) log(`  ${need}`);
+  const cxNote = (m, c) => (/^gpt-image-2\.6/.test(m) && c ? ` · complexity ${c}` : "");   // 2.6 전용 — 확인 카드에 옮긴다
   // 작업 페이지의 '보낼 것' — 작업마다 모델·레퍼런스(그림으로 뜬다)
   const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: billLabel,
-    jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}`,
+    jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}${cxNote(j.model ?? defaults.model ?? base.model, j.complexity ?? defaults.complexity ?? base.complexity)}`,
       prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })),
       ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) })) });
   if (DRY) {
-    const cxNote = (m, c) => (/^gpt-image-2\.6/.test(m) && c ? ` · complexity ${c}` : "");   // 2.6 전용 — 확인 카드에 옮긴다
     log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}${cxNote(base.model, base.complexity)}`
       : tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
+    // 안 적으면 탭 값으로 간다 — 기본 high 는 편집에서 시키지 않은 곳까지 바꿀 수 있고, 탭이 low 로 남아 있으면 새 그림도 low 다(공식 가이드 · 11/5)
+    const cxLoose = toSend.filter((j) => /^gpt-image-2\.6/.test(j.model ?? defaults.model ?? base.model) && (j.complexity ?? defaults.complexity) == null && (j.refs.length || (base.complexity && base.complexity !== "high")));
+    if (cxLoose.length) log(`  확인할 것: ${cxLoose.map((j) => j.name).join(", ")} — complexity 를 안 적어 탭 값(${base.complexity || "high"})으로 간다. 한 곳만 고치는 편집이면 low, 글자 · 복잡한 구도는 high 로 적을 것(references/image-prompting.md 1절)`);
     for (const [i, j] of toSend.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
       log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)}${cxNote(m, j.complexity ?? defaults.complexity ?? base.complexity)} · 레퍼런스 ${j.refs.length}장`);

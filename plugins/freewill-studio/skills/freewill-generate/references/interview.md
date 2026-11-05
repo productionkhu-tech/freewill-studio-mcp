@@ -27,6 +27,7 @@
 
 - 빠른 룩 확인·스토리보드 → `gemini-3.1-flash-lite-image` 1K
 - 일반 고품질·디자인·글자 → `gpt-image-2.6-flare` (빠름) / `gpt-image-2.6-sunburst` (세밀·편집 정밀) — GPT 최신. 앱에 2.6 이 없으면 2.5(앱을 껐다 켜면 업데이트)
+- GPT 2.6 으로 한 곳만 고치는 편집 → `complexity` low (기본 high 는 시키지 않은 곳까지 바꿀 수 있다) · 글자 · 복잡한 구도는 high — `image-prompting.md` 1절
 - 레퍼런스 얼굴 살린 인물 → `seedream-5-0-pro-260628` 2K
 - 카툰·일러스트, 질감 강한 사진 → `gemini-nano-banana-2.1` (Higgsfield 의 Nano Banana 2 자리 — 2.1 이 그 후속.
   앱이 2.1 이전 버전이거나 512px 가 필요하면 `gemini-3.1-flash-image`)

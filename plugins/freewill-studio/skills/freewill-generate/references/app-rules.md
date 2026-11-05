@@ -42,7 +42,8 @@ Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-fla
   gpt-image-2 는 품질이 high 까지 (max 를 보내면 오류). 4K·max 는 장당 1~2분.
 - **GPT Image 2.6** (앱 `v2026-11-0501`~, GPT 는 이것이 기본 — 앱에 없으면 2.5, 앱을 껐다 켜면 업데이트): 크기 규칙 · 품질 사다리 · 투명 배경 · 레퍼런스 16장 · 단가는 2.5 와 같다.
   토큰은 high 이상이면 2.5 와 같고 low · medium 은 3~4배(1024² low 823 vs 196, medium 1,449 vs 439). 4K max 실측 Flare 약 40초 · Sunburst 약 100초.
-  `complexity` low / medium / high(기본 high, 요금 같음)는 2.6 전용 — 2.5 · gpt-image-2 에 보내면 앱이 거절한다.
+  `complexity` low / medium / high(요금 같음)는 2.6 전용 — 2.5 · gpt-image-2 에 보내면 앱이 거절한다. 안 적으면 탭 값(앱 기본 high).
+  한 곳만 고치는 편집은 low 부터(high 는 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high(`image-prompting.md` 1절).
 - **Seedream**: 레퍼런스는 프롬프트에서 `image 1`, `image 2` 처럼 부른다.
 - **Gemini**: 분당 10회 제한 — 앱이 알아서 8회 정도로 늦춘다. 많이 뽑으면 오래 걸린다고 미리 말해 줄 것.
   레퍼런스 14장 안에서 2.1 · 3.1 Flash 는 인물 일관성 4명 · 물체 10개까지, 3 Pro 는 인물 5명 · 물체 6개 · 스타일 3장까지(구글 문서).
