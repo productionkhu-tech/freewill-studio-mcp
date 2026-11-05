@@ -10,11 +10,11 @@
 
 | 종류 | 한 장 안의 구성 | 배경 | 비율 · 해상도 | 모델 추천(이 PC 앱에 있는 것 중) |
 |---|---|---|---|---|
-| **인물 1명** | 3칸 나란히: 왼쪽 얼굴 클로즈업(정면, 눈은 렌즈) · 가운데 정면 전신 · 오른쪽 같은 자세 뒷모습 전신 | 한 장으로 이어진 **중간 회색 무지 배경** | 16:9 · 2K | Seedream 5.0 Pro(실사 피부·머리카락) · 없으면 Nano Banana Pro / GPT Image 2.6 |
-| **여러 인물**(엑스트라·팀·가족) | **정면 풀샷 한 장**: 한 줄로 서서 겹치지 않게, 머리부터 신발까지, 모두 같은 빛 | 같은 회색 | 16:9 · 2K | Nano Banana Pro |
-| **소품** | 2칸 앞 · 뒤(같은 크기·같은 자리, 가운데 얇은 세로선). 옆모습이 중요한 물건은 앞 · 옆 · 뒤 3칸 | 같은 회색 | 16:9 · 2K~4K | GPT Image 2.6(글자·기호 정확) · Nano Banana Pro |
-| **탈것** | 2칸: 3/4 앞(카메라 왼쪽에서) · 3/4 뒤(카메라 오른쪽에서), 가운데 세로선, 문은 다 닫힘 | 밝은 회색 | 16:9 · 2K~4K | Nano Banana Pro · GPT Image 2.6 |
-| **배경(장소)** | **풀샷 한 장, 3/4 대각 앵글**(2점 투시 — 정면으로 마주 보지 않음), 눈높이, 앞·중간·뒤 깊이, 사람 없음 | — | 16:9(시네마스코프면 21:9) · 2K | Nano Banana Pro · 프로덕션 4K 면 GPT Image 2.6 |
+| **인물 1명** | 3칸 나란히: 왼쪽 얼굴 클로즈업(정면, 눈은 렌즈) · 가운데 정면 전신 · 오른쪽 같은 자세 뒷모습 전신 | 한 장으로 이어진 **중간 회색 무지 배경** | 16:9 · 2K | Seedream 계열 SOTA(실사 피부·머리카락) · 없으면 Nano Banana 계열 SOTA / GPT 계열 SOTA |
+| **여러 인물**(엑스트라·팀·가족) | **정면 풀샷 한 장**: 한 줄로 서서 겹치지 않게, 머리부터 신발까지, 모두 같은 빛 | 같은 회색 | 16:9 · 2K | Nano Banana 계열 SOTA |
+| **소품** | 2칸 앞 · 뒤(같은 크기·같은 자리, 가운데 얇은 세로선). 옆모습이 중요한 물건은 앞 · 옆 · 뒤 3칸 | 같은 회색 | 16:9 · 2K~4K | GPT 계열 SOTA(글자·기호 정확) · Nano Banana 계열 SOTA |
+| **탈것** | 2칸: 3/4 앞(카메라 왼쪽에서) · 3/4 뒤(카메라 오른쪽에서), 가운데 세로선, 문은 다 닫힘 | 밝은 회색 | 16:9 · 2K~4K | Nano Banana 계열 SOTA · GPT 계열 SOTA |
+| **배경(장소)** | **풀샷 한 장, 3/4 대각 앵글**(2점 투시 — 정면으로 마주 보지 않음), 눈높이, 앞·중간·뒤 깊이, 사람 없음 | — | 16:9(시네마스코프면 21:9) · 2K | Nano Banana 계열 SOTA · 프로덕션 4K 면 GPT 계열 SOTA |
 
 - 장수는 기본 2장(A/B) — 하나로는 우연인지 프롬프트 탓인지 못 가린다. 빠른 룩 확인만이면 Flash Lite 1K.
 - **회색은 작업마다 하나** — 처음 시트에서 정한 헥스(예: `#8A8A8A`)를 그 작업의 모든 시트에 같은 값으로 쓴다(`image-prompting.md` 5절).
@@ -74,7 +74,7 @@ A straight-on product photograph of one [object] shown twice on a flat mid-grey 
 ```
 A six-view product reference of one [object] on a flat mid-grey seamless backdrop, laid out as a 3×2 grid of equal panels separated only by an even grey gap: top row FRONT, BACK, LEFT SIDE; bottom row RIGHT SIDE, TOP, UNDERSIDE — the same single [object] at the same scale in every panel, square-on to each face. [Shape, materials, colours, markings — exact text in quotes]. Camera at an 18° field of view from about 1.5 m for every panel, no perspective lean, the object filling about 70% of each panel. Soft broad light from front-left, one gentle highlight on the [metal/glass], a soft contact shadow under it. Photoreal product photography, plain unbranded surfaces.
 ```
-기본 앞·뒤 시트를 먼저 고르고, 그 그림을 레퍼런스로 넣어 6면으로 넓히면 생김새가 흔들리지 않는다(GPT Image 2.6 Sunburst).
+기본 앞·뒤 시트를 먼저 고르고, 그 그림을 레퍼런스로 넣어 6면으로 넓히면 생김새가 흔들리지 않는다(GPT 계열 SOTA).
 
 **탈것 (3/4 앞 · 3/4 뒤)**
 ```

@@ -316,6 +316,45 @@ function apply(t, got, note) {
 
 let sourcesChanged = false;
 
+// 앱에 새 모델 · 옵션이 들어오면 사람에게 알린다(이슈). 추천(계열 SOTA)과 옵션 전달은 자동이고, 사용 요령만 사람이 사내 문서에 적을 일이다(사용자 11/5).
+const APP_WATCH = [
+  { key: "nanobanana", name: "나노바나나", url: "https://raw.githubusercontent.com/productionkhu-tech/freewill-nanobanana/main/static/app.js",
+    read: (s) => {
+      const at = s.indexOf("{", s.indexOf("MODEL_SPECS"));
+      const block = s.slice(at, s.indexOf("\n};", at));
+      const bare = block.replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|\/\/[^\n]*/g, (x) => (x.startsWith("//") ? "" : '""'));
+      return { models: [...new Set([...block.matchAll(/^\s*"([a-z0-9][\w.-]*)"\s*:\s*\{/gm)].map((m) => m[1]))], fields: [...new Set([...bare.matchAll(/([A-Za-z_]\w*)\s*:/g)].map((m) => m[1]))].sort() };
+    } },
+  { key: "seedance", name: "시댄스", url: "https://raw.githubusercontent.com/productionkhu-tech/freewill-seedance/main/src/store.ts",
+    read: (s) => ({ models: [...new Set([...s.matchAll(/id:\s*['"`]((?:dreamina-seedance|gemini-omni)[^'"`]+)/g)].map((m) => m[1]))], fields: [] }) },
+];
+async function watchApps() {
+  lock.apps ??= {};
+  for (const app of APP_WATCH) {
+    const key = `앱:${app.key}`;
+    let now;
+    try {
+      const r = await fetch(app.url, { signal: AbortSignal.timeout(30000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      now = app.read(await r.text());
+      if (!now.models.length) throw new Error("모델 목록을 못 찾음 — 앱 코드 모양이 바뀌었는지 확인");
+      clearFailure(key);
+    } catch (e) {
+      noteFailure(key, `**${app.name}** 앱 모델 목록을 못 읽음: ${e.message}`);
+      continue;
+    }
+    const prev = lock.apps[app.key];
+    const models = prev ? now.models.filter((m) => !prev.models.includes(m)) : [];
+    const fields = prev ? now.fields.filter((f) => !prev.fields.includes(f)) : [];
+    if (models.length || fields.length) {
+      attention.push(`- 🆕 **${app.name} 앱**에 새로 들어옴${models.length ? ` — 모델 ${models.join(", ")}` : ""}${fields.length ? ` — 옵션 칸 ${fields.join(", ")}` : ""}\n` +
+        "  → 추천(계열 SOTA)과 옵션 전달은 자동으로 따라간다. 사용 요령 · 비용 차이가 있으면 `references/image-prompting.md` 에 적고, SOTA 표가 맞게 골랐는지 · `read-local-apps.mjs` 의 `KNOWN_SPEC_FIELDS` 를 볼 것");
+    }
+    lock.apps[app.key] = now;
+    log(`  앱     ${app.name} 모델 ${now.models.length}개${models.length + fields.length ? ` · 새로 ${models.length + fields.length}건` : ""}`);
+  }
+}
+
 async function main() {
   fs.rmSync(STAGING, { recursive: true, force: true });
   fs.mkdirSync(STAGING, { recursive: true });
@@ -386,6 +425,8 @@ async function main() {
     if (missing.length) noteFailure(`모드:${t.skill}`, `**${t.skill}** 모드별 절 이름을 원본에서 못 찾음: ${missing.join(", ")} — \`sync/sources.json\` 의 modes 를 새 절 이름으로`);
     else clearFailure(`모드:${t.skill}`);
   }
+
+  await watchApps();
 
   if (DRY) {
     log(`\n[dry-run] 반영 예정 ${changelog.length}건, 알림 ${attention.length}건 — 파일은 그대로 둠`);

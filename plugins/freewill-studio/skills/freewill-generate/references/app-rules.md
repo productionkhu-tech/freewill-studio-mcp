@@ -29,6 +29,8 @@ Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-fla
 | `gpt-image-2.5-flare` | 2.5 빠른 일상용 | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 있음, 배경(투명) 옵션 |
 | `gpt-image-2.5-sunburst` | 2.5 무거운 편집 정밀도용 | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 있음, 배경(투명) 옵션 |
 
+**계열 SOTA(모델 추천은 이것부터 — 이 표를 옮겨 적은 날 기준, 앱이 켜져 있으면 `read-local-apps` 표가 우선)**: GPT Image `gpt-image-2.6-sunburst`(빠른 것 `gpt-image-2.6-flare`) · Nano Banana `gemini-3-pro-image`(가장 가벼운 것 `gemini-3.1-flash-lite-image`) · Seedream `seedream-5-0-pro-260628` · 시댄스 `dreamina-seedance-2-5-260628`.
+
 비율:
 
 - Gemini 3 Pro · 2.5 Flash: auto, 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
@@ -40,7 +42,7 @@ Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-fla
 
 - **GPT**: `[Image N]` 태그가 안 먹는다 — 레퍼런스는 프롬프트에서 말로 설명한다. `auto` 비율은 1번 레퍼런스 비율을 따른다.
   gpt-image-2 는 품질이 high 까지 (max 를 보내면 오류). 4K·max 는 장당 1~2분.
-- **GPT Image 2.6** (앱 `v2026-11-0501`~, GPT 는 이것이 기본 — 앱에 없으면 2.5, 앱을 껐다 켜면 업데이트): 크기 규칙 · 품질 사다리 · 투명 배경 · 레퍼런스 16장 · 단가는 2.5 와 같다.
+- **GPT Image 2.6** (앱 `v2026-11-0501`~): 크기 규칙 · 품질 사다리 · 투명 배경 · 레퍼런스 16장 · 단가는 2.5 와 같다.
   토큰은 high 이상이면 2.5 와 같고 low · medium 은 3~4배(1024² low 823 vs 196, medium 1,449 vs 439). 4K max 실측 Flare 약 40초 · Sunburst 약 100초.
   `complexity` low / medium / high(요금 같음)는 2.6 전용 — 2.5 · gpt-image-2 에 보내면 앱이 거절한다. 안 적으면 탭 값(앱 기본 high).
   한 곳만 고치는 편집은 low 부터(high 는 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high(`image-prompting.md` 1절).

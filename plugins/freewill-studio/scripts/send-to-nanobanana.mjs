@@ -61,6 +61,7 @@
 //                   "quality": "max", "count": 1 },
 //     "complexity": GPT Image 2.6 전용(low · medium · high) — defaults 또는 작업마다. 렌더링 전에 얼마나 계획할지, 요금은 같고 비우면 그 탭 값(앱 기본 high). 다른 모델에 적으면 앱이 거절한다.
 //              한 곳만 고치는 편집은 low(높으면 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high — references/image-prompting.md 1절
+//     그 밖의 설정도 앱에 있는 이름이면 그대로 넘어간다 — 앱에 새 옵션이 생겨도 이 스크립트를 안 고친다. 모델은 read-local-apps 의 "계열 SOTA" 표에서
 //     "jobs": [
 //       { "name": "char_01", "prompt": "...", "refs": [{ "path": "C:/path/a.png", "why": "her face and hair only — the outfit comes from the text" }] },
 //       { "name": "loc_01", "prompt": "...", "model": "seedream-5-0-pro-260628", "resolution": "2K" }
@@ -86,7 +87,10 @@ const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const KEEP = flag("--keep");
 const DRY = flag("--dry-run"); // 앱 연결·탭·팀/프로젝트만 확인하고 아무것도 보내지 않음 (비용 0)
 const TAB = opt("--tab");
-const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent", "complexity"];
+const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent"];
+// 작업 줄에서 스크립트가 쓰는 칸 — 나머지는 앱 설정으로 넘긴다(아래 extrasOf)
+const JOB_OWN = new Set(["name", "prompt", "refs", "refWhy", "key", "nth", "legacy", "prompt_language", "scene", "cut", "asset", "version", "covers"]);
+const hasComplexity = (m) => Number(String(m).match(/^gpt-image-(\d+(?:\.\d+)?)/)?.[1] || 0) >= 2.6;
 // 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
@@ -764,6 +768,11 @@ async function main() {
   // 3) 이번에 넣을 장수와 한도 — 하루 한도에 걸리면 하나도 보내지 않는다
   // 비운 설정 칸은 보낼 탭의 지금 값을 따른다(새 앱은 그 탭 값을 읽기만 하고 쓰지 않는다)
   const base = await get(direct ? `/api/settings?pid=${encodeURIComponent(tab.pid)}` : "/api/settings");
+  // jobs.json 설정은 스크립트 칸을 뺀 전부를 앱으로 넘긴다 — 앱에 새 옵션이 생겨도 스크립트를 안 고치게(사용자 11/5, complexity 가 말없이 빠졌던 일).
+  // 앱 설정에 없는 이름은 앱이 무시하므로 알린다(오타이거나 옛 앱)
+  const extrasOf = (j) => [...new Set([...Object.keys(defaults), ...Object.keys(j)])].filter((k) => !JOB_OWN.has(k) && !SETTING_KEYS.includes(k) && (j[k] ?? defaults[k]) != null).sort();
+  const notInApp = [...new Set(jobs.flatMap(extrasOf))].filter((k) => !(k in (base || {})));
+  if (notInApp.length) log(`  확인할 것: ${notInApp.map((k) => `"${k}"`).join(", ")} — 이 앱의 설정에 없어 앱이 무시한다. 오타면 고치고, 새 옵션이면 앱을 껐다 켜 업데이트, 아니면 뺄 것`);
   const notes = jobs.flatMap((j) => imageNotes(j, j.aspect ?? defaults.aspect ?? base.aspect).map((n) => `${j.name || "(이름 없음)"}: ${n}`));
   if (notes.length) log(`  확인할 것 (references/image-prompting.md · prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}`);
   const countOf = (j) => Math.max(1, Math.round(Number(j.count ?? defaults.count ?? base.count) || 1));
@@ -785,16 +794,15 @@ async function main() {
   const win = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
   const placeRel = (j) => (WORKDIR ? placeOf(spec, j, WORKDIR).rel : "");
   const hash = (v) => crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 24);
-  // complexity 는 적었을 때만 키에 넣는다 — 안 적은 작업의 키가 그대로여야 이 업데이트 전에 보낸 것을 또 보내지 않는다
-  const keyed = (j) => SETTING_KEYS.filter((k) => k !== "complexity" || (j[k] ?? defaults[k]) != null);
+  // 스크립트 칸이 아닌 설정은 적었을 때만 키에 넣는다 — 안 적은 작업의 키가 그대로여야 전에 보낸 것을 또 보내지 않는다
   const seen = {};
   for (const j of jobs) {
     const key = hash([tab.name, String(j.prompt).replace(/\s+/g, " ").trim(),
-      keyed(j).map((k) => { const v = j[k] ?? defaults[k]; return v === undefined || v === null ? null : String(v); }),
+      [...SETTING_KEYS, ...extrasOf(j)].map((k) => { const v = j[k] ?? defaults[k]; return v === undefined || v === null ? null : String(v); }),
       j.refs.map((p) => win(path.resolve(p))), WORKDIR, placeRel(j)]);
     j.nth = seen[key] = (seen[key] || 0) + 1;
     j.key = `${key}#${j.nth}`;
-    j.legacy = hash([tab.name, String(j.prompt), keyed(j).map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, placeRel(j) || SAVE_TO || ""]);
+    j.legacy = hash([tab.name, String(j.prompt), [...SETTING_KEYS, ...extrasOf(j)].map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, placeRel(j) || SAVE_TO || ""]);
   }
   const encPid = encodeURIComponent(tab.pid);
   // 전에 보낸 묶음이 지금 어떤지 — "끝" · "보냄"(만드는 중이거나 아직 안 놓음) · "다시"(그림 0장으로 끝남) · "멈춤"(사람이 앱에서 멈춤) · "모름" · "옛"(묶음 id 없는 옛 앱)
@@ -866,22 +874,26 @@ async function main() {
   log(`  이번 ${total}장 · ${quota} · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
     `(동시 ${MAX_IN_FLIGHT}장까지 — 넘으면 앞의 것이 끝나야 다음 작업을 넣는다)`);
   if (!owner && need && need !== NO_TICKET) log(`  ${need}`);
-  const cxNote = (m, c) => (/^gpt-image-2\.6/.test(m) && c ? ` · complexity ${c}` : "");   // 2.6 전용 — 확인 카드에 옮긴다
+  // 확인 카드 · 작업 페이지에 옮길 설정 — 앱에 새 옵션이 생기면 여기에도 저절로 뜬다. complexity 는 안 적으면 탭 값으로 가므로 그 값을 보인다
+  const extraNote = (j, m) => {
+    const c = j.complexity ?? defaults.complexity ?? (hasComplexity(m) ? base.complexity : null);
+    return [...(c ? [`complexity ${c}`] : []), ...extrasOf(j).filter((k) => k !== "complexity").map((k) => `${k} ${j[k] ?? defaults[k]}`)].map((x) => ` · ${x}`).join("");
+  };
   // 작업 페이지의 '보낼 것' — 작업마다 모델·레퍼런스(그림으로 뜬다)
   const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: billLabel,
-    jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}${cxNote(j.model ?? defaults.model ?? base.model, j.complexity ?? defaults.complexity ?? base.complexity)}`,
+    jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}${extraNote(j, j.model ?? defaults.model ?? base.model)}`,
       prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })),
       ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) })) });
   if (DRY) {
-    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}${cxNote(base.model, base.complexity)}`
+    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}${hasComplexity(base.model) && base.complexity ? ` · complexity ${base.complexity}` : ""}`
       : tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
     // 안 적으면 탭 값으로 간다 — 기본 high 는 편집에서 시키지 않은 곳까지 바꿀 수 있고, 탭이 low 로 남아 있으면 새 그림도 low 다(공식 가이드 · 11/5)
-    const cxLoose = toSend.filter((j) => /^gpt-image-2\.6/.test(j.model ?? defaults.model ?? base.model) && (j.complexity ?? defaults.complexity) == null && (j.refs.length || (base.complexity && base.complexity !== "high")));
+    const cxLoose = toSend.filter((j) => hasComplexity(j.model ?? defaults.model ?? base.model) && (j.complexity ?? defaults.complexity) == null && (j.refs.length || (base.complexity && base.complexity !== "high")));
     if (cxLoose.length) log(`  확인할 것: ${cxLoose.map((j) => j.name).join(", ")} — complexity 를 안 적어 탭 값(${base.complexity || "high"})으로 간다. 한 곳만 고치는 편집이면 low, 글자 · 복잡한 구도는 high 로 적을 것(references/image-prompting.md 1절)`);
     for (const [i, j] of toSend.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
-      log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)}${cxNote(m, j.complexity ?? defaults.complexity ?? base.complexity)} · 레퍼런스 ${j.refs.length}장`);
+      log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)}${extraNote(j, m)} · 레퍼런스 ${j.refs.length}장`);
       j.refs.forEach((p, k) => log(`     [Image ${k + 1}] ${path.basename(p)} — ${j.refWhy[k]}`));   // 확인 카드에 그대로 옮긴다
       if (WORKDIR) {
         const pl = placeOf(spec, j, WORKDIR);
@@ -903,10 +915,8 @@ async function main() {
     const who = j.name || `job_${i + 1}`;
     if (gr.needs_billing) return `"${tab.name}" 탭의 팀·프로젝트를 앱이 다시 골라 달라고 한다(${gr.error || ""}) — 이 스크립트 --choices 로 명단을 받아 사용자에게 물을 것`;
     if (gr.error === "no_such_tab") return `"${tab.name}" 탭이 그사이 닫혔다 — 사용자에게 물을 것`;
-    if (gr.error === "bad_complexity") return `${who}: complexity 는 GPT Image 2.6 전용이다(low · medium · high) — ${gr.model} 이면 빼고, 2.6 이면 값을 고칠 것`;
-    if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — 고를 수 있는 값: ${(gr.allowed || []).join(", ")}`;
-    if (gr.error === "unknown_model" && /^gpt-image-2\.6/.test(gr.model)) return `${who}: 이 PC 나노바나나에 ${gr.model} 이 없다(v2026-11-0501 전) — 앱을 껐다 켜면 새 버전이 깔린다. 사용자에게 알리고, 급하면 물은 뒤 2.5 로`;
-    if (gr.error === "unknown_model") return `${who}: 앱이 모르는 모델 ${gr.model} — read-local-apps 가 보여 준 모델 id 로`;
+    if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — ${gr.allowed?.length ? `고를 수 있는 값: ${gr.allowed.join(", ")}` : "이 모델에는 없는 설정이다. 빼거나 그 설정이 있는 모델로"}`;
+    if (gr.error === "unknown_model") return `${who}: 이 PC 나노바나나에 ${gr.model} 이 없다 — read-local-apps 의 계열 SOTA 표에서 고를 것. 새 모델이면 앱을 껐다 켜 업데이트`;
     if (gr.error === "ref_limit") return `${who}: 이 모델은 레퍼런스 ${gr.limit}장까지(${gr.given}장 보냄)`;
     if (gr.error === "ref_unreadable") return `${who}: 레퍼런스 ${gr.index}번을 앱이 못 읽음 — ${gr.path}`;
     if (gr.error === "ref_duplicate") return `${who}: 레퍼런스 ${gr.index}번이 ${gr.same_as}번과 같은 그림 — 하나만`;
@@ -940,7 +950,7 @@ async function main() {
     });
     if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
     const settings = { count: need };
-    for (const k of SETTING_KEYS) {
+    for (const k of [...SETTING_KEYS, ...extrasOf(j)]) {
       const v = j[k] ?? defaults[k];
       if (k !== "count" && v !== undefined && v !== null && v !== "") settings[k] = v;
     }

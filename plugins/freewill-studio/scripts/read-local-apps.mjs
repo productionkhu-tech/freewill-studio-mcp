@@ -54,14 +54,24 @@ async function nanobanana() {
     }
     out.push("- 어느 탭에 둘지 · 안 골라진 탭의 과금은 `send-to-nanobanana --choices` 명단으로 사용자에게 묻는다. 과금은 짐작해 넣지 않는다.");
   }
+  const specs = js ? cutAfter(js, "MODEL_SPECS", "{", "}") : null;
+  const parsed = specs ? parseSpecs(specs) : [];
   if (settings) {
     const s = settings;
     out.push(`- 지금 설정: 모델 \`${s.model}\` · 해상도 ${s.resolution} · 비율 ${s.aspect}` +
-      `${s.quality ? ` · 품질 ${s.quality}` : ""}${/^gpt-image-2\.6/.test(s.model) && s.complexity ? ` · complexity ${s.complexity}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
+      `${s.quality ? ` · 품질 ${s.quality}` : ""}${s.complexity && parsed.find((m) => m.id === s.model)?.fields.includes("complexities") ? ` · complexity ${s.complexity}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
       `${s.openai_bg_transparent ? " · 투명 배경" : ""}`);
     if (s.output_dir) out.push(`- 저장 폴더: ${s.output_dir}`);
   }
-  const specs = js ? cutAfter(js, "MODEL_SPECS", "{", "}") : null;
+  if (parsed.length) {
+    out.push("", "### 계열 SOTA — 모델 추천은 이것부터 (이 PC 앱 기준)", ...sotaLines(parsed.map((m) => m.id)).map((l) => `- ${l}`),
+      "- 문서에 적힌 모델 이름으로 짐작하지 않는다. 사용자가 모델을 말하면 그것이 먼저, 빠른 시안이면 '빠른 것'.");
+    const fresh = [...new Set(parsed.flatMap((m) => m.fields))].filter((f) => !KNOWN_SPEC_FIELDS.has(f));
+    if (fresh.length) {
+      out.push(`- **사내 문서에 아직 없는 앱 옵션: ${fresh.map((f) => `\`${f}\` (${parsed.filter((m) => m.fields.includes(f)).map((m) => m.id).join(", ")})`).join(" · ")}** — ` +
+        "쓰는 법은 그 모델의 공식 가이드(지침 4단계 표)에서 본다. jobs.json 에 앱 설정 이름으로 적으면 보내기 스크립트가 그대로 넘긴다");
+    }
+  }
   if (specs) out.push("", "### 모델 사양 — 앱 화면 코드 `MODEL_SPECS` 원문", "```js", `MODEL_SPECS = ${specs}`, "```");
   else out.push("- 모델 사양을 앱 화면 코드에서 찾지 못함 → 스냅샷을 쓰고 앱 화면으로 확인");
   return out;
@@ -93,6 +103,7 @@ async function seedance() {
       : `프로젝트 "${agent.project}" · 과금 ${agent.billing ? `"${agent.billing}"` : "**선택 안 됨 — 앱에서 먼저 고르게 할 것**"}${agent.composer === false ? " · 갤러리 화면" : ""}`;
     out.push(`- 자동 보내기: **가능** (send-to-seedance) — ${where}`);
     if (Array.isArray(agent.allowedModels)) out.push(`- 이 과금 프로젝트로 쓸 수 있는 모델: ${agent.allowedModels.join(", ") || "(없음)"}${agent.fourK ? " · 4K 가능" : ""}`);
+    if (agent.allowedModels?.length) out.push(`- 계열 SOTA(모델 추천은 이것부터): ${sotaLines(agent.allowedModels).join(" / ")}`);
     // 앱이 직접 낸 사용 설명서가 있으면 그게 정답이다 — 화면 코드를 긁어 올 필요가 없다.
     const manual = await getJson(`${SD}/api/agent/manual`, 3000);
     if (manual?.ok && manual.text) {
@@ -207,6 +218,38 @@ function asarVersion(file) {
 }
 
 // ------------------------------------------------------------------ 공통
+
+// 계열 SOTA — 그 계열에서 가장 좋은 모델을 추천한다(사용자 11/5 "계열 최신이 아니라 계열 SOTA"). 모델이 늘어도 문서를 안 고치게 이름으로 고른다:
+// 등급이 먼저, 같은 등급이면 높은 버전. 날짜로 고르면 안 된다 — Seedream 은 9월에 나온 Flash 가 6월에 나온 Pro 보다 새것이다.
+const FAMILIES = [["GPT Image", /^gpt-image/], ["Seedream", /^seedream/], ["Seedance", /seedance/], ["Gemini Omni", /omni/], ["Nano Banana", /^gemini-.*image|nano-banana/]];
+const familyOf = (id) => FAMILIES.find(([, re]) => re.test(id))?.[0] || id.split("-")[0];
+const tierOf = (id) => (/(^|-)(lite|mini)(-|$)/.test(id) ? 0 : /(^|-)(flare|flash|fast|turbo)(-|$)/.test(id) ? 1 : /(^|-)(sunburst|pro|ultra)(-|$)/.test(id) ? 3 : 2);
+const versionOf = (id) => { const m = id.match(/(?<!\d)(\d{1,2})(?:[.-](\d{1,2})(?!\d))?(?!\d)/); return m ? Number(m[1]) + Number(m[2] || 0) / 100 : 0; };
+const bestOf = (ids) => [...ids].sort((a, b) => tierOf(b) - tierOf(a) || versionOf(b) - versionOf(a))[0];
+function sotaLines(ids) {
+  const fams = new Map();
+  for (const id of ids) fams.set(familyOf(id), [...(fams.get(familyOf(id)) || []), id]);
+  return [...fams].map(([name, list]) => {
+    const top = bestOf(list);
+    const fast = tierOf(top) > 1 ? list.filter((x) => tierOf(x) === 1) : [], light = list.filter((x) => tierOf(x) === 0 && x !== top);
+    return `${name}: \`${top}\`${fast.length ? ` · 빠른 것 \`${bestOf(fast)}\`` : ""}${light.length ? ` · 가장 가벼운 것 \`${bestOf(light)}\`` : ""}`;
+  });
+}
+
+// 사내 문서가 아는 앱 사양 칸 — 여기 없는 칸이 생기면 에이전트에게 알린다
+const KNOWN_SPEC_FIELDS = new Set(["aspects", "resolutions", "counts", "showQuality", "qualities", "showBackground", "complexities", "defaultAspect", "defaultResolution", "defaultQuality", "defaultComplexity", "hint", "refHint"]);
+// MODEL_SPECS 에서 모델 이름과 칸 이름만 글로 뽑는다(코드를 실행하지 않는다)
+function parseSpecs(specs) {
+  const out = [], head = /"([a-z0-9][\w.-]*)"\s*:\s*\{/g;
+  for (let m; (m = head.exec(specs));) {
+    const open = m.index + m[0].length - 1, block = cut(specs, open, "{", "}");
+    if (!block) break;
+    head.lastIndex = open + block.length;
+    const bare = block.replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|\/\/[^\n]*/g, (x) => (x.startsWith("//") ? "" : '""'));
+    out.push({ id: m[1], fields: [...new Set([...bare.matchAll(/([A-Za-z_]\w*)\s*:/g)].map((x) => x[1]))] });
+  }
+  return out;
+}
 
 // 이 스크립트가 인터넷에서 부르는 곳은 이 주소 아래 릴리스 페이지뿐이다 — 커넥터·Actions 의 통신 검사가 이걸 확인한다.
 const GITHUB_ORG = "https://github.com/productionkhu-tech/";
