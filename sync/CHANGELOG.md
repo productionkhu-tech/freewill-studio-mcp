@@ -2,6 +2,11 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-11-05
+
+- **higgsfield-generate** (Higgsfield) 0.14.0 → 0.14.0 · 파일 3개, +33 −12줄
+- **gpt-image** (OpenAI 공식 문서 · 커넥터가 원문에서 바로) #8724e047 → #97f39da0 · 76452자
+
 ## 2026-11-04
 
 - **veo** (Google) #5c35e0fa → #71e99f0b · 파일 1개, +128 −77줄

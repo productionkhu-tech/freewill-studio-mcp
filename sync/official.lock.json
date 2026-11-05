@@ -92,9 +92,9 @@
       "models": [],
       "families": [],
       "version": "0.14.0",
-      "hash": "02b747794d56769a0c9522da7362139bdfd8bef5fddacfa67f436d8ed1ce29ee",
+      "hash": "fa7b17f2b9f1ab78783f421420d6947a6b018ea854235e2f46afa346619b3dda",
       "digest": null,
-      "appliedAt": "2026-10-28",
+      "appliedAt": "2026-11-05",
       "files": [
         "SKILL.md",
         "references/marketing-ad-references.md",
@@ -176,10 +176,10 @@
         "gpt-image"
       ],
       "version": null,
-      "hash": "8724e047053a9eb89ca5448479af906e9bb199eb1674c547759224498f981a17",
+      "hash": "97f39da0ab2fc63ed110c6a0d1e5f5afd1233ae877c73b6bab6dd0e30d893d5a",
       "digest": null,
-      "appliedAt": "2026-10-24",
-      "chars": 41750,
+      "appliedAt": "2026-11-05",
+      "chars": 76452,
       "files": []
     },
     "higgsfield-seedance-2-5": {
@@ -632,5 +632,50 @@
       "higgsfield-youtube-thumbnail"
     ]
   },
-  "failing": {}
+  "failing": {},
+  "apps": {
+    "nanobanana": {
+      "models": [
+        "gemini-2.5-flash-image",
+        "gemini-3-pro-image",
+        "gemini-3.1-flash-image",
+        "gemini-nano-banana-2.1",
+        "gemini-3.1-flash-lite-image",
+        "seedream-5-0-pro-260628",
+        "seedream-5-0-flash-260915",
+        "seedream-4-5-251128",
+        "gpt-image-2",
+        "gpt-image-2.5-flare",
+        "gpt-image-2.5-sunburst",
+        "gpt-image-2.6-flare",
+        "gpt-image-2.6-sunburst"
+      ],
+      "fields": [
+        "aspects",
+        "complexities",
+        "counts",
+        "defaultAspect",
+        "defaultComplexity",
+        "defaultQuality",
+        "defaultResolution",
+        "hint",
+        "qualities",
+        "refHint",
+        "resolutions",
+        "showBackground",
+        "showQuality"
+      ]
+    },
+    "seedance": {
+      "models": [
+        "dreamina-seedance-2-0-260128",
+        "dreamina-seedance-2-0-fast-260128",
+        "dreamina-seedance-2-0-mini-260615",
+        "gemini-omni-flash-preview",
+        "gemini-omni-1.1-flash",
+        "dreamina-seedance-2-5-260628"
+      ],
+      "fields": []
+    }
+  }
 }
