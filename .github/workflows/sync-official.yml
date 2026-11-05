@@ -44,9 +44,7 @@ jobs:
       - name: 반영분 커밋
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit -m "공식 스킬 동기화 $(date -u +%F)"
-            git push
+            bash sync/push.sh
           fi
 
       # 공개 저장소는 60일 동안 활동이 없으면 GitHub 이 예약 실행을 스스로 꺼 버린다.
