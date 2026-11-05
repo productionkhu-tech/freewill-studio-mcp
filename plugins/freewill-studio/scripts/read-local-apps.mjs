@@ -60,6 +60,8 @@ async function nanobanana() {
   const pinned = js?.match(/SOTA_MODELS\s*=\s*\[([^\]]*)\]/)?.[1].match(/[\w.-]+/g) || [];
   if (settings) {
     const s = settings;
+    if (projects?.restoring) out.push("- 앱이 지난 탭을 여는 중 — 위 탭 목록이 아직 덜 왔을 수 있다. 없는 탭으로 단정하지 말고 잠시 뒤 다시 읽을 것");
+    out.push("- 아래 '지금 설정'은 사람이 앱 탭에서 쓰는 값 — MCP 요청에는 안 쓰인다. jobs.json 에 비운 칸은 그 모델의 맨 위 · 기본(`send-to-nanobanana --dry-run` 줄에 나온 값이 실제 값)");
     out.push(`- 지금 설정: 모델 \`${s.model}\` · 해상도 ${s.resolution} · 비율 ${s.aspect}` +
       `${s.quality ? ` · 품질 ${s.quality}` : ""}${s.complexity && parsed.find((m) => m.id === s.model)?.fields.includes("complexities") ? ` · complexity ${s.complexity}` : ""}${s.output_format && s.output_format !== "png" ? ` · 형식 ${s.output_format}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
       `${s.openai_bg_transparent ? " · 투명 배경" : ""}`);

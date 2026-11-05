@@ -59,7 +59,8 @@
 //              "version": "A"(A/B안 — 목록에 남김), "covers": "C0010~C0040"(한 장이 여러 컷을 덮으면)
 //     "defaults": { "model": "gpt-image-2.6-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
-//     "complexity": GPT Image 2.6 전용(low · medium · high) — defaults 또는 작업마다. 렌더링 전에 얼마나 계획할지, 요금은 같고 비우면 그 탭 값(앱 기본 high). 다른 모델에 적으면 앱이 거절한다.
+//     비운 칸은 앱 탭 값을 따르지 않는다 — 모델은 꼭 적고(비우면 멈춘다), 나머지는 그 모델의 맨 위(해상도 · 품질) · 기본(비율 GPT 1:1 · 그 밖 auto, 1장). dry-run 줄에 나온 값이 그대로 나간다
+//     "complexity": GPT Image 2.6 전용(low · medium · high) — defaults 또는 작업마다. 렌더링 전에 얼마나 계획할지, 요금은 같고 비우면 high. 다른 모델에 적으면 멈춘다.
 //              한 곳만 고치는 편집은 low(높으면 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high — references/image-prompting.md 1절
 //     "output_format": "gif" | "svg" — GPT 2.6 이상, 사용자가 시켰을 때만(앱 v2026-11-0502~). 안 적으면 PNG. GIF 는 "gif_size" · "gif_frames" · "gif_frame_ms", SVG 는 레퍼런스 불가 — references/image-prompting.md 9절
 //     그 밖의 설정도 앱에 있는 이름이면 그대로 넘어간다 — 앱에 새 옵션이 생겨도 이 스크립트를 안 고친다. 모델은 read-local-apps 의 "계열 SOTA" 표에서
@@ -92,6 +93,9 @@ const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "cust
 // 작업 줄에서 스크립트가 쓰는 칸 — 나머지는 앱 설정으로 넘긴다(아래 extrasOf)
 const JOB_OWN = new Set(["name", "prompt", "refs", "refWhy", "key", "nth", "legacy", "prompt_language", "scene", "cut", "asset", "version", "covers"]);
 const gpt26Up = (m) => Number(String(m).match(/^gpt-image-(\d+(?:\.\d+)?)/)?.[1] || 0) >= 2.6;   // complexity · GIF · SVG 가 있는 GPT
+const GIF_DEFAULT = { size: "512x512", frames: 9, ms: 200 };   // 앱 기본과 같은 값 — 늘 적어 보내므로 앱 기본이 바뀌어도 카드와 실제는 같다
+// 탭에만 있는 칸 — 에이전트 요청에는 안 쓰인다. 적어 두면 시킨 폴더 · 이름으로 안 나오는데 아무도 모른다(앱은 보낸 뒤에야 ignored 로 알려 준다)
+const TAB_ONLY = /^(output_dir|fixed_prompt|prompt_sections|naming_\w+|gallery_columns|ref_limit|quality_chosen|gif_limits)$/;
 // 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
@@ -539,8 +543,47 @@ async function connect() {
   token = html.match(/<meta name="nb-csrf" content="([^"]+)"/)?.[1] || "";
   if (!token && netCode && netCode !== "ECONNREFUSED") fail(`나노바나나에 연결 못 함 (${netCode}) — ${BLOCKED}`);
   if (!token) fail("나노바나나가 꺼져 있다 — 앱을 켜 달라고 할 것");
+  // 앱을 막 켠 동안(부팅 복원) 탭 목록이 덜 왔다 — 없는 탭으로 읽어 새로 만들거나, 곧 사라질 시작 탭의 과금을 묻지 않게 끝날 때까지 기다린다.
+  // 저장한 탭은 재시작 뒤 사람 확인 없이 바로 보낼 수 있어(앱 v2026-11-0503~) 켜자마자 실행될 수 있다
+  for (let i = 0; (await get("/api/projects"))?.restoring; i++) {
+    if (i === 60) fail("나노바나나가 아직 지난 탭을 여는 중이다(1분 넘음) — 잠시 뒤 같은 명령을 다시 실행할 것");
+    if (!i) log("나노바나나가 지난 탭을 여는 중 — 끝나면 이어서");
+    await sleep(1000);
+  }
 }
-const isDirect = (pr) => pr?.agent_pid === true || (pr?.features || []).includes("agent_pid");
+// 앱 화면의 모델 표(MODEL_SPECS) — 이 PC 앱이 받는 값과 맨 위 값. 스크립트에 모델 표를 두지 않는다(사용자 11/5 "모델 추가될 때마다 바꾸나").
+// 앱은 이 메뉴와 같은 기준으로 거절한다. 못 읽으면 {} — 적은 값만 보내고 판단은 앱에 맡긴다
+async function readSpecs() {
+  let js = "";
+  try { js = await (await fetch(`${NB}/static/app.js`, { signal: AbortSignal.timeout(5000) })).text(); } catch { return {}; }
+  const at = js.search(/MODEL_SPECS\s*=\s*\{/);
+  const block = at < 0 ? null : braces(js, js.indexOf("{", at));
+  const out = {}, head = /"([a-z0-9][\w.-]*)"\s*:\s*\{/g;
+  for (let m; block && (m = head.exec(block));) {
+    const open = m.index + m[0].length - 1, one = braces(block, open);
+    if (!one) break;
+    head.lastIndex = open + one.length;
+    const list = (k) => one.match(new RegExp(`\\b${k}:\\s*\\[([^\\]]*)\\]`))?.[1].match(/"[^"]*"/g)?.map((x) => x.slice(1, -1));
+    out[m[1]] = { aspects: list("aspects"), resolutions: list("resolutions"), qualities: list("qualities"), complexities: list("complexities"),
+      formats: list("formats"), background: /\bshowBackground:\s*true/.test(one) };
+  }
+  return out;
+}
+// 여는 괄호에서 짝이 맞는 닫는 괄호까지 — 문자열 · 주석 안의 괄호는 세지 않는다(read-local-apps 의 cut 과 같다)
+function braces(src, start) {
+  let depth = 0, q = null;
+  for (let i = start; i < src.length; i++) {
+    const c = src[i];
+    if (q) { if (c === "\\") i++; else if (c === q) q = null; continue; }
+    if (c === "/" && src[i + 1] === "/") { const nl = src.indexOf("\n", i); i = nl < 0 ? src.length : nl; continue; }
+    if (c === "/" && src[i + 1] === "*") { const end = src.indexOf("*/", i + 2); i = end < 0 ? src.length : end + 1; continue; }
+    if (c === '"' || c === "'" || c === "`") q = c;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return src.slice(start, i + 1);
+  }
+  return null;
+}
+const isDirect =(pr) => pr?.agent_pid === true || (pr?.features || []).includes("agent_pid");
 // 확인 카드·출력에는 앱 화면 그대로 "팀 · 프로젝트 이름" — id(ta팀 / PJ-…)는 사람이 모르고, 다른 프로젝트 id 와 헷갈린다
 // (사용자 10/20 "프로젝트를 사용자 입장이랑 다르게 말하네" — PJ-… 로 말해 KBS 과금을 KIXX 로 착각할 뻔). 목록을 못 읽으면 id 그대로.
 async function billingName(b) {
@@ -722,7 +765,7 @@ async function main() {
     }
     billing = await get(`/api/billing/state?pid=${encodeURIComponent(tab.pid)}`);
     if (!(billing?.ok !== false && billing?.confirmed && billing.team_id && billing.project_id)) {
-      fail(`"${tab.name}" 탭의 팀·프로젝트가 확인되지 않아 보내지 않았다(앱을 다시 켜면 탭마다 한 번 다시 확인한다).\n${await billingChoices(tab.name)}`);
+      fail(`"${tab.name}" 탭의 팀·프로젝트가 비었거나 명단에서 빠져 보내지 않았다(저장한 탭은 앱을 다시 켜도 유지된다 — 새 탭 · 저장 전 탭만 비어 있다).\n${await billingChoices(tab.name)}`);
     }
   } else if (want && tab.name !== want) {
     // 옛 앱: 생성(/api/generate)·레퍼런스 기능이 화면에 떠 있는 탭에만 들어간다 — 탭을 지정하는 칸이 없다. 탭 전환 API 는 있지만
@@ -767,13 +810,40 @@ async function main() {
   }
 
   // 3) 이번에 넣을 장수와 한도 — 하루 한도에 걸리면 하나도 보내지 않는다
-  // 비운 설정 칸은 보낼 탭의 지금 값을 따른다(새 앱은 그 탭 값을 읽기만 하고 쓰지 않는다)
+  // 탭 값은 어떤 칸이 앱에 있는지 · GIF 한도를 볼 때만 쓴다 — 보낼 값에는 섞지 않는다(아래 settingsOf)
   const base = await get(direct ? `/api/settings?pid=${encodeURIComponent(tab.pid)}` : "/api/settings");
+  const specs = await readSpecs();
   // jobs.json 설정은 스크립트 칸을 뺀 전부를 앱으로 넘긴다 — 앱에 새 옵션이 생겨도 스크립트를 안 고치게(사용자 11/5, complexity 가 말없이 빠졌던 일).
   // 앱 설정에 없는 이름은 앱이 무시하므로 알린다(오타이거나 옛 앱)
   const extrasOf = (j) => [...new Set([...Object.keys(defaults), ...Object.keys(j)])].filter((k) => !JOB_OWN.has(k) && !SETTING_KEYS.includes(k) && (j[k] ?? defaults[k]) != null).sort();
   const notInApp = [...new Set(jobs.flatMap(extrasOf))].filter((k) => !(k in (base || {})));
   if (notInApp.length) log(`  확인할 것: ${notInApp.map((k) => `"${k}"`).join(", ")} — 이 앱의 설정에 없어 앱이 무시한다. 오타면 고치고, 새 옵션이면 앱을 껐다 켜 업데이트, 아니면 뺄 것`);
+  const countOf = (j) => Math.max(1, Math.round(Number(j.count ?? defaults.count ?? 1) || 1));
+  // 이 작업으로 보낼 값 전부 — 카드 · 작업 페이지 · 사용 기록 · 전송이 모두 이것을 본다. 비운 칸은 탭이 아니라 그 모델의 맨 위 · 기본
+  // (사용자 11/5 "앱에서 설정한 파라미터가 MCP 오염되는 건 별로", "미디엄으로 갇히는 건 너무 위험" — 앱 v2026-11-0503 의 규칙과 같다).
+  // 값을 늘 적어 보내므로 탭 값을 쓰는 옛 앱에서도 카드와 실제가 같다. 장수는 한도 · 사용 기록과 맞아야 해서 표를 못 읽어도 늘 적는다.
+  const settingsOf = (j) => {
+    const s = {};
+    for (const k of [...SETTING_KEYS, ...extrasOf(j)]) {
+      const v = j[k] ?? defaults[k];
+      if (v !== undefined && v !== null && v !== "") s[k] = v;
+    }
+    s.count = countOf(j);
+    if (s.openai_bg_transparent !== undefined) s.openai_bg_transparent = !["false", "0", "no", "off"].includes(String(s.openai_bg_transparent).trim().toLowerCase());
+    if (s.output_format === "gif") { s.gif_size ??= GIF_DEFAULT.size; s.gif_frames ??= GIF_DEFAULT.frames; s.gif_frame_ms ??= GIF_DEFAULT.ms; }
+    const sp = specs[s.model];
+    if (!sp?.resolutions || !sp.aspects) return s;
+    s.resolution ??= sp.resolutions.at(-1);
+    s.aspect ??= sp.qualities && !j.refs.length ? "1:1" : "auto";   // GPT 의 auto 는 레퍼런스가 없으면 크기를 OpenAI 에 맡겨 해상도가 버려진다
+    if (sp.qualities) s.quality ??= sp.qualities.includes("max") ? "max" : "high";
+    else delete s.quality;   // 품질 칸이 없는 모델 — defaults 의 값이 기록에만 남아 고른 값처럼 보이지 않게
+    if (sp.complexities) s.complexity ??= "high";
+    if (sp.formats) s.output_format ??= "png";
+    if (sp.background) s.openai_bg_transparent ??= false;
+    return s;
+  };
+  // 사용 기록 · 보낸 줄의 크기 — GIF 는 프레임 크기, custom 은 픽셀이 곧 크기다(1K · 2K · 4K 가 아니다)
+  const sizeOf = (s) => (s.output_format === "gif" ? String(s.gif_size) : s.aspect === "custom" ? `${s.custom_w}x${s.custom_h}` : String(s.resolution ?? ""));
   // GIF · SVG 는 시켰을 때만(사용자 11/5) — 안 적으면 PNG. 틀린 값은 카드 전에 멈춘다(한도는 앱이 알려 준 표로)
   const fmtOf = (j) => j.output_format ?? defaults.output_format ?? "png";
   const namesOf = (list) => list.map((j) => j.name || "(이름 없음)").join(", ");
@@ -781,7 +851,7 @@ async function main() {
   if (fancy.length && !("output_format" in (base || {}))) fail(`${namesOf(fancy)}: 이 PC 나노바나나는 GIF · SVG 를 못 만든다(v2026-11-0502 전) — 앱을 껐다 켜면 새 버전이 깔린다. 그대로 보내면 PNG 로 나와 값만 치른다`);
   const svgRefs = jobs.filter((j) => fmtOf(j) === "svg" && j.refs.length);
   if (svgRefs.length) fail(`${namesOf(svgRefs)}: SVG 는 레퍼런스를 넣을 수 없다 — refs 를 빼고 글로 쓰거나, 형식을 png · gif 로`);
-  const gifOf = (j) => ({ size: String(j.gif_size ?? defaults.gif_size ?? base.gif_size), frames: Number(j.gif_frames ?? defaults.gif_frames ?? base.gif_frames), ms: Number(j.gif_frame_ms ?? defaults.gif_frame_ms ?? base.gif_frame_ms) });
+  const gifOf = (j) => { const s = settingsOf(j); return { size: String(s.gif_size), frames: Number(s.gif_frames), ms: Number(s.gif_frame_ms) }; };
   const strayGif = jobs.filter((j) => fmtOf(j) !== "gif" && ["gif_size", "gif_frames", "gif_frame_ms"].some((k) => (j[k] ?? defaults[k]) != null));
   if (strayGif.length) fail(`${namesOf(strayGif)}: gif_ 설정이 있는데 output_format 이 gif 가 아니다 — "output_format": "gif" 를 적거나 gif_ 칸을 뺄 것`);
   const lim = base?.gif_limits;
@@ -793,9 +863,8 @@ async function main() {
       if (g.ms < lim.frame_ms?.[0] || g.ms > lim.frame_ms?.[1]) fail(`${who}: GIF 프레임당 시간은 ${lim.frame_ms.join("~")}ms 다(지금 ${g.ms})`);
     }
   }
-  const notes = jobs.flatMap((j) => imageNotes(j, j.aspect ?? defaults.aspect ?? base.aspect, fmtOf(j)).map((n) => `${j.name || "(이름 없음)"}: ${n}`));
+  const notes = jobs.flatMap((j) => imageNotes(j, settingsOf(j).aspect, fmtOf(j)).map((n) => `${j.name || "(이름 없음)"}: ${n}`));
   if (notes.length) log(`  확인할 것 (references/image-prompting.md · prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}`);
-  const countOf = (j) => Math.max(1, Math.round(Number(j.count ?? defaults.count ?? base.count) || 1));
   const big = jobs.find((j) => countOf(j) > MAX_IN_FLIGHT);
   if (big) fail(`한 작업은 ${MAX_IN_FLIGHT}장까지 — "${big.name || ""}" 은 ${countOf(big)}장. 작업을 나눠서 적을 것`);
 
@@ -870,6 +939,33 @@ async function main() {
   }
   if (WORKDIR && resumed.length && !DRY) keepJobs(WORKDIR, file);
 
+  // 앱이 거절할 값은 한 장도 나가기 전에 — 앱은 작업을 받을 때 하나씩 거절해서, 뒤쪽 작업이 걸리면 앞 작업은 이미 나간 뒤 멈춘다.
+  // 이미 보낸 작업은 보지 않는다(모델을 적으라고 시키면 키가 바뀌어 같은 것이 또 나간다)
+  const problemsOf = (j) => {
+    const s = settingsOf(j), out = [], sp = specs[s.model];
+    const bad = (k, allowed) => out.push(`${s.model} 에 안 맞는 ${k} ${s[k]} — ${allowed?.length ? `고를 수 있는 값: ${allowed.join(", ")}` : "이 모델에는 없는 설정이다. 빼거나 그 설정이 있는 모델로"}`);
+    if (!s.model) out.push(`모델을 안 적었다 — read-local-apps 의 계열 SOTA 표에서 골라 "model" 에 적을 것(탭 모델을 따르지 않는다)`);
+    else if (Object.values(specs).some((x) => x.resolutions) && !sp) out.push(`이 PC 나노바나나에 ${s.model} 이 없다 — read-local-apps 의 계열 SOTA 표에서 고를 것. 새 모델이면 앱을 껐다 켜 업데이트`);
+    for (const k of extrasOf(j).filter((x) => TAB_ONLY.test(x))) out.push(`${k} 는 탭 설정이라 MCP 요청에는 안 쓰인다 — 뺄 것(받을 곳은 "work" · --save-to)`);
+    const c = j.count ?? defaults.count;
+    if (c !== undefined && c !== null && c !== "" && !(Number.isInteger(Number(c)) && Number(c) >= 1)) out.push(`장수 ${c} — ${MAX_IN_FLIGHT} 이하의 자연수로`);
+    if (s.aspect === "custom") {
+      if (!(Number(s.custom_w) >= 16 && Number(s.custom_h) >= 16)) out.push(`비율 custom 은 custom_w · custom_h 를 둘 다 16 이상으로 적는다 — 앱이 크기를 짐작하지 않는다`);
+    } else if (s.custom_w !== undefined || s.custom_h !== undefined) out.push(`custom_w · custom_h 를 적었는데 비율이 custom 이 아니다 — 크기가 안 쓰인다. "aspect": "custom" 을 적거나 크기를 뺄 것`);
+    if (sp?.resolutions && sp.aspects) {
+      if (!sp.aspects.includes(String(s.aspect))) bad("aspect", sp.aspects);
+      const seedreamCustom = s.aspect === "custom" && !sp.qualities;   // 시드림 custom 은 해상도를 보지 않는다
+      if (!seedreamCustom && !sp.resolutions.includes(s.resolution === "0.5K" ? "512px" : String(s.resolution))) bad("resolution", sp.resolutions);
+      if (sp.qualities && !sp.qualities.includes(String(s.quality))) bad("quality", sp.qualities);
+      if (s.complexity !== undefined && !sp.complexities?.includes(String(s.complexity))) bad("complexity", sp.complexities);
+      if (s.output_format !== undefined && !(sp.formats || ["png"]).includes(String(s.output_format))) bad("output_format", sp.formats || ["png"]);
+      if (s.openai_bg_transparent && !sp.background) bad("openai_bg_transparent", []);
+    }
+    return out;
+  };
+  const problems = toSend.flatMap((j) => problemsOf(j).map((p) => `  - ${j.name}: ${p}`));
+  if (problems.length) fail(`한 장도 보내지 않았다 — 고칠 것(defaults 값이 어느 작업의 모델과 안 맞으면 그 작업 줄에 따로 적거나 비운다. 비우면 그 모델의 맨 위):\n${problems.join("\n")}`);
+
   const total = toSend.reduce((a, j) => a + countOf(j), 0);
   const need = await loadTicket();   // 표가 없으면 요청 번호 — dry-run 은 알려만 주고(카드 전에 승인해 두면 바로 보낸다) 보내기는 멈춘다
   const owner = ticketOwner();
@@ -894,32 +990,42 @@ async function main() {
   log(`  이번 ${total}장 · ${quota} · 지금 앱에서 진행 중 ${await inFlight()}장 ` +
     `(동시 ${MAX_IN_FLIGHT}장까지 — 넘으면 앞의 것이 끝나야 다음 작업을 넣는다)`);
   if (!owner && need && need !== NO_TICKET) log(`  ${need}`);
-  // 확인 카드 · 작업 페이지에 옮길 설정 — 앱에 새 옵션이 생기면 여기에도 저절로 뜬다. complexity 는 안 적으면 탭 값으로 가므로 그 값을 보인다
-  const extraNote = (j, m) => {
-    const c = j.complexity ?? defaults.complexity ?? (gpt26Up(m) ? base.complexity : null);
-    const g = fmtOf(j) === "gif" ? gifOf(j) : null;
-    const fmt = g ? `GIF ${g.size} · ${g.frames}프레임 · 프레임당 ${g.ms}ms(${((g.frames * g.ms) / 1000).toFixed(1)}초)` : fmtOf(j) === "svg" ? "SVG(레퍼런스 없음 · 배경 투명 · 약 1분 이상)" : "";
-    const shown = new Set(["complexity", "output_format", "gif_size", "gif_frames", "gif_frame_ms"]);
-    return [...(fmt ? [fmt] : []), ...(c ? [`complexity ${c}`] : []), ...extrasOf(j).filter((k) => !shown.has(k)).map((k) => `${k} ${j[k] ?? defaults[k]}`)].map((x) => ` · ${x}`).join("");
+  // 확인 카드 · 작업 페이지에 옮길 설정 — 나갈 값 그대로. 앱에 새 옵션이 생기면 여기에도 저절로 뜬다
+  const modeOf = (j) => {
+    const s = settingsOf(j), g = s.output_format === "gif";
+    const size = g ? `GIF ${s.gif_size} · ${s.gif_frames}프레임 · 프레임당 ${s.gif_frame_ms}ms(${((Number(s.gif_frames) * Number(s.gif_frame_ms)) / 1000).toFixed(1)}초)`
+      : s.aspect === "custom" ? `custom ${s.custom_w}x${s.custom_h}` : `${s.resolution ?? "해상도 앱 기본"} · ${s.aspect ?? "비율 앱 기본"}`;
+    const shown = new Set(["output_format", "gif_size", "gif_frames", "gif_frame_ms", "complexity"]);
+    return [size, ...(s.output_format === "svg" ? ["SVG(레퍼런스 없음 · 배경 투명 · 약 1분 이상)"] : []), ...(s.quality ? [`품질 ${s.quality}`] : []),
+      ...(s.complexity ? [`complexity ${s.complexity}`] : []), ...(s.openai_bg_transparent ? ["투명 배경"] : []),
+      ...extrasOf(j).filter((k) => !shown.has(k)).map((k) => `${k} ${j[k] ?? defaults[k]}`)].join(" · ");
   };
   // 작업 페이지의 '보낼 것' — 작업마다 모델·레퍼런스(그림으로 뜬다)
   const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: billLabel,
-    jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: `${j.resolution ?? defaults.resolution ?? base.resolution} · ${j.aspect ?? defaults.aspect ?? base.aspect}${extraNote(j, j.model ?? defaults.model ?? base.model)}`,
+    jobs: jobs.map((j) => ({ name: j.name || "", model: j.model ?? defaults.model ?? base.model, mode: modeOf(j),
       prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })),
       ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) })) });
   if (DRY) {
-    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}${gpt26Up(base.model) && base.complexity ? ` · complexity ${base.complexity}` : ""}`
-      : tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
-      : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
-    // 안 적으면 탭 값으로 간다 — 기본 high 는 편집에서 시키지 않은 곳까지 바꿀 수 있고, 탭이 low 로 남아 있으면 새 그림도 low 다(공식 가이드 · 11/5)
-    const cxLoose = toSend.filter((j) => gpt26Up(j.model ?? defaults.model ?? base.model) && (j.complexity ?? defaults.complexity) == null && (j.refs.length || (base.complexity && base.complexity !== "high")));
-    if (cxLoose.length) log(`  확인할 것: ${cxLoose.map((j) => j.name).join(", ")} — complexity 를 안 적어 탭 값(${base.complexity || "high"})으로 간다. 한 곳만 고치는 편집이면 low, 글자 · 복잡한 구도는 high 로 적을 것(references/image-prompting.md 1절)`);
-    // SVG 는 탭 값(앱 기본 4K · max 면 장당 $0.70, 3분 넘게)을 그대로 따라가면 비싸다 — 값을 정하게 한다
+    log(Object.values(specs).some((x) => x.resolutions) ? "  설정: 아래 줄의 값을 그대로 보낸다 — 앱 탭의 값은 쓰지 않는다. 비운 칸은 그 모델의 맨 위(해상도 · 품질) · 기본(비율 GPT 1:1 · 그 밖 auto, 레퍼런스가 있으면 그 비율 · 1장)"
+      : "  설정: 앱의 모델 표를 못 읽어 적은 값만 보낸다 — 비운 칸은 앱이 정한다");
+    // 기본 high 는 편집에서 시키지 않은 곳까지 바꿀 수 있다(공식 가이드 · 11/5)
+    const cxLoose = toSend.filter((j) => (settingsOf(j).complexity || gpt26Up(settingsOf(j).model)) && (j.complexity ?? defaults.complexity) == null && j.refs.length);
+    if (cxLoose.length) log(`  확인할 것: ${cxLoose.map((j) => j.name).join(", ")} — complexity 를 안 적어 high 로 간다. 한 곳만 고치는 편집이면 low, 글자 · 복잡한 구도는 high 로 적을 것(references/image-prompting.md 1절)`);
+    // SVG 는 맨 위(4K · max 면 장당 $0.70, 3분 넘게)로 가면 비싸다 — 값을 정하게 한다
     const svgLoose = toSend.filter((j) => fmtOf(j) === "svg" && (j.resolution ?? defaults.resolution) == null);
-    if (svgLoose.length) log(`  확인할 것: ${svgLoose.map((j) => j.name).join(", ")} — SVG 해상도를 안 적어 탭 값(${base.resolution})으로 간다. 4K max 는 장당 약 $0.70 · 3분 넘게 걸린다 — 사용자가 말하지 않았으면 "resolution": "1K" 로 적을 것`);
+    if (svgLoose.length) log(`  확인할 것: ${svgLoose.map((j) => j.name).join(", ")} — SVG 해상도를 안 적어 맨 위(${settingsOf(svgLoose[0]).resolution ?? "앱 기본"})로 간다. 4K max 는 장당 약 $0.70 · 3분 넘게 걸린다 — 사용자가 말하지 않았으면 "resolution": "1K" 로 적을 것`);
+    // 적은 값이 안 먹히거나 앱이 고치는 조합 — 틀린 값은 아니라서 멈추지 않고 알린다
+    for (const j of toSend) {
+      const s = settingsOf(j), asked = j.aspect ?? defaults.aspect, say = (t) => log(`  확인할 것: ${j.name} — ${t}`);
+      if (specs[s.model]?.qualities && s.aspect === "auto" && !j.refs.length && s.output_format !== "gif") say(`비율 auto · 레퍼런스 없음이면 크기를 OpenAI 가 정해 해상도(${s.resolution})가 무시된다. 크기가 중요하면 비율을 적을 것`);
+      if (s.output_format === "gif" && asked && asked !== "auto") {
+        const [w, h] = String(s.gif_size).split("x").map(Number), [a, b] = String(asked).split(":").map(Number);
+        if (Math.abs(w / h - a / b) > 0.05) say(`GIF 는 비율 설정을 안 쓴다 — ${asked} 라고 적어도 ${s.gif_size} 로 나간다. 그 비율이면 gif_size 로`);
+      }
+      if (s.aspect === "custom") say(`custom ${s.custom_w}x${s.custom_h} — 모델 한도(16의 배수 · 픽셀 범위, references/app-rules.md)를 벗어나면 앱이 말없이 크기를 고친다. 한도 안인지 볼 것`);
+    }
     for (const [i, j] of toSend.entries()) {
-      const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
-      log(`  ${i + 1}. ${j.name || ""} · ${m}${fmtOf(j) === "gif" ? "" : ` ${r}`} ×${countOf(j)}${extraNote(j, m)} · 레퍼런스 ${j.refs.length}장`);
+      log(`  ${i + 1}. ${j.name || ""} · ${settingsOf(j).model} · ${modeOf(j)} · ×${countOf(j)} · 레퍼런스 ${j.refs.length}장`);
       j.refs.forEach((p, k) => log(`     [Image ${k + 1}] ${path.basename(p)} — ${j.refWhy[k]}`));   // 확인 카드에 그대로 옮긴다
       if (WORKDIR) {
         const pl = placeOf(spec, j, WORKDIR);
@@ -942,7 +1048,8 @@ async function main() {
     if (gr.needs_billing) return `"${tab.name}" 탭의 팀·프로젝트를 앱이 다시 골라 달라고 한다(${gr.error || ""}) — 이 스크립트 --choices 로 명단을 받아 사용자에게 물을 것`;
     if (gr.error === "no_such_tab") return `"${tab.name}" 탭이 그사이 닫혔다 — 사용자에게 물을 것`;
     if (gr.error === "svg_no_refs") return `${who}: SVG 는 레퍼런스를 넣을 수 없다 — refs 를 빼고 글로 쓰거나, 형식을 png · gif 로`;
-    if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — ${gr.allowed?.length ? `고를 수 있는 값: ${gr.allowed.join(", ")}` : "이 모델에는 없는 설정이다. 빼거나 그 설정이 있는 모델로"}`;
+    // 숫자 칸(count · custom_w …)은 [최소, 최대]로 온다
+    if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — ${gr.allowed?.length ? `고를 수 있는 값: ${gr.allowed.length === 2 && gr.allowed.every((x) => typeof x === "number") ? gr.allowed.join("~") : gr.allowed.join(", ")}` : "이 모델에는 없는 설정이다. 빼거나 그 설정이 있는 모델로"}`;
     if (gr.error === "unknown_model") return `${who}: 이 PC 나노바나나에 ${gr.model} 이 없다 — read-local-apps 의 계열 SOTA 표에서 고를 것. 새 모델이면 앱을 껐다 켜 업데이트`;
     if (gr.error === "ref_limit") return `${who}: 이 모델은 레퍼런스 ${gr.limit}장까지(${gr.given}장 보냄)`;
     if (gr.error === "ref_unreadable") return `${who}: 레퍼런스 ${gr.index}번을 앱이 못 읽음 — ${gr.path}`;
@@ -969,21 +1076,16 @@ async function main() {
     await checkTabUnchanged();
     const other = otherSent(j);
     if (other) return { skip: other };
-    const model = j.model ?? defaults.model ?? base.model;
-    const resolution = j.resolution ?? defaults.resolution ?? base.resolution;
+    const settings = { ...settingsOf(j), count: need };
+    const model = settings.model, resolution = sizeOf(settings);
     const rsv = await usageApi("POST", "/usage", {
       app: "nanobanana", n: need, model, resolution, job: j.name || `job_${i + 1}`,
       billing: `${billing.team_id} / ${billing.project_id}`, project: tab.name, pc: os.hostname(), user: os.userInfo().username, device: device(),
     });
     if (!rsv.ok) throw new Error(rsv.error || `사용 기록을 남기지 못함 (${rsv.http})`);
-    const settings = { count: need };
-    for (const k of [...SETTING_KEYS, ...extrasOf(j)]) {
-      const v = j[k] ?? defaults[k];
-      if (k !== "count" && v !== undefined && v !== null && v !== "") settings[k] = v;
-    }
-    // 안 적으면 PNG — 탭에 GIF 가 남아 있으면 앱은 탭 형식을 따르는데, GIF · SVG 는 시켰을 때만이다
+    // 안 적으면 PNG — 모델 표를 못 읽어 settingsOf 가 못 채웠어도 옛 앱은 탭 형식을 따르는데, GIF · SVG 는 시켰을 때만이다
     if (gpt26Up(model) && "output_format" in base && !settings.output_format) settings.output_format = "png";
-    const body = { pid: tab.pid, prompt: String(j.prompt), settings, ref_paths: j.refs.map((p) => path.resolve(p)) };
+    const body ={ pid: tab.pid, prompt: String(j.prompt), settings, ref_paths: j.refs.map((p) => path.resolve(p)) };
     // 넣기 직전에 남긴다 — 앱 답을 못 받고 끊기면 다음 실행은 '모름'으로 멈춘다. 못 남기면 보내지 않는다
     let rid;
     try { rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" }); }
@@ -1002,6 +1104,7 @@ async function main() {
       ledgerSet(rid, gr.ok ? { id: gr.batch_id || "", state: "보냄" } : answered ? null : { state: "모름", note: "앱 답을 못 받음" });
     }
     if (!gr.ok) throw new Error(directError(gr, j, i));
+    if (gr.ignored?.length) log(`  확인할 것: ${j.name} — 앱이 쓰지 않은 칸: ${gr.ignored.join(", ")} (오타거나 이 앱에 없는 옵션 — 그 값 없이 나갔다)`);
     return { model, resolution, rsv, batch_id: gr.batch_id, rid };
   }
   let refNoted = false;
@@ -1026,8 +1129,8 @@ async function main() {
     const other = otherSent(j);
     if (other) return { skip: other };
     const snap = { settings: await get("/api/settings"), refs: (await get("/api/refs"))?.refs || [] };
-    const model = j.model ?? defaults.model ?? snap.settings.model;
-    const resolution = j.resolution ?? defaults.resolution ?? snap.settings.resolution;
+    const values = { ...settingsOf(j), count: need };   // 탭에 잠깐 넣는 값 — 장수까지 적어야 탭 Count 로 나가지 않는다
+    const model = values.model, resolution = sizeOf(values);
     // 사용 기록 + 하루 한도 — 앱에 넣기 전에. 앱이 안 받으면 아래에서 무른다.
     const rsv = await usageApi("POST", "/usage", {
       app: "nanobanana", n: need, model, resolution, job: j.name || `job_${i + 1}`,
@@ -1042,11 +1145,7 @@ async function main() {
         const err = await setRefs(refs);
         if (err) throw new Error(err);
       }
-      const s = { pid: tab.pid, fixed_prompt: "", prompt_sections: [String(j.prompt)] };
-      for (const k of SETTING_KEYS) {
-        const v = j[k] ?? defaults[k];
-        if (v !== undefined && v !== null) s[k] = v;
-      }
+      const s = { pid: tab.pid, fixed_prompt: "", prompt_sections: [String(j.prompt)], ...values };
       const sr = await post("/api/settings", s);
       if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
       rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" });
