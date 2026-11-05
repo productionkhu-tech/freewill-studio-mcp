@@ -86,7 +86,7 @@ freewill_ask(message   = "컷 11개 · 채택 14 · 본편 11 — 프롬프트·
           "refs": ["폰슈테른 박사", { "name": "블록아웃 v9", "as": "[Video 1]" }],
           "frames": [
             { "role": "첫 프레임", "title": "GPT #1 채택",
-              "settings": { "model": "GPT Image 2.5 선버스트", "resolution": "4K" },
+              "settings": { "model": "GPT Image 2.6 선버스트", "resolution": "4K" },
               "results": [ { "file": "D:/…/frame_1.png", "label": "1", "adopted": true }, { "file": "D:/…/frame_2.png", "label": "2" } ],
               "prompt": "이 프레임을 만든 이미지 프롬프트(비우면 PNG 에서 읽음)" }
           ],

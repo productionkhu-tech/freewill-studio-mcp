@@ -57,7 +57,7 @@ async function nanobanana() {
   if (settings) {
     const s = settings;
     out.push(`- 지금 설정: 모델 \`${s.model}\` · 해상도 ${s.resolution} · 비율 ${s.aspect}` +
-      `${s.quality ? ` · 품질 ${s.quality}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
+      `${s.quality ? ` · 품질 ${s.quality}` : ""}${/^gpt-image-2\.6/.test(s.model) && s.complexity ? ` · complexity ${s.complexity}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
       `${s.openai_bg_transparent ? " · 투명 배경" : ""}`);
     if (s.output_dir) out.push(`- 저장 폴더: ${s.output_dir}`);
   }

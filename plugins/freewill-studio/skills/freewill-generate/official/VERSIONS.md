@@ -11,7 +11,7 @@
 | `seedance-2-5` | `official:sd25-pe/<앱 mode>` — `text_to_video` · `image_to_video_first` · `image_to_video_first_last` · `multimodal_reference` · `edit_video` · `extend_video` (그 모드에 필요한 절만) · 전체 `official:sd25-pe` | BytePlus 공식 스킬 | 모드별 topic(공통 원칙 + 그 모드 템플릿만). 모드가 정해지지 않았으면 전체 | "Self-update before triggering" | 0.1.1 · 2026-10-02 |
 | `seedance-2-0` | `official:sd2-pe` | BytePlus 공식 스킬 | 전체 | — | #301a03be · 2026-10-02 |
 | `gemini-omni` | `official:gemini-omni-flash-api` | Google 공식 스킬 | "Prompting Gemini Omni Flash" 이하 | SDK·스크립트·업로드·의존성 | #b199a222 · 2026-10-31 |
-| `gpt-image` | `official:gpt-image` | OpenAI 공식 문서(원문에서 바로) | 전체 — 모델 고르기(2.5 Flare·Sunburst), 프롬프트 기본, 만들기·편집·여러 턴 예시 프롬프트 | 코드 예시(SDK) | #8724e047 · 2026-10-24 |
+| `gpt-image` | `official:gpt-image` | OpenAI 공식 문서(원문에서 바로) | 맨 앞 2.6 절 — 모델 고르기 · complexity · 프롬프트 기본 · 만들기·편집·여러 턴 예시. 뒤의 2.5 · 2 절은 그 모델일 때만 | 코드 예시(SDK) | #8724e047 · 2026-10-24 |
 | `seedream` | `official:seedream` | BytePlus 공식 문서(원문에서 바로) | 전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다) | — | #62bb2d0c · 2026-10-12 |
 | `gemini-.*image` · `nano-banana` | `official:nano-banana` | Google 공식 문서 | 전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations | — | #99b20e9a · 2026-10-12 |
 | `veo` | `official:veo` | Google 공식 문서 | 전체 | — | #71e99f0b · 2026-11-04 |
@@ -39,7 +39,7 @@
 | `official:higgsfield-prompt` | O-Side Media (커뮤니티 · MIT) | 프롬프트 구조 — MCSLA, 서술형 vs 타임코드형 고르기, 글→영상·그림→영상 쓰는 법 | 짧은 공식 자체(사내 형식이 먼저 — 칸 내용은 참고) | 3.7.2 · 2026-10-14 |
 | `official:higgsfield-recipes` | O-Side Media (커뮤니티 · MIT) | 장르별 시작 틀 — 액션·공포·로맨스·제품·다큐·SF·댄스 등 | Higgsfield 프리셋·모델 이름 | 3.1.2 · 2026-10-24 |
 | `official:higgsfield-shotlist-director` | O-Side Media (커뮤니티 · MIT) | 여러 컷 샷리스트 — 전역 스타일 머리말, @ 에셋 용어집, 컷 번호 붙이기 | HTML 산출물 형식(우리는 프롬프트 북) | 1.3.0 · 2026-10-14 |
-| `official:higgsfield-gpt-image-2` · `official:higgsfield-gpt-image-2/reference-sheet-workflow` · `official:higgsfield-gpt-image-2/static-ads-workflow` | O-Side Media (커뮤니티 · MIT) | GPT Image 2.5 — Flare·Sunburst 고르기, 품질 단계, 글자, 투명 배경, 레퍼런스 시트(/reference-sheet-workflow), 정지 광고(/static-ads-workflow) | Higgsfield 파라미터 이름 | 1.3.1 · 2026-10-24 |
+| `official:higgsfield-gpt-image-2` · `official:higgsfield-gpt-image-2/reference-sheet-workflow` · `official:higgsfield-gpt-image-2/static-ads-workflow` | O-Side Media (커뮤니티 · MIT) | 2.5 기준 기록(공식 2.6 이 먼저) — Flare·Sunburst 고르기, 품질 단계, 글자, 투명 배경, 레퍼런스 시트(/reference-sheet-workflow), 정지 광고(/static-ads-workflow) | Higgsfield 파라미터 이름 | 1.3.1 · 2026-10-24 |
 | `official:higgsfield-image-shots` | O-Side Media (커뮤니티 · MIT) | 시네마틱 스틸 — 샷 크기·앵글·구도·렌즈를 그림 한 장에 | Higgsfield 화면 | 3.0.0 · 2026-10-14 |
 | `official:higgsfield-character-design` | O-Side Media (커뮤니티 · MIT) | 무엇을 만들지 먼저 — 캐릭터·세계·스토리 바이블, 캐릭터 시트 질문 | — | 1.3.0 · 2026-10-14 |
 | `official:higgsfield-cinema` · `official:higgsfield-cinema/output-formats-2-5-3-0` · `official:higgsfield-cinema/reference-sheet-types` | O-Side Media (커뮤니티 · MIT) | references/reference-sheet-types(레퍼런스 시트 종류) · references/output-formats-2-5-3-0 | Cinema Studio 화면 조작·Soul Cast·Director Panel | 3.5.3 · 2026-10-24 |

@@ -155,6 +155,7 @@ function pngText(file) {
   }
 }
 const MODEL_NAME = [
+  [/gpt-image-2\.6-sunburst/i, "GPT Image 2.6 선버스트"], [/gpt-image-2\.6-flare/i, "GPT Image 2.6 플레어"],
   [/gpt-image-2\.5-sunburst/i, "GPT Image 2.5 선버스트"], [/gpt-image-2\.5-flare/i, "GPT Image 2.5 플레어"], [/gpt-image/i, "GPT Image"],
   [/gemini-3-pro-image/i, "Nano Banana Pro"], [/nano-banana-2\.1/i, "Nano Banana 2.1"], [/nano-banana|gemini.*image/i, "Nano Banana"],
   [/seedream-?5/i, "Seedream 5.0"], [/seedream/i, "Seedream"],

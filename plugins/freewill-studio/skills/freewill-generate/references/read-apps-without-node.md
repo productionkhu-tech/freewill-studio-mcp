@@ -140,7 +140,7 @@ $bill = Get-NB "/api/billing/state?pid=$tabPid"                  # confirmed 가
 $cat = Get-NB "/api/billing/catalog"
 Send-NB "/api/billing/set" @{ pid = $tabPid; team_id = "고른 팀의 id"; project_id = "고른 프로젝트의 id" }
 $r = Send-NB "/api/generate" @{ pid = $tabPid; prompt = "프롬프트"
-       settings = @{ model = "gpt-image-2.5-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
+       settings = @{ model = "gpt-image-2.6-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
        ref_paths = @("C:\경로\ref1.png") }                        # 거절이면 error(needs_billing · bad_aspect+allowed · ref_*)
 Get-NB "/api/batch?pid=$tabPid&batch_id=$($r.batch_id)"         # finished 가 true 면 images 에 파일 경로
 ```
@@ -156,7 +156,7 @@ Get-NB "/api/batch?pid=$tabPid&batch_id=$($r.batch_id)"         # finished 가 t
    Send-NB "/api/refs/clear" @{ preserve_pinned = $false }
    Send-NB "/api/refs/add-path" @{ filepath = "C:\경로\ref1.png" }     # 레퍼런스마다
    Send-NB "/api/settings" @{ pid = $tabPid; fixed_prompt = ""; prompt_sections = @("프롬프트")
-                              model = "gpt-image-2.5-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
+                              model = "gpt-image-2.6-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
    Send-NB "/api/generate" @{}       # ok 가 아니고 "Queue full" 이면 잠깐 기다렸다 다시
    ```
 3. 다 넣은 뒤 원래 입력값으로 되돌린다: `Send-NB "/api/settings" @{ pid = $tabPid; fixed_prompt = $before.fixed_prompt;

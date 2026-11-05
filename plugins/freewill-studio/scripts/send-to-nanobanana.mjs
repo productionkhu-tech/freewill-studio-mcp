@@ -57,8 +57,9 @@
 //     작업마다 "scene": "S010", "cut": "C0010" → <작업>\S010\C0010\ABC_S010_C0010_I001.png (번호는 그 컷에서 이어서)
 //              또는 "asset": "인물|로케이션|프랍|참고" → <작업>\01_에셋\인물\<작업 이름>_A.png
 //              "version": "A"(A/B안 — 목록에 남김), "covers": "C0010~C0040"(한 장이 여러 컷을 덮으면)
-//     "defaults": { "model": "gpt-image-2.5-sunburst", "resolution": "4K", "aspect": "16:9",
+//     "defaults": { "model": "gpt-image-2.6-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
+//     "complexity": GPT Image 2.6 전용(low · medium · high) — 렌더링 전에 얼마나 계획할지. 요금은 같고 비우면 그 탭 값(기본 high). 다른 모델에 적으면 앱이 거절한다
 //     "jobs": [
 //       { "name": "char_01", "prompt": "...", "refs": [{ "path": "C:/path/a.png", "why": "her face and hair only — the outfit comes from the text" }] },
 //       { "name": "loc_01", "prompt": "...", "model": "seedream-5-0-pro-260628", "resolution": "2K" }
@@ -84,7 +85,7 @@ const WATCH = flag("--watch") || Boolean(SAVE_TO);
 const KEEP = flag("--keep");
 const DRY = flag("--dry-run"); // 앱 연결·탭·팀/프로젝트만 확인하고 아무것도 보내지 않음 (비용 0)
 const TAB = opt("--tab");
-const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent"];
+const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent", "complexity"];
 // 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
@@ -783,14 +784,16 @@ async function main() {
   const win = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
   const placeRel = (j) => (WORKDIR ? placeOf(spec, j, WORKDIR).rel : "");
   const hash = (v) => crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 24);
+  // complexity 는 적었을 때만 키에 넣는다 — 안 적은 작업의 키가 그대로여야 이 업데이트 전에 보낸 것을 또 보내지 않는다
+  const keyed = (j) => SETTING_KEYS.filter((k) => k !== "complexity" || (j[k] ?? defaults[k]) != null);
   const seen = {};
   for (const j of jobs) {
     const key = hash([tab.name, String(j.prompt).replace(/\s+/g, " ").trim(),
-      SETTING_KEYS.map((k) => { const v = j[k] ?? defaults[k]; return v === undefined || v === null ? null : String(v); }),
+      keyed(j).map((k) => { const v = j[k] ?? defaults[k]; return v === undefined || v === null ? null : String(v); }),
       j.refs.map((p) => win(path.resolve(p))), WORKDIR, placeRel(j)]);
     j.nth = seen[key] = (seen[key] || 0) + 1;
     j.key = `${key}#${j.nth}`;
-    j.legacy = hash([tab.name, String(j.prompt), SETTING_KEYS.map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, placeRel(j) || SAVE_TO || ""]);
+    j.legacy = hash([tab.name, String(j.prompt), keyed(j).map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, placeRel(j) || SAVE_TO || ""]);
   }
   const encPid = encodeURIComponent(tab.pid);
   // 전에 보낸 묶음이 지금 어떤지 — "끝" · "보냄"(만드는 중이거나 아직 안 놓음) · "다시"(그림 0장으로 끝남) · "멈춤"(사람이 앱에서 멈춤) · "모름" · "옛"(묶음 id 없는 옛 앱)
@@ -868,12 +871,13 @@ async function main() {
       prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })),
       ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) })) });
   if (DRY) {
-    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
+    const cxNote = (m, c) => (/^gpt-image-2\.6/.test(m) && c ? ` · complexity ${c}` : "");   // 2.6 전용 — 확인 카드에 옮긴다
+    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}${cxNote(base.model, base.complexity)}`
       : tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
     for (const [i, j] of toSend.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
-      log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)} · 레퍼런스 ${j.refs.length}장`);
+      log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)}${cxNote(m, j.complexity ?? defaults.complexity ?? base.complexity)} · 레퍼런스 ${j.refs.length}장`);
       j.refs.forEach((p, k) => log(`     [Image ${k + 1}] ${path.basename(p)} — ${j.refWhy[k]}`));   // 확인 카드에 그대로 옮긴다
       if (WORKDIR) {
         const pl = placeOf(spec, j, WORKDIR);
@@ -895,7 +899,9 @@ async function main() {
     const who = j.name || `job_${i + 1}`;
     if (gr.needs_billing) return `"${tab.name}" 탭의 팀·프로젝트를 앱이 다시 골라 달라고 한다(${gr.error || ""}) — 이 스크립트 --choices 로 명단을 받아 사용자에게 물을 것`;
     if (gr.error === "no_such_tab") return `"${tab.name}" 탭이 그사이 닫혔다 — 사용자에게 물을 것`;
+    if (gr.error === "bad_complexity") return `${who}: complexity 는 GPT Image 2.6 전용이다(low · medium · high) — ${gr.model} 이면 빼고, 2.6 이면 값을 고칠 것`;
     if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — 고를 수 있는 값: ${(gr.allowed || []).join(", ")}`;
+    if (gr.error === "unknown_model" && /^gpt-image-2\.6/.test(gr.model)) return `${who}: 이 PC 나노바나나에 ${gr.model} 이 없다(v2026-11-0501 전) — 앱을 껐다 켜면 새 버전이 깔린다. 사용자에게 알리고, 급하면 물은 뒤 2.5 로`;
     if (gr.error === "unknown_model") return `${who}: 앱이 모르는 모델 ${gr.model} — read-local-apps 가 보여 준 모델 id 로`;
     if (gr.error === "ref_limit") return `${who}: 이 모델은 레퍼런스 ${gr.limit}장까지(${gr.given}장 보냄)`;
     if (gr.error === "ref_unreadable") return `${who}: 레퍼런스 ${gr.index}번을 앱이 못 읽음 — ${gr.path}`;

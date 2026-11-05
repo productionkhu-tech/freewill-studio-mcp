@@ -113,7 +113,9 @@
       "models": [
         "gpt-image-2",
         "gpt-image-2.5-flare",
-        "gpt-image-2.5-sunburst"
+        "gpt-image-2.5-sunburst",
+        "gpt-image-2.6-flare",
+        "gpt-image-2.6-sunburst"
       ],
       "use": "참고용 — GPT Image 는 OpenAI 개발자 문서(official:gpt-image)를 쓴다",
       "skip": "image_gen 도구, CLI, OPENAI_API_KEY, 저장 경로 규칙. \"Use case: / Asset type:\" 같은 필드 양식은 GPT Image 에만 쓴다",
@@ -327,7 +329,7 @@
       "models": [],
       "license": "MIT — Copyright (c) 2026 O-Side Media (사본 폴더에 LICENSE.md 같이 보관)",
       "path": "skills/higgsfield-gpt-image-2",
-      "use": "GPT Image 2.5 — Flare·Sunburst 고르기, 품질 단계, 글자, 투명 배경, 레퍼런스 시트(/reference-sheet-workflow), 정지 광고(/static-ads-workflow)",
+      "use": "2.5 기준 기록(공식 2.6 이 먼저) — Flare·Sunburst 고르기, 품질 단계, 글자, 투명 배경, 레퍼런스 시트(/reference-sheet-workflow), 정지 광고(/static-ads-workflow)",
       "skip": "Higgsfield 파라미터 이름"
     },
     {
@@ -420,7 +422,7 @@
       "families": [
         "gpt-image"
       ],
-      "use": "전체 — 모델 고르기(2.5 Flare·Sunburst), 프롬프트 기본, 만들기·편집·여러 턴 예시 프롬프트",
+      "use": "맨 앞 2.6 절 — 모델 고르기 · complexity · 프롬프트 기본 · 만들기·편집·여러 턴 예시. 뒤의 2.5 · 2 절은 그 모델일 때만",
       "skip": "코드 예시(SDK)"
     },
     {
