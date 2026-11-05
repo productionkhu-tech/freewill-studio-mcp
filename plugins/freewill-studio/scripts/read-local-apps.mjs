@@ -56,15 +56,21 @@ async function nanobanana() {
   }
   const specs = js ? cutAfter(js, "MODEL_SPECS", "{", "}") : null;
   const parsed = specs ? parseSpecs(specs) : [];
+  // 앱이 회사마다 정한 최고 모델(모델 메뉴의 별표, v2026-11-0502~) — 있으면 이것이 정답, 없는 계열 · 옛 앱은 이름으로 고른다
+  const pinned = js?.match(/SOTA_MODELS\s*=\s*\[([^\]]*)\]/)?.[1].match(/[\w.-]+/g) || [];
   if (settings) {
     const s = settings;
     out.push(`- 지금 설정: 모델 \`${s.model}\` · 해상도 ${s.resolution} · 비율 ${s.aspect}` +
-      `${s.quality ? ` · 품질 ${s.quality}` : ""}${s.complexity && parsed.find((m) => m.id === s.model)?.fields.includes("complexities") ? ` · complexity ${s.complexity}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
+      `${s.quality ? ` · 품질 ${s.quality}` : ""}${s.complexity && parsed.find((m) => m.id === s.model)?.fields.includes("complexities") ? ` · complexity ${s.complexity}` : ""}${s.output_format && s.output_format !== "png" ? ` · 형식 ${s.output_format}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
       `${s.openai_bg_transparent ? " · 투명 배경" : ""}`);
     if (s.output_dir) out.push(`- 저장 폴더: ${s.output_dir}`);
+    if (s.gif_limits?.sizes) {
+      out.push(`- GIF · SVG(GPT 2.6 이상, 시켰을 때만 — \`references/image-prompting.md\` 9절): GIF 크기별 최대 프레임 ${(s.gif_limits.order || Object.keys(s.gif_limits.sizes)).map((k) => `${k} ${s.gif_limits.sizes[k]}`).join(" · ")}, ` +
+        `프레임당 ${(s.gif_limits.frame_ms || []).join("~")}ms. SVG 는 레퍼런스 불가`);
+    }
   }
   if (parsed.length) {
-    out.push("", "### 계열 SOTA — 모델 추천은 이것부터 (이 PC 앱 기준)", ...sotaLines(parsed.map((m) => m.id)).map((l) => `- ${l}`),
+    out.push("", "### 계열 SOTA — 모델 추천은 이것부터 (이 PC 앱 기준)", ...sotaLines(parsed.map((m) => m.id), pinned).map((l) => `- ${l}`),
       "- 문서에 적힌 모델 이름으로 짐작하지 않는다. 사용자가 모델을 말하면 그것이 먼저, 빠른 시안이면 '빠른 것'.");
     const fresh = [...new Set(parsed.flatMap((m) => m.fields))].filter((f) => !KNOWN_SPEC_FIELDS.has(f));
     if (fresh.length) {
@@ -226,18 +232,18 @@ const familyOf = (id) => FAMILIES.find(([, re]) => re.test(id))?.[0] || id.split
 const tierOf = (id) => (/(^|-)(lite|mini)(-|$)/.test(id) ? 0 : /(^|-)(flare|flash|fast|turbo)(-|$)/.test(id) ? 1 : /(^|-)(sunburst|pro|ultra)(-|$)/.test(id) ? 3 : 2);
 const versionOf = (id) => { const m = id.match(/(?<!\d)(\d{1,2})(?:[.-](\d{1,2})(?!\d))?(?!\d)/); return m ? Number(m[1]) + Number(m[2] || 0) / 100 : 0; };
 const bestOf = (ids) => [...ids].sort((a, b) => tierOf(b) - tierOf(a) || versionOf(b) - versionOf(a))[0];
-function sotaLines(ids) {
+function sotaLines(ids, pinned = []) {
   const fams = new Map();
   for (const id of ids) fams.set(familyOf(id), [...(fams.get(familyOf(id)) || []), id]);
   return [...fams].map(([name, list]) => {
-    const top = bestOf(list);
+    const top = list.find((x) => pinned.includes(x)) || bestOf(list);
     const fast = tierOf(top) > 1 ? list.filter((x) => tierOf(x) === 1) : [], light = list.filter((x) => tierOf(x) === 0 && x !== top);
     return `${name}: \`${top}\`${fast.length ? ` · 빠른 것 \`${bestOf(fast)}\`` : ""}${light.length ? ` · 가장 가벼운 것 \`${bestOf(light)}\`` : ""}`;
   });
 }
 
 // 사내 문서가 아는 앱 사양 칸 — 여기 없는 칸이 생기면 에이전트에게 알린다
-const KNOWN_SPEC_FIELDS = new Set(["aspects", "resolutions", "counts", "showQuality", "qualities", "showBackground", "complexities", "defaultAspect", "defaultResolution", "defaultQuality", "defaultComplexity", "hint", "refHint"]);
+const KNOWN_SPEC_FIELDS = new Set(["formats", "aspects", "resolutions", "counts", "showQuality", "qualities", "showBackground", "complexities", "defaultAspect", "defaultResolution", "defaultQuality", "defaultComplexity", "hint", "refHint"]);
 // MODEL_SPECS 에서 모델 이름과 칸 이름만 글로 뽑는다(코드를 실행하지 않는다)
 function parseSpecs(specs) {
   const out = [], head = /"([a-z0-9][\w.-]*)"\s*:\s*\{/g;

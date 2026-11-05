@@ -36,7 +36,7 @@
 ## 함께 고쳐야 하는 것
 
 - 공식 스킬 추가·삭제: `sync/sources.json` 의 `tracked` + `GUIDE.md` 4단계 대응표 (+ `models` 목록)
-- **추천 문서에 모델 이름을 박지 말 것** — "GPT 계열 SOTA"처럼 쓴다. 실제 이름은 `read-local-apps` 가 앱 사양에서 고르고(등급 먼저, 그다음 버전), 설정은 보내기 스크립트가 그대로 넘긴다.
+- **추천 문서에 모델 이름을 박지 말 것** — "GPT 계열 SOTA"처럼 쓴다. 실제 이름은 `read-local-apps` 가 앱의 `SOTA_MODELS`(모델 메뉴 별표)에서, 없는 계열은 이름에서 고르고(등급 먼저, 그다음 버전), 설정은 보내기 스크립트가 그대로 넘긴다.
   새 모델 · 옵션은 매일 동기화가 이슈로 알린다(`sync.mjs` `watchApps`). 사람이 할 일은 사용 요령 · 비용 차이 적기와 등급 이름이 새로 생겼을 때 `tierOf` 고치기(`read-local-apps.mjs`).
 - 앱에 모델이 추가·변경됨: `references/app-rules.md` (앱 MCP 의 규칙 도구가 생기면 이 파일은 지운다)
   - 나노바나나 원본: `나노바나나 api/static/app.js` 의 `MODEL_SPECS`

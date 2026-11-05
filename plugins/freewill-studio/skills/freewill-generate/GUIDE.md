@@ -278,7 +278,7 @@ Seedance 2.5 · 레퍼런스→영상 · 16:9 · 10초 · 초안 480p · 2개 ·
 1. 작업 목록을 JSON 파일로 쓴다 (임시 폴더). 형식은 스크립트 머리말에 있다:
    `{"guide", "tab", "defaults": {"model", "resolution", "aspect", "quality", "complexity", "count"}, "jobs": [{"name", "prompt", "refs": [{"path", "why"}], ...}]}`
    레퍼런스는 PC 의 파일 경로 그대로. `guide` 는 이 지침 맨 위의 **지침 버전** 그대로(아래 시댄스와 같다).
-   GPT 2.6 이상은 `complexity` 도 적는다(한 곳 편집 `low`, 그 밖 `high` — `image-prompting.md` 1절).
+   GPT 2.6 이상은 `complexity` 도 적는다(한 곳 편집 `low`, 그 밖 `high` — `image-prompting.md` 1절). GIF·SVG 는 시켰을 때만(같은 문서 9절).
    **`tab` 은 이 작업용 탭 이름** — 모르면 `--choices` 명단으로 묻는다(탭이 둘 이상인데 비우면 멈춘다). **한 파일은 한 탭** — 프로젝트(탭)가 여럿이면 팀·과금도 탭마다 따로 묻고, 파일·dry-run·보내기도 탭마다 따로(작업 줄에 tab·billing 을 적으면 멈춘다).
 2. 먼저 확인만 한다 (아무것도 안 보냄, 비용 0) — 앱이 켜져 있는지, 그 탭과 팀·프로젝트(그 탭이 화면에 없어도 탭 목록에서 읽는다):
    ```bash

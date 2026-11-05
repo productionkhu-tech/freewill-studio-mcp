@@ -238,7 +238,7 @@ function normBook(src) {
 }
 
 // 프롬프트가 비어 있으면 그림 파일(PNG)에 들어 있는 것으로 채운다 — 이미지 한 장씩 만든 작업에서 기록이 없을 때.
-const IMG_EXT = /\.(png|jpe?g|webp|gif|avif|bmp)$/i;
+const IMG_EXT = /\.(png|jpe?g|webp|gif|svg|avif|bmp)$/i;
 const VIDEO_EXT = /\.(mp4|mov|webm|m4v)$/i;
 const absOf = (file) => (path.isAbsolute(file) ? file : path.resolve(inDir, file));
 function fromPng(target, media, withSettings) {
@@ -267,7 +267,7 @@ function autofill(book) {
 }
 
 // ---------- 그림·영상 ----------
-const KIND = { png: "image", jpg: "image", jpeg: "image", webp: "image", gif: "image", avif: "image", bmp: "image",
+const KIND = { png: "image", jpg: "image", jpeg: "image", webp: "image", gif: "image", svg: "image", avif: "image", bmp: "image",
   mp4: "video", webm: "video", mov: "video", m4v: "video", mp3: "audio", wav: "audio", m4a: "audio", ogg: "audio" };
 const stats = { copied: 0, kept: 0, linked: 0, missing: [] };
 const published = new Map();

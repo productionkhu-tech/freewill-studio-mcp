@@ -30,6 +30,7 @@
 - 빠른 룩 확인·스토리보드 → Nano Banana 계열의 "가장 가벼운 것" 1K
 - 일반 고품질·디자인·글자 → GPT 계열 SOTA (빨라야 하면 "빠른 것")
 - GPT 2.6 이상으로 한 곳만 고치는 편집 → `complexity` low (기본 high 는 시키지 않은 곳까지 바꿀 수 있다) · 글자 · 복잡한 구도는 high — `image-prompting.md` 1절
+- GIF · SVG → 시켰을 때만(먼저 권하지 않는다). GPT 계열 SOTA + `output_format` — `image-prompting.md` 9절
 - 레퍼런스 얼굴 살린 인물 → Seedream 계열 SOTA 2K
 - 카툰·일러스트, 질감 강한 사진 → Nano Banana 계열 SOTA (512px 가 필요하면 앱 사양에서 그 해상도가 있는 모델)
 

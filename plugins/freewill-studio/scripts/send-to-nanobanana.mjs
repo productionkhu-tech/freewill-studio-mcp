@@ -61,6 +61,7 @@
 //                   "quality": "max", "count": 1 },
 //     "complexity": GPT Image 2.6 전용(low · medium · high) — defaults 또는 작업마다. 렌더링 전에 얼마나 계획할지, 요금은 같고 비우면 그 탭 값(앱 기본 high). 다른 모델에 적으면 앱이 거절한다.
 //              한 곳만 고치는 편집은 low(높으면 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high — references/image-prompting.md 1절
+//     "output_format": "gif" | "svg" — GPT 2.6 이상, 사용자가 시켰을 때만(앱 v2026-11-0502~). 안 적으면 PNG. GIF 는 "gif_size" · "gif_frames" · "gif_frame_ms", SVG 는 레퍼런스 불가 — references/image-prompting.md 9절
 //     그 밖의 설정도 앱에 있는 이름이면 그대로 넘어간다 — 앱에 새 옵션이 생겨도 이 스크립트를 안 고친다. 모델은 read-local-apps 의 "계열 SOTA" 표에서
 //     "jobs": [
 //       { "name": "char_01", "prompt": "...", "refs": [{ "path": "C:/path/a.png", "why": "her face and hair only — the outfit comes from the text" }] },
@@ -90,7 +91,7 @@ const TAB = opt("--tab");
 const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent"];
 // 작업 줄에서 스크립트가 쓰는 칸 — 나머지는 앱 설정으로 넘긴다(아래 extrasOf)
 const JOB_OWN = new Set(["name", "prompt", "refs", "refWhy", "key", "nth", "legacy", "prompt_language", "scene", "cut", "asset", "version", "covers"]);
-const hasComplexity = (m) => Number(String(m).match(/^gpt-image-(\d+(?:\.\d+)?)/)?.[1] || 0) >= 2.6;
+const gpt26Up = (m) => Number(String(m).match(/^gpt-image-(\d+(?:\.\d+)?)/)?.[1] || 0) >= 2.6;   // complexity · GIF · SVG 가 있는 GPT
 // 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
@@ -506,7 +507,7 @@ function placeName(work, pl, kind, ext, jobName, suffix = "") {
 
 // 이미지 프롬프트에서 글로 짚을 수 있는 것(references/image-prompting.md · prompt-logic.md) — 막지 않고 "확인할 것"으로 보여 준다.
 // 사용자의 잘 쓴 프롬프트(외주 프롬프트북 시트·스틸)에 대 보고 괜히 걸리던 것은 뺐다 — '8K' 디테일 묘사, 액션 스틸의 motion blur
-function imageNotes(j, aspect) {
+function imageNotes(j, aspect, fmt) {
   const p = String(j.prompt).replace(/"[^"\n]*"|“[^”\n]*”/g, "");
   const notes = [];
   // 비율은 설정이 정한다 — 본문에 적은 비율이 이 작업의 비율 설정과 다르거나 서로 다르면 모순
@@ -525,7 +526,7 @@ function imageNotes(j, aspect) {
   }
   const moved = [...p.matchAll(/\b(?:crash zoom|whip pan|dolly[- ](?:in|out)|push[- ]in)\b/gi)]
     .some((m) => !/\b(?:no|never|not|nothing|nor|without|rather than|instead of)\b[^.;:]{0,30}$/i.test(p.slice(Math.max(0, m.index - 40), m.index)));
-  if (moved) notes.push("스틸에 카메라 무빙 말(crash zoom · whip pan · dolly · push-in) — 스틸은 한 순간이다. 첫 프레임용이면 그 순간의 구도로 쓴다(prompt-logic 3절)");
+  if (moved && fmt !== "gif") notes.push("스틸에 카메라 무빙 말(crash zoom · whip pan · dolly · push-in) — 스틸은 한 순간이다. 첫 프레임용이면 그 순간의 구도로 쓴다(prompt-logic 3절)");
   return notes;
 }
 
@@ -773,7 +774,26 @@ async function main() {
   const extrasOf = (j) => [...new Set([...Object.keys(defaults), ...Object.keys(j)])].filter((k) => !JOB_OWN.has(k) && !SETTING_KEYS.includes(k) && (j[k] ?? defaults[k]) != null).sort();
   const notInApp = [...new Set(jobs.flatMap(extrasOf))].filter((k) => !(k in (base || {})));
   if (notInApp.length) log(`  확인할 것: ${notInApp.map((k) => `"${k}"`).join(", ")} — 이 앱의 설정에 없어 앱이 무시한다. 오타면 고치고, 새 옵션이면 앱을 껐다 켜 업데이트, 아니면 뺄 것`);
-  const notes = jobs.flatMap((j) => imageNotes(j, j.aspect ?? defaults.aspect ?? base.aspect).map((n) => `${j.name || "(이름 없음)"}: ${n}`));
+  // GIF · SVG 는 시켰을 때만(사용자 11/5) — 안 적으면 PNG. 틀린 값은 카드 전에 멈춘다(한도는 앱이 알려 준 표로)
+  const fmtOf = (j) => j.output_format ?? defaults.output_format ?? "png";
+  const namesOf = (list) => list.map((j) => j.name || "(이름 없음)").join(", ");
+  const fancy = jobs.filter((j) => fmtOf(j) !== "png");
+  if (fancy.length && !("output_format" in (base || {}))) fail(`${namesOf(fancy)}: 이 PC 나노바나나는 GIF · SVG 를 못 만든다(v2026-11-0502 전) — 앱을 껐다 켜면 새 버전이 깔린다. 그대로 보내면 PNG 로 나와 값만 치른다`);
+  const svgRefs = jobs.filter((j) => fmtOf(j) === "svg" && j.refs.length);
+  if (svgRefs.length) fail(`${namesOf(svgRefs)}: SVG 는 레퍼런스를 넣을 수 없다 — refs 를 빼고 글로 쓰거나, 형식을 png · gif 로`);
+  const gifOf = (j) => ({ size: String(j.gif_size ?? defaults.gif_size ?? base.gif_size), frames: Number(j.gif_frames ?? defaults.gif_frames ?? base.gif_frames), ms: Number(j.gif_frame_ms ?? defaults.gif_frame_ms ?? base.gif_frame_ms) });
+  const strayGif = jobs.filter((j) => fmtOf(j) !== "gif" && ["gif_size", "gif_frames", "gif_frame_ms"].some((k) => (j[k] ?? defaults[k]) != null));
+  if (strayGif.length) fail(`${namesOf(strayGif)}: gif_ 설정이 있는데 output_format 이 gif 가 아니다 — "output_format": "gif" 를 적거나 gif_ 칸을 뺄 것`);
+  const lim = base?.gif_limits;
+  if (lim) {
+    for (const j of jobs.filter((x) => fmtOf(x) === "gif")) {
+      const g = gifOf(j), most = lim.sizes?.[g.size], who = j.name || "(이름 없음)";
+      if (!most) fail(`${who}: GIF 크기 ${g.size} 는 안 된다 — 고를 수 있는 크기: ${(lim.order || Object.keys(lim.sizes || {})).join(", ")}`);
+      if (g.frames < lim.min_frames || g.frames > most) fail(`${who}: GIF ${g.size} 는 ${lim.min_frames}~${most} 프레임이다(지금 ${g.frames})`);
+      if (g.ms < lim.frame_ms?.[0] || g.ms > lim.frame_ms?.[1]) fail(`${who}: GIF 프레임당 시간은 ${lim.frame_ms.join("~")}ms 다(지금 ${g.ms})`);
+    }
+  }
+  const notes = jobs.flatMap((j) => imageNotes(j, j.aspect ?? defaults.aspect ?? base.aspect, fmtOf(j)).map((n) => `${j.name || "(이름 없음)"}: ${n}`));
   if (notes.length) log(`  확인할 것 (references/image-prompting.md · prompt-logic.md · 맞는 경우면 그대로 둔다):\n${notes.map((n) => `  - ${n}`).join("\n")}`);
   const countOf = (j) => Math.max(1, Math.round(Number(j.count ?? defaults.count ?? base.count) || 1));
   const big = jobs.find((j) => countOf(j) > MAX_IN_FLIGHT);
@@ -876,8 +896,11 @@ async function main() {
   if (!owner && need && need !== NO_TICKET) log(`  ${need}`);
   // 확인 카드 · 작업 페이지에 옮길 설정 — 앱에 새 옵션이 생기면 여기에도 저절로 뜬다. complexity 는 안 적으면 탭 값으로 가므로 그 값을 보인다
   const extraNote = (j, m) => {
-    const c = j.complexity ?? defaults.complexity ?? (hasComplexity(m) ? base.complexity : null);
-    return [...(c ? [`complexity ${c}`] : []), ...extrasOf(j).filter((k) => k !== "complexity").map((k) => `${k} ${j[k] ?? defaults[k]}`)].map((x) => ` · ${x}`).join("");
+    const c = j.complexity ?? defaults.complexity ?? (gpt26Up(m) ? base.complexity : null);
+    const g = fmtOf(j) === "gif" ? gifOf(j) : null;
+    const fmt = g ? `GIF ${g.size} · ${g.frames}프레임 · 프레임당 ${g.ms}ms(${((g.frames * g.ms) / 1000).toFixed(1)}초)` : fmtOf(j) === "svg" ? "SVG(레퍼런스 없음 · 배경 투명 · 약 1분 이상)" : "";
+    const shown = new Set(["complexity", "output_format", "gif_size", "gif_frames", "gif_frame_ms"]);
+    return [...(fmt ? [fmt] : []), ...(c ? [`complexity ${c}`] : []), ...extrasOf(j).filter((k) => !shown.has(k)).map((k) => `${k} ${j[k] ?? defaults[k]}`)].map((x) => ` · ${x}`).join("");
   };
   // 작업 페이지의 '보낼 것' — 작업마다 모델·레퍼런스(그림으로 뜬다)
   const planOf = () => ({ app: "nanobanana", tab: tab.name, billing: billLabel,
@@ -885,19 +908,22 @@ async function main() {
       prompt: String(j.prompt), refs: j.refs.map((p, k) => ({ path: path.resolve(p), why: j.refWhy[k] })),
       ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) })) });
   if (DRY) {
-    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}${hasComplexity(base.model) && base.complexity ? ` · complexity ${base.complexity}` : ""}`
+    log(direct ? `  "${tab.name}" 탭 설정(jobs.json 에 비운 칸은 이 값): ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}${gpt26Up(base.model) && base.complexity ? ` · complexity ${base.complexity}` : ""}`
       : tab.name === screenTab ? `  지금 탭 설정: ${base.model} · ${base.resolution} · ${base.aspect} · ×${base.count}`
       : `  설정: jobs.json 에 적은 값이 들어가고, 비운 칸은 "${tab.name}" 탭에 정해 둔 값을 따른다(아래 비운 칸은 지금 화면 탭 값으로 보여 줌)`);
     // 안 적으면 탭 값으로 간다 — 기본 high 는 편집에서 시키지 않은 곳까지 바꿀 수 있고, 탭이 low 로 남아 있으면 새 그림도 low 다(공식 가이드 · 11/5)
-    const cxLoose = toSend.filter((j) => hasComplexity(j.model ?? defaults.model ?? base.model) && (j.complexity ?? defaults.complexity) == null && (j.refs.length || (base.complexity && base.complexity !== "high")));
+    const cxLoose = toSend.filter((j) => gpt26Up(j.model ?? defaults.model ?? base.model) && (j.complexity ?? defaults.complexity) == null && (j.refs.length || (base.complexity && base.complexity !== "high")));
     if (cxLoose.length) log(`  확인할 것: ${cxLoose.map((j) => j.name).join(", ")} — complexity 를 안 적어 탭 값(${base.complexity || "high"})으로 간다. 한 곳만 고치는 편집이면 low, 글자 · 복잡한 구도는 high 로 적을 것(references/image-prompting.md 1절)`);
+    // SVG 는 탭 값(앱 기본 4K · max 면 장당 $0.70, 3분 넘게)을 그대로 따라가면 비싸다 — 값을 정하게 한다
+    const svgLoose = toSend.filter((j) => fmtOf(j) === "svg" && (j.resolution ?? defaults.resolution) == null);
+    if (svgLoose.length) log(`  확인할 것: ${svgLoose.map((j) => j.name).join(", ")} — SVG 해상도를 안 적어 탭 값(${base.resolution})으로 간다. 4K max 는 장당 약 $0.70 · 3분 넘게 걸린다 — 사용자가 말하지 않았으면 "resolution": "1K" 로 적을 것`);
     for (const [i, j] of toSend.entries()) {
       const m = j.model ?? defaults.model ?? base.model, r = j.resolution ?? defaults.resolution ?? base.resolution;
-      log(`  ${i + 1}. ${j.name || ""} · ${m} ${r} ×${countOf(j)}${extraNote(j, m)} · 레퍼런스 ${j.refs.length}장`);
+      log(`  ${i + 1}. ${j.name || ""} · ${m}${fmtOf(j) === "gif" ? "" : ` ${r}`} ×${countOf(j)}${extraNote(j, m)} · 레퍼런스 ${j.refs.length}장`);
       j.refs.forEach((p, k) => log(`     [Image ${k + 1}] ${path.basename(p)} — ${j.refWhy[k]}`));   // 확인 카드에 그대로 옮긴다
       if (WORKDIR) {
         const pl = placeOf(spec, j, WORKDIR);
-        log(`     → 놓을 곳 ${pl.rel}/${placeName(WORKDIR, pl, "I", ".png", j.name)}${countOf(j) > 1 ? ` 부터 ${countOf(j)}장` : ""}${pl.range ? ` · 범위 ${pl.range}` : ""}${pl.version ? ` · ${pl.version}안` : ""}`);
+        log(`     → 놓을 곳 ${pl.rel}/${placeName(WORKDIR, pl, "I", `.${fmtOf(j)}`, j.name)}${countOf(j) > 1 ? ` 부터 ${countOf(j)}장` : ""}${pl.range ? ` · 범위 ${pl.range}` : ""}${pl.version ? ` · ${pl.version}안` : ""}`);
       }
     }
     writePlan(spec, planOf(), {});
@@ -915,6 +941,7 @@ async function main() {
     const who = j.name || `job_${i + 1}`;
     if (gr.needs_billing) return `"${tab.name}" 탭의 팀·프로젝트를 앱이 다시 골라 달라고 한다(${gr.error || ""}) — 이 스크립트 --choices 로 명단을 받아 사용자에게 물을 것`;
     if (gr.error === "no_such_tab") return `"${tab.name}" 탭이 그사이 닫혔다 — 사용자에게 물을 것`;
+    if (gr.error === "svg_no_refs") return `${who}: SVG 는 레퍼런스를 넣을 수 없다 — refs 를 빼고 글로 쓰거나, 형식을 png · gif 로`;
     if (/^bad_/.test(String(gr.error || ""))) return `${who}: ${gr.model} 에 안 맞는 ${gr.field} — ${gr.allowed?.length ? `고를 수 있는 값: ${gr.allowed.join(", ")}` : "이 모델에는 없는 설정이다. 빼거나 그 설정이 있는 모델로"}`;
     if (gr.error === "unknown_model") return `${who}: 이 PC 나노바나나에 ${gr.model} 이 없다 — read-local-apps 의 계열 SOTA 표에서 고를 것. 새 모델이면 앱을 껐다 켜 업데이트`;
     if (gr.error === "ref_limit") return `${who}: 이 모델은 레퍼런스 ${gr.limit}장까지(${gr.given}장 보냄)`;
@@ -954,6 +981,8 @@ async function main() {
       const v = j[k] ?? defaults[k];
       if (k !== "count" && v !== undefined && v !== null && v !== "") settings[k] = v;
     }
+    // 안 적으면 PNG — 탭에 GIF 가 남아 있으면 앱은 탭 형식을 따르는데, GIF · SVG 는 시켰을 때만이다
+    if (gpt26Up(model) && "output_format" in base && !settings.output_format) settings.output_format = "png";
     const body = { pid: tab.pid, prompt: String(j.prompt), settings, ref_paths: j.refs.map((p) => path.resolve(p)) };
     // 넣기 직전에 남긴다 — 앱 답을 못 받고 끊기면 다음 실행은 '모름'으로 멈춘다. 못 남기면 보내지 않는다
     let rid;

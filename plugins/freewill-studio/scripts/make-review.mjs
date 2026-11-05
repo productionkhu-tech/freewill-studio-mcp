@@ -62,7 +62,7 @@ const WORK_LIST = path.join(REVIEW_DIR, "목록.tsv");   // 씬·컷 배치의 �
 const ME_SETTINGS = path.join(os.homedir(), ".freewill-studio", "settings.json");
 const STATUSES = ["OK", "보류", "탈락"];
 const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
-const MEDIA = /\.(png|jpe?g|webp|gif|mp4|mov|m4v|webm)$/i;
+const MEDIA = /\.(png|jpe?g|webp|gif|svg|mp4|mov|m4v|webm)$/i;
 const IDLE_MS = 45 * 60 * 1000;
 const SD = process.env.FREEWILL_SD_URL || "http://127.0.0.1:3000";   // 시댄스 앱 — 받지 않은 영상은 여기서 읽는다
 const SHEET_DIR = path.join(os.tmpdir(), "freewill-review");          // 접촉 시트는 여기 한 곳(7일 지나면 지움)
@@ -771,7 +771,7 @@ paint();
 `;
 
 // ---------- 서버 ----------
-const TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
+const TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".svg": "image/svg+xml",
   ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm" };
 const streams = new Set();
 
@@ -787,7 +787,7 @@ function sendFile(req, res, abs) {
     if (start > end || start >= size) { res.writeHead(416, { "Content-Range": `bytes */${size}` }); return res.end(); }
     code = 206;
   }
-  res.writeHead(code, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Length": end - start + 1, "Cache-Control": "no-store",
+  res.writeHead(code, { "Content-Type": type, ...(type === "image/svg+xml" ? { "Content-Security-Policy": "sandbox" } : {}), "Accept-Ranges": "bytes", "Content-Length": end - start + 1, "Cache-Control": "no-store",
     ...(code === 206 ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}) });
   const s = fs.createReadStream(abs, { start, end });
   streams.add(s);
