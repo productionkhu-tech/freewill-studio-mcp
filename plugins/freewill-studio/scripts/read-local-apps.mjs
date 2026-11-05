@@ -63,7 +63,7 @@ async function nanobanana() {
     if (projects?.restoring) out.push("- 앱이 지난 탭을 여는 중 — 위 탭 목록이 아직 덜 왔을 수 있다. 없는 탭으로 단정하지 말고 잠시 뒤 다시 읽을 것");
     out.push("- 아래 '지금 설정'은 사람이 앱 탭에서 쓰는 값 — MCP 요청에는 안 쓰인다. jobs.json 에 비운 칸은 그 모델의 맨 위 · 기본(`send-to-nanobanana --dry-run` 줄에 나온 값이 실제 값)");
     out.push(`- 지금 설정: 모델 \`${s.model}\` · 해상도 ${s.resolution} · 비율 ${s.aspect}` +
-      `${s.quality ? ` · 품질 ${s.quality}` : ""}${s.complexity && parsed.find((m) => m.id === s.model)?.fields.includes("complexities") ? ` · complexity ${s.complexity}` : ""}${s.output_format && s.output_format !== "png" ? ` · 형식 ${s.output_format}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
+      `${s.quality && parsed.find((m) => m.id === s.model)?.fields.includes("qualities") ? ` · 품질 ${s.quality}` : ""}${s.complexity && parsed.find((m) => m.id === s.model)?.fields.includes("complexities") ? ` · complexity ${s.complexity}` : ""}${s.output_format && s.output_format !== "png" ? ` · 형식 ${s.output_format}` : ""} · 장수 ${s.count} · 레퍼런스 상한 ${s.ref_limit ?? "?"}` +
       `${s.openai_bg_transparent ? " · 투명 배경" : ""}`);
     if (s.output_dir) out.push(`- 저장 폴더: ${s.output_dir}`);
     if (s.gif_limits?.sizes) {
@@ -110,6 +110,7 @@ async function seedance() {
       : !agent.project ? "열린 프로젝트 없음"
       : `프로젝트 "${agent.project}" · 과금 ${agent.billing ? `"${agent.billing}"` : "**선택 안 됨 — 앱에서 먼저 고르게 할 것**"}${agent.composer === false ? " · 갤러리 화면" : ""}`;
     out.push(`- 자동 보내기: **가능** (send-to-seedance) — ${where}`);
+    out.push("- 앱에서 가져오는 건 과금(프로젝트 코드)뿐 — 프로젝트의 지금 설정은 쓰지 않는다. 모델 · 모드 · 초안 · 해상도 · 비율 · 길이 · 개수 · 오디오 · 출력 형식을 jobs.json 에 전부 적는다(비면 보내지 않는다)");
     if (Array.isArray(agent.allowedModels)) out.push(`- 이 과금 프로젝트로 쓸 수 있는 모델: ${agent.allowedModels.join(", ") || "(없음)"}${agent.fourK ? " · 4K 가능" : ""}`);
     if (agent.allowedModels?.length) out.push(`- 계열 SOTA(모델 추천은 이것부터): ${sotaLines(agent.allowedModels).join(" / ")}`);
     // 앱이 직접 낸 사용 설명서가 있으면 그게 정답이다 — 화면 코드를 긁어 올 필요가 없다.
@@ -186,9 +187,9 @@ function seedanceRules(src) {
   const ratio = src.indexOf('"adaptive","21:9"');
   if (ratio >= 0) parts.push(["비율 선택지", cut(src, src.lastIndexOf("[", ratio), "[", "]")]);
   const modes = src.indexOf('text_to_video:"');
-  if (modes >= 0) parts.push(["모드 이름", cut(src, src.lastIndexOf("{", modes), "{", "}")]);
-  const count = src.match(/"Output Count"[\s\S]{0,600}?type:"range",min:"(\d+)",max:"(\d+)"/);
-  if (count) parts.push(["한 번에 만드는 개수 (Output Count)", `min ${count[1]}, max ${count[2]}`]);
+  if (modes >= 0) parts.push(["Omni 작업 이름", cut(src, src.lastIndexOf("{", modes), "{", "}")]);
+  const seedanceModes = src.indexOf('id:"multimodal_reference"');
+  if (seedanceModes >= 0) parts.push(["시댄스 모드", cut(src, src.lastIndexOf("[", seedanceModes), "[", "]")]);
   return parts.filter(([, code]) => code);
 }
 

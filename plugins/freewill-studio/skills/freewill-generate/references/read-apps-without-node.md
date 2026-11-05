@@ -17,8 +17,8 @@ curl.exe -s http://127.0.0.1:5656/static/app.js -o "<임시 폴더>/nb-app.js"
 
 - `version` 이 응답하지 않으면 꺼져 있는 것 → 켜 달라고 한다.
 - `billing/state` 의 `confirmed` 가 false 거나 `project_id` 가 비었으면 → 보내지 않고 사용자에게 고르게 한다(아래 "Node 없이 보내기 — 나노바나나"의 과금 고르기, 옛 앱은 앱에서).
-- `settings` 에서는 model · resolution · aspect · quality · count · output_dir · ref_limit 만 본다. 프롬프트 칸은 보지 않는다.
-- 받아 둔 `nb-app.js` 에서 `MODEL_SPECS = {` 줄을 찾아(Grep -n) 그 줄부터 닫는 `};` 까지 읽는다 (Read, 약 100줄).
+- `settings` 에서는 model · resolution · aspect · quality · count · output_dir · ref_limit 만 본다. 프롬프트 칸은 보지 않는다. 사람이 앱에서 쓰는 값이라 MCP 요청에는 안 쓰인다.
+- 받아 둔 `nb-app.js` 에서 `MODEL_SPECS = {` 줄을 찾아(Grep -n) 그 줄부터 닫는 `};` 까지 읽는다 (Read, 약 150줄).
 - **`/api/status` 와 `/api/events` 는 부르지 않는다.** 앱의 닫기 신호를 지우고 화면 팝업을 가로챈다.
 
 ## 시댄스 — 꺼져 있어도 된다
@@ -166,8 +166,8 @@ Get-NB "/api/batch?pid=$tabPid&batch_id=$($r.batch_id)"         # finished 가 t
 
 ## Node 없이 시댄스로 보내기 (앱 26.10.304~)
 
-`scripts/send-to-seedance.mjs` 와 같은 순서다. 시댄스 앱이 **켜져 있어야** 한다 — 앱 화면이 작업함에서 요청을 받아 작성 칸을
-잠깐 빌려 보내고 원래대로 돌려놓는다. 한글 때문에 읽기·보내기 모두 UTF-8 로 직접 다룬다(위 나노바나나와 같은 이유).
+`scripts/send-to-seedance.mjs` 와 같은 순서다. 시댄스 앱이 **켜져 있어야** 한다 — 앱 화면이 작업함에서 요청을 받아 보낸다
+(26.10.2002~ 작성 칸을 건드리지 않는다). 앱에서 가져오는 건 과금뿐이다 — 카드에 보일 설정은 전부 settings 에 넣고 `project` · `billing` 도 넣는다. 한글 때문에 읽기·보내기 모두 UTF-8 로 직접 다룬다(위 나노바나나와 같은 이유).
 
 ```powershell
 $sd = "http://127.0.0.1:3000"
@@ -206,8 +206,8 @@ $m = Get-SD "/api/agent/manual"      # 앱이 낸 사용 설명서 — $m.text �
    do { Start-Sleep -Seconds 2; $j = Get-SD "/api/agent/jobs/$($job.id)" } while ($j.status -in "pending", "taken")
    ```
    `failed` 면 `$j.error` 를 그대로 사용자에게 보여주고 나머지 작업은 보내지 않는다. `sent` 면 `$j.messages` 가 이번에 생긴 카드다.
-   **사내 규칙 2 의 한도는 여기서도 지킨다** — 작업을 넣기 전에 열린 프로젝트의 카드 중 대기·생성 중(`queued`·`running`)인
-   것과 이번 `output_count` 를 더해 3 을 넘으면 줄어들 때까지 기다린다(카드 목록은 26.10.305~ 의 `cards.list` 명령, 그 전
+   **사내 규칙 2 의 한도는 여기서도 지킨다** — 작업을 넣기 전에 보낼 프로젝트의 카드 중 대기·생성 중(`queued`·`running`)인
+   것과 이번 `output_count` 를 더해 6 을 넘으면 줄어들 때까지 기다린다(카드 목록은 26.10.305~ 의 `cards.list` 명령, 그 전
    버전이면 이번에 넣은 요청의 `$j.messages` 로 센다). 요청마다 위 "사용 기록" 을 먼저 남긴다.
 4. 지켜보기는 같은 주소를 5초쯤 간격으로 다시 읽어 `status` 가 `done` 이 될 때까지. 카드마다 `status`·`videoUrl`·`error` 가 있다.
 5. 진행 확인에 `/api/byteplus/tasks/<id>` 는 부르지 않는다 — 그 조회는 크레딧 보고·영상 보관을 하는 앱 화면 몫이다.

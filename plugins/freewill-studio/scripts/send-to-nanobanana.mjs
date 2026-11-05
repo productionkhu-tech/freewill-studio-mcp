@@ -91,7 +91,7 @@ const DRY = flag("--dry-run"); // 앱 연결·탭·팀/프로젝트만 확인하
 const TAB = opt("--tab");
 const SETTING_KEYS = ["model", "aspect", "resolution", "quality", "count", "custom_w", "custom_h", "openai_bg_transparent"];
 // 작업 줄에서 스크립트가 쓰는 칸 — 나머지는 앱 설정으로 넘긴다(아래 extrasOf)
-const JOB_OWN = new Set(["name", "prompt", "refs", "refWhy", "key", "nth", "legacy", "prompt_language", "scene", "cut", "asset", "version", "covers"]);
+const JOB_OWN = new Set(["name", "prompt", "refs", "refWhy", "key", "nth", "legacy", "same", "refSig", "prompt_language", "scene", "cut", "asset", "version", "covers"]);
 const gpt26Up = (m) => Number(String(m).match(/^gpt-image-(\d+(?:\.\d+)?)/)?.[1] || 0) >= 2.6;   // complexity · GIF · SVG 가 있는 GPT
 const GIF_DEFAULT = { size: "512x512", frames: 9, ms: 200 };   // 앱 기본과 같은 값 — 늘 적어 보내므로 앱 기본이 바뀌어도 카드와 실제는 같다
 // 탭에만 있는 칸 — 에이전트 요청에는 안 쓰인다. 적어 두면 시킨 폴더 · 이름으로 안 나오는데 아무도 모른다(앱은 보낸 뒤에야 ignored 로 알려 준다)
@@ -99,6 +99,7 @@ const TAB_ONLY = /^(output_dir|fixed_prompt|prompt_sections|naming_\w+|gallery_c
 // 연결 거부가 아닌 연결 실패는 실행 환경(Codex 샌드박스 등)이 네트워크를 막은 것일 수 있다.
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
+const GENERATE_MS = 5 * 60 * 1000;   // /api/generate 답을 기다리는 시간
 
 // 커넥터 — 사용 기록과 하루 한도.
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
@@ -189,8 +190,14 @@ const ledgerSet = (rid, patch) => {
 // 작업의 마지막 기록 — 11/2 낮 판 기록(같은 작업이 같은 키로 여러 줄)은 몇 번째인지로 짝짓는다(11/4 뒤엔 없어도 됨)
 const lastOf = (j) => { const l = readLedger(); return l.filter((x) => x.key === j.key).pop() || l.filter((x) => x.key === j.legacy)[j.nth - 1]; };
 // 이번 실행이 시작된 뒤 남은 그 작업의 기록 — 같은 명령을 동시에 돌린 다른 실행이 넣은 것(그 전 줄은 분류에서 이미 봤다)
-const sentSince = (j) => readLedger().filter((x) => x.key === j.key && x.at >= RUN_AT).pop();
+const sentSince = (j) => readLedger().filter((x) => (x.key === j.key || x.same === j.same) && x.at >= RUN_AT).pop();
 const sentWhen = (e) => new Date(e.at).toLocaleString("ko-KR", { hour12: false });
+// 탭 이름 · 놓을 곳만 바뀌어도 같은 그림이 또 나가지 않게 — 내용(과금 · 프롬프트 · 설정 · 레퍼런스 파일 내용)이 같은 기록을 찾는다(탭 이름은 저장할 때도 바뀐다)
+const sameContent = (j) => readLedger().filter((x) => x.same === j.same).pop();
+// 못 읽으면 멈춘다 — 빈 값으로 두면 "내용이 바뀐 새 작업"이 되어 또 나간다(백신 · 편집 프로그램이 잠깐 잡고 있을 때)
+const fileSig = (fp) => { try { return crypto.createHash("sha256").update(fs.readFileSync(fp)).digest("hex").slice(0, 16); } catch (e) { throw new Stop(`레퍼런스 파일을 못 읽어 보내지 않았다(${path.basename(fp)} — ${e.code || e.message}) — 다른 프로그램이 잡고 있으면 닫은 뒤 같은 명령을 다시 실행할 것`); } };
+// 업데이트 전에 보낸 줄(내용 지문이 없다) — 그 뒤 모델을 적어 키가 바뀌면 같은 작업인지 알 수 없으니, 이름이 같으면 묻는다. 24시간이면 사라진다
+const oldLine = (j, tabName) => readLedger().filter((x) => !x.same && x.name === j.name && x.tab === tabName).pop();
 
 // 같은 PC 에서 보내기가 둘 이상 겹칠 때(예: Claude 와 Codex 가 동시에) "자리 확인 → 한 작업 넣기" 를 한 번에 하나만 하게 하는
 // 잠금. 그래야 동시 진행 한도를 둘이 같이 지킨다. 주인이 죽었거나(프로세스 없음) 15분 넘게 쥐고 있으면 풀어 준다.
@@ -329,9 +336,14 @@ async function usageApi(method, p, body) {
 async function req(method, path, body, ms = 15000) {
   const headers = { "Content-Type": "application/json" };
   if (method !== "GET") headers["X-NB-Token"] = token;
-  const r = await fetch(`${NB}${path}`, {
-    method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(ms),
-  });
+  const send = () => fetch(`${NB}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+  let r = await send();
+  // 앱을 다시 켜면 보안 토큰이 바뀐다 — 앱이 처리하기 전에 거절한 것이라 새 토큰으로 한 번 더 보내도 안전하다
+  if (r.status === 403 && method !== "GET") {
+    const html = await (await fetch(`${NB}/`, { signal: AbortSignal.timeout(5000) })).text();
+    const fresh = html.match(/<meta name="nb-csrf" content="([^"]+)"/)?.[1];
+    if (fresh && fresh !== token) { token = fresh; headers["X-NB-Token"] = fresh; r = await send(); }
+  }
   const text = await r.text();
   try { return JSON.parse(text); } catch { return { ok: r.ok, raw: text.slice(0, 200) }; }
 }
@@ -341,6 +353,9 @@ const post = (p, b = {}) => req("POST", p, b);
 // 멈출 때는 던져서 main 끝에서 정리한다. process.exit() 를 바로 부르면 윈도의 Node 가 fetch 연결을 닫는 중에
 // 죽는 일이 있다(libuv assertion, exit 127) — 에이전트에게는 엉뚱한 오류로 보인다.
 class Stop extends Error {}
+// 앱이 꺼지거나 다시 켜지는 중이면 fetch 가 그냥 "fetch failed" 만 던진다 — 할 일을 말해 준다
+const whyStop = (e) => (e instanceof Stop ? e.message : /fetch failed|timeout|aborted/i.test(String(e?.message))
+  ? "나노바나나와 연결이 끊겼다(앱이 꺼졌거나 다시 켜는 중, 또는 앱이 오래 답하지 않음) — 앱이 켜진 걸 확인한 뒤 같은 명령을 다시 실행할 것. 이미 보낸 것은 다시 안 나간다" : e?.message);
 function fail(msg) {
   throw new Stop(msg);
 }
@@ -564,8 +579,10 @@ async function readSpecs() {
     if (!one) break;
     head.lastIndex = open + one.length;
     const list = (k) => one.match(new RegExp(`\\b${k}:\\s*\\[([^\\]]*)\\]`))?.[1].match(/"[^"]*"/g)?.map((x) => x.slice(1, -1));
+    // 레퍼런스 장수는 표에 칸이 없어 안내 글에서 읽는다 — 글에 숫자가 없는 모델(GPT 16장)은 앱이 본다
+    const refLimit = Number(one.match(/\brefHint:\s*"[^"]*\bup to (\d+) reference/i)?.[1]) || 0;
     out[m[1]] = { aspects: list("aspects"), resolutions: list("resolutions"), qualities: list("qualities"), complexities: list("complexities"),
-      formats: list("formats"), background: /\bshowBackground:\s*true/.test(one) };
+      formats: list("formats"), background: /\bshowBackground:\s*true/.test(one), refLimit };
   }
   return out;
 }
@@ -590,7 +607,10 @@ async function billingName(b) {
   let cat = null;
   try { cat = await get("/api/billing/catalog"); } catch {}
   const team = cat?.teams?.find((x) => x.id === b.team_id)?.name || b.team_id;
-  const proj = cat?.projects?.find((x) => x.id === b.project_id)?.name || b.project_id;
+  // 시트 이관으로 id 가 바뀐 프로젝트는 앱이 첫 생성 때 새 id 로 바꾼다 — 그 전에도 같은 이름으로 읽어야 "과금이 다르다"로 잘못 멈추지 않는다(앱 _billing_check 와 같은 순서)
+  const list = cat?.projects || [];
+  const canon = list.some((x) => x.id === b.project_id) ? b.project_id : cat?.aliases?.[b.project_id] || b.project_id;
+  const proj = list.find((x) => x.id === canon)?.name || b.project_id;
   return `${team} · ${proj}`;
 }
 
@@ -756,7 +776,8 @@ async function main() {
       const same = tabs0.filter((p) => p.name === want);
       if (!same.length) {
         fail(`나노바나나에 "${want}" 탭이 없다(지금 탭: ${tabs0.map((p) => `"${p.name}"`).join(", ")}) — 이름을 확인하거나, 사용자에게 ` +
-          `그 탭을 만들어 달라고 할 것. 사용자가 "만들어"라고 하면 --create-tab "${want}" 로 만든다(화면은 안 바뀐다)`);
+          `그 탭을 만들어 달라고 할 것. 사용자가 "만들어"라고 하면 --create-tab "${want}" 로 만든다(화면은 안 바뀐다). ` +
+          `저장 폴더가 네트워크 · 외장 드라이브면 아직 안 붙어 탭이 안 열린 것일 수 있다 — 만들기 전에 사용자에게 물을 것(붙은 뒤 앱을 다시 켜면 돌아와 같은 이름이 둘이 된다)`);
       }
       if (same.length > 1) fail(`나노바나나에 "${want}" 탭이 ${same.length}개다 — 어느 탭인지 사용자에게 물을 것(탭 이름을 바꿔 구분)`);
       tab = same[0];
@@ -793,6 +814,7 @@ async function main() {
   // 카드와 보내기 사이에 사람이 탭 과금을 바꾸면 카드와 다른 곳으로 기록된다(10/20 석영 탭이 그사이 KBS → USA_CPT 로 바뀐 일).
   // 프로젝트 id 만으로는 대조하지 않는다 — 같은 프로젝트를 팀만 달리 고른 탭이 있을 수 있다(11/4).
   if (spec.billing && sameName(spec.billing) !== sameName(billLabel)) {
+    if (!(await readCatalog())) fail(`과금 명단을 못 읽어 "${tab.name}" 탭 과금이 카드의 "${spec.billing}" 와 같은지 확인하지 못했다 — 보내지 않았다. 잠시 뒤 같은 명령을 다시 실행할 것`);
     fail(`"${tab.name}" 탭의 과금이 지금 "${billLabel}" — 확인 카드의 "${spec.billing}" 와 다르다. 보내지 않는다 — 사용자에게 어느 쪽이 맞는지 묻고 카드를 다시`);
   }
   if (!spec.billing && !DRY) fail(`jobs.json 에 "billing" 이 없다 — 보내지 않았다. 확인 카드에 보여 준 이 탭 과금을 그대로 적을 것: "billing": "${billLabel}"`);
@@ -884,7 +906,7 @@ async function main() {
   const placeRel = (j) => (WORKDIR ? placeOf(spec, j, WORKDIR).rel : "");
   const hash = (v) => crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 24);
   // 스크립트 칸이 아닌 설정은 적었을 때만 키에 넣는다 — 안 적은 작업의 키가 그대로여야 전에 보낸 것을 또 보내지 않는다
-  const seen = {};
+  const seen = {}, seenSame = {};
   for (const j of jobs) {
     const key = hash([tab.name, String(j.prompt).replace(/\s+/g, " ").trim(),
       [...SETTING_KEYS, ...extrasOf(j)].map((k) => { const v = j[k] ?? defaults[k]; return v === undefined || v === null ? null : String(v); }),
@@ -892,6 +914,11 @@ async function main() {
     j.nth = seen[key] = (seen[key] || 0) + 1;
     j.key = `${key}#${j.nth}`;
     j.legacy = hash([tab.name, String(j.prompt), [...SETTING_KEYS, ...extrasOf(j)].map((k) => j[k] ?? defaults[k] ?? null), j.refs.map((p) => path.resolve(p)), WORKDIR, placeRel(j) || SAVE_TO || ""]);
+    j.refSig = hash(j.refs.map((p) => fileSig(p)));
+    // 과금은 이름으로 — 시트 이관으로 id 가 바뀌어도 같은 과금이다. 같은 파일에 일부러 여럿 적은 것(컷만 달라도)은 몇 번째인지로 가른다
+    const same = hash([billLabel, String(j.prompt).replace(/\s+/g, " ").trim(), [...SETTING_KEYS, ...extrasOf(j)].map((k) => { const v = j[k] ?? defaults[k]; return v === undefined || v === null ? null : String(v); }), j.refSig]);
+    seenSame[same] = (seenSame[same] || 0) + 1;
+    j.same = `${seenSame[same]}:${same}`;
   }
   const encPid = encodeURIComponent(tab.pid);
   // 전에 보낸 묶음이 지금 어떤지 — "끝" · "보냄"(만드는 중이거나 아직 안 놓음) · "다시"(그림 0장으로 끝남) · "멈춤"(사람이 앱에서 멈춤) · "모름" · "옛"(묶음 id 없는 옛 앱)
@@ -901,13 +928,29 @@ async function main() {
     if (b?.ok) return !b.finished ? "보냄" : !b.done ? (b.cancelled ? "멈춤" : "다시") : e.state === "끝" ? "끝" : "보냄";
     // 앱을 다시 켜 집계가 사라졌으면 갤러리의 batch_id 로 — 그림이 있으면 만든 것, 없으면 들어갔는지 모른다
     const items = (await get(`/api/gallery?pid=${encPid}&strict=1&batch_id=${encodeURIComponent(e.id)}`))?.items || [];
-    return e.state === "끝" ? "끝" : items.length ? "보냄" : "모름";
+    if (e.state === "끝") return "끝";
+    if (items.length) return "보냄";
+    // 묶음 id 까지 받았는데 집계도 그림도 없다 = 앱을 다시 켜 대기 중이던 것이 사라졌을 수 있다(앱은 큐를 되살리지 않는다)
+    if (!e.note) e.note = "앱을 다시 켜 사라졌을 수 있다";
+    return "모름";
   };
-  const toSend = [], resumed = [], already = [], unsure = [];
+  const toSend = [], resumed = [], already = [], unsure = [], twins = [];
   for (const j of jobs) {
-    const e = AGAIN.has(j.name) ? null : lastOf(j);
-    if (!e) { toSend.push(j); continue; }
+    let e = AGAIN.has(j.name) ? null : lastOf(j);
+    // 경로는 같은데 그림을 새로 저장했으면 다른 작업이다 — 예전엔 "이미 보냄"으로 건너뛰었다
+    if (e?.refSig && e.refSig !== j.refSig) { log(`  참고: ${j.name} — 레퍼런스 파일 내용이 바뀌어 새 작업으로 본다`); e = null; }
+    if (!e) {
+      // 탭 이름 · 놓을 곳만 바꾼 같은 그림은 또 만들지 않는다 — 같은 장면을 일부러 또 만들면 사용자에게 물은 뒤 --again
+      const twin = AGAIN.has(j.name) ? null : sameContent(j);
+      if (twin) { twins.push({ name: j.name, why: `같은 내용을 ${sentWhen(twin)} 에 "${twin.tab}" 탭으로 보냈다 — ${twin.note || (["보냄", "끝"].includes(twin.state) ? "그림은 그 탭 갤러리에 있다" : "그 탭 갤러리에서 확인할 것")}(탭 이름이 그 뒤 바뀌었을 수 있다)` }); continue; }
+      const old = AGAIN.has(j.name) ? null : oldLine(j, tab.name);
+      if (old) { twins.push({ name: j.name, why: `이름이 같은 작업을 업데이트 전 ${sentWhen(old)} 에 보냈다 — 설정만 적어 다시 돌린 것이면 같은 그림이다. "${old.tab}" 탭 갤러리에서 확인할 것` }); continue; }
+      toSend.push(j);
+      continue;
+    }
     const st = await stateOf(e);
+    // 전부 실패한 GIF · SVG 는 값이 나갔을 수 있어 묻지 않고 또 보내지 않는다(앱이 받은 파일이 깨졌을 때도 실패로 온다). 그 밖의 실패는 과금이 없어 다시 보낸다
+    if (st === "다시" && fmtOf(j) !== "png") { twins.push({ name: j.name, why: `${sentWhen(e)} 에 보낸 ${fmtOf(j).toUpperCase()} 가 전부 실패했다. 값이 나갔을 수 있다` }); continue; }
     if (st === "다시") { if (!DRY) ledgerSet(e.rid, null); toSend.push(j); continue; }
     if (st === "모름") { unsure.push(j.name); continue; }
     if (st === "멈춤") {
@@ -917,11 +960,22 @@ async function main() {
     }
     if (st === "보냄" && e.state !== "보냄" && !DRY) ledgerSet(e.rid, { state: "보냄" });   // 앱이 받은 걸 확인 — '모름'으로 굳지 않게
     if (st === "보냄" && direct && (WATCH || WORKDIR)) { resumed.push({ j, id: e.id, model: j.model ?? defaults.model ?? base.model, rid: e.rid }); continue; }
-    already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${st === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다") : `"${tab.name}" 탭 갤러리에서 볼 것`}`);
+    already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${e.note ? e.note : st === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다") : `"${tab.name}" 탭 갤러리에서 볼 것`}`);
   }
   if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again=작업 이름):\n${already.map((x) => `    ${x}`).join("\n")}`);
   if (resumed.length) log(`  이미 보냄 — 이어서 지켜보고 놓는다: ${resumed.map((x) => x.j.name).join(", ")}`);
-  if (already.length || resumed.length || unsure.length) log(`  보낼 것 ${toSend.length}건 · 이어 받기 ${resumed.length}건 · 건너뜀 ${already.length + unsure.length}건`);
+  if (already.length || resumed.length || unsure.length || twins.length) log(`  보낼 것 ${toSend.length}건 · 이어 받기 ${resumed.length}건 · 건너뜀 ${already.length + unsure.length + twins.length}건`);
+  if (twins.length) {
+    // 확인할 곳은 그 기록의 탭이다 — 지금 탭에서 찾으면 없으니 "없으면 --again" 으로 두 번 과금된다
+    const msg = `또 나가면 두 번 과금될 수 있어 보내지 않는다:\n${twins.map((x) => `    ${x.name} — ${x.why}`).join("\n")}\n` +
+      `  일부러 또 만들거나, 프롬프트 · 레퍼런스를 고친 다른 작업이면 사용자에게 물은 뒤 --again=${twins.map((x) => x.name).join(",")}`;
+    if (!DRY && !toSend.length && !resumed.length && !unsure.length) fail(msg);
+    log(`  주의: ${msg}`);
+    if (!DRY) {
+      process.exitCode = 1;
+      process.on("exit", () => console.error(`확인할 것 — 또 나갈 뻔해 보내지 않은 작업: ${twins.map((x) => x.name).join(", ")} · 위 '주의' 참고`));
+    }
+  }
   if (unsure.length) {
     // 그 작업만 보내지 않는다 — 나머지는 보내고, 끝나면 실패 코드로 알린다
     const msg = `앱에 들어갔는지 모르는 작업은 보내지 않는다(다시 보내면 두 번 과금될 수 있다): ${unsure.join(", ")}\n` +
@@ -960,11 +1014,14 @@ async function main() {
       if (s.complexity !== undefined && !sp.complexities?.includes(String(s.complexity))) bad("complexity", sp.complexities);
       if (s.output_format !== undefined && !(sp.formats || ["png"]).includes(String(s.output_format))) bad("output_format", sp.formats || ["png"]);
       if (s.openai_bg_transparent && !sp.background) bad("openai_bg_transparent", []);
+      if (sp.refLimit && j.refs.length > sp.refLimit) out.push(`${s.model} 은 레퍼런스 ${sp.refLimit}장까지다(지금 ${j.refs.length}장)`);
     }
+    const dup = j.refs.map((p) => win(path.resolve(p))).find((p, i, a) => a.indexOf(p) !== i);
+    if (dup) out.push(`같은 레퍼런스 파일을 두 번 넣었다 — ${path.basename(dup)}. 앱이 거절한다`);
     return out;
   };
   const problems = toSend.flatMap((j) => problemsOf(j).map((p) => `  - ${j.name}: ${p}`));
-  if (problems.length) fail(`한 장도 보내지 않았다 — 고칠 것(defaults 값이 어느 작업의 모델과 안 맞으면 그 작업 줄에 따로 적거나 비운다. 비우면 그 모델의 맨 위):\n${problems.join("\n")}`);
+  if (problems.length) fail(`한 장도 보내지 않았다 — 고칠 것(defaults 값이 어느 작업의 모델과 안 맞으면 그 작업 줄에 따로 적거나 비운다. 비우면 그 모델의 맨 위. 이미 보낸 작업이 같은 파일에 있으면 defaults 말고 이 작업 줄에):\n${problems.join("\n")}`);
 
   const total = toSend.reduce((a, j) => a + countOf(j), 0);
   const need = await loadTicket();   // 표가 없으면 요청 번호 — dry-run 은 알려만 주고(카드 전에 승인해 두면 바로 보낸다) 보내기는 멈춘다
@@ -1011,9 +1068,9 @@ async function main() {
     // 기본 high 는 편집에서 시키지 않은 곳까지 바꿀 수 있다(공식 가이드 · 11/5)
     const cxLoose = toSend.filter((j) => (settingsOf(j).complexity || gpt26Up(settingsOf(j).model)) && (j.complexity ?? defaults.complexity) == null && j.refs.length);
     if (cxLoose.length) log(`  확인할 것: ${cxLoose.map((j) => j.name).join(", ")} — complexity 를 안 적어 high 로 간다. 한 곳만 고치는 편집이면 low, 글자 · 복잡한 구도는 high 로 적을 것(references/image-prompting.md 1절)`);
-    // SVG 는 맨 위(4K · max 면 장당 $0.70, 3분 넘게)로 가면 비싸다 — 값을 정하게 한다
+    // SVG 는 맨 위(4K · max)로 가면 비싸고 3분 넘게 걸린다 — 값을 정하게 한다
     const svgLoose = toSend.filter((j) => fmtOf(j) === "svg" && (j.resolution ?? defaults.resolution) == null);
-    if (svgLoose.length) log(`  확인할 것: ${svgLoose.map((j) => j.name).join(", ")} — SVG 해상도를 안 적어 맨 위(${settingsOf(svgLoose[0]).resolution ?? "앱 기본"})로 간다. 4K max 는 장당 약 $0.70 · 3분 넘게 걸린다 — 사용자가 말하지 않았으면 "resolution": "1K" 로 적을 것`);
+    if (svgLoose.length) log(`  확인할 것: ${svgLoose.map((j) => j.name).join(", ")} — SVG 해상도를 안 적어 맨 위(${settingsOf(svgLoose[0]).resolution ?? "앱 기본"})로 간다. 4K max 는 비싸고 3분 넘게 걸린다 — 사용자가 말하지 않았으면 "resolution": "1K" 로 적을 것`);
     // 적은 값이 안 먹히거나 앱이 고치는 조합 — 틀린 값은 아니라서 멈추지 않고 알린다
     for (const j of toSend) {
       const s = settingsOf(j), asked = j.aspect ?? defaults.aspect, say = (t) => log(`  확인할 것: ${j.name} — ${t}`);
@@ -1061,7 +1118,8 @@ async function main() {
   async function checkTabUnchanged() {
     const now = await get(`/api/billing/state?pid=${enc}`);
     const again = "나머지는 보내지 않는다 — 사용자에게 물은 뒤 dry-run 부터 다시(이미 보낸 것은 다시 안 나간다)";
-    if (now?.ok === false || (now?.tab !== undefined && now.tab !== tab.name)) throw new Error(`"${tab.name}" 탭이 보내는 사이 닫혔거나 앱이 다시 켜졌다. ${again}`);
+    if (now?.ok === false) throw new Error(`"${tab.name}" 탭이 보내는 사이 닫혔거나 앱이 다시 켜졌다. ${again}`);
+    if (now?.tab !== undefined && now.tab !== tab.name) throw new Error(`"${tab.name}" 탭이 보내는 사이 "${now.tab}" 가 됐다(이름을 바꿨거나 앱이 다시 켜져 다른 탭이 됐다) — "tab" 을 확인할 것. ${again}`);
     if (!now?.confirmed) throw new Error(`"${tab.name}" 탭의 팀·프로젝트 확인이 보내는 사이 풀렸다. --choices 로 명단을 받아 다시 고르게 할 것. ${again}`);
     if (now.team_id === billing.team_id && now.project_id === billing.project_id) return;
     // 시트 이관으로 앱이 옛 id 를 새 id 로 바꾼 것이면 같은 과금이다
@@ -1088,24 +1146,26 @@ async function main() {
     const body ={ pid: tab.pid, prompt: String(j.prompt), settings, ref_paths: j.refs.map((p) => path.resolve(p)) };
     // 넣기 직전에 남긴다 — 앱 답을 못 받고 끊기면 다음 실행은 '모름'으로 멈춘다. 못 남기면 보내지 않는다
     let rid;
-    try { rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" }); }
+    try { rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중", same: j.same, refSig: j.refSig }); }
     catch (e) { await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {}); throw e; }
     let gr = { ok: false }, answered = false;
     try {
       for (let attempt = 0; attempt < 12; attempt++) {
         answered = false;
-        gr = await post("/api/generate", body);
+        // 레퍼런스를 다시 인코딩하느라 4K 12장이면 30초 가까이 걸린다 — 먼저 끊으면 앱은 만드는데 이쪽은 안 보낸 줄 안다(11/5 시험)
+        gr = await req("POST", "/api/generate", body, GENERATE_MS);
         answered = true;
         if (gr.ok || !/Queue full|Stopping previous batch/i.test(String(gr.error || ""))) break;
         await sleep(5000); // 큐가 차 있으면 자리가 날 때까지 기다린다
       }
     } finally {
-      if (!gr.ok) await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});
+      // 답을 못 받았으면 무르지 않는다 — 앱은 만들고 있을 수 있다
+      if (!gr.ok && answered) await usageApi("POST", "/usage/settle", { id: rsv.id, n: 0 }).catch(() => {});
       ledgerSet(rid, gr.ok ? { id: gr.batch_id || "", state: "보냄" } : answered ? null : { state: "모름", note: "앱 답을 못 받음" });
     }
     if (!gr.ok) throw new Error(directError(gr, j, i));
     if (gr.ignored?.length) log(`  확인할 것: ${j.name} — 앱이 쓰지 않은 칸: ${gr.ignored.join(", ")} (오타거나 이 앱에 없는 옵션 — 그 값 없이 나갔다)`);
-    return { model, resolution, rsv, batch_id: gr.batch_id, rid };
+    return { model, resolution, rsv, batch_id: gr.batch_id, rid, need };
   }
   let refNoted = false;
   const restoreTab = async (snap, refsTouched) => {
@@ -1148,10 +1208,10 @@ async function main() {
       const s = { pid: tab.pid, fixed_prompt: "", prompt_sections: [String(j.prompt)], ...values };
       const sr = await post("/api/settings", s);
       if (!sr.ok) throw new Error(`설정을 못 넣음: ${sr.error || sr.raw || "알 수 없음"}`);
-      rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중" });
+      rid = ledgerAdd({ key: j.key, name: j.name, tab: tab.name, state: "보내는 중", same: j.same, refSig: j.refSig });
       for (let attempt = 0; attempt < 12; attempt++) {
         answered = false;
-        gr = await post("/api/generate", {});
+        gr = await req("POST", "/api/generate", {}, GENERATE_MS);
         answered = true;
         const e = String(gr.error || "");
         if (gr.ok || !/Queue full|Stopping previous batch/i.test(e)) break;
@@ -1169,6 +1229,7 @@ async function main() {
   }
 
   let sent = 0;
+  const passed = new Set();   // 들어갔거나 다른 실행이 넣어 건너뛴 작업 — 멈췄을 때 '안 보낸 작업'에서 뺀다
   const sentJobs = resumed.map((b) => b.j);   // 지켜보고 놓을 작업 — 전에 보내 놓고 끊긴 것(새 앱)부터
   const batches = resumed.map((b, k) => ({ ...b, k }));   // 새 앱 — 작업마다 묶음 id
   try {
@@ -1180,18 +1241,19 @@ async function main() {
         if (!direct) await waitForTab(tab);
         done = await withSendLock("nanobanana", () => (direct ? sendDirect(j, i, need) : sendOne(j, i, need)));
       }
+      passed.add(j.name);
       if (done.skip) { log(`  건너뜀 ${j.name} — 다른 실행이 ${sentWhen(done.skip)} 에 넣었다(같은 명령을 동시에 돌림)`); continue; }
       if (WORKDIR) keepJobs(WORKDIR, file);
-      if (direct) batches.push({ j, k: sentJobs.length, id: done.batch_id, model: done.model, rid: done.rid });
+      if (direct) batches.push({ j, k: sentJobs.length, id: done.batch_id, model: done.model, rid: done.rid, rsv: done.rsv });
       sentJobs.push(j);
       sent++;
       log(`  보냄 ${sent}/${toSend.length} ${j.name} · ${done.model} ${done.resolution} ×${need} · 오늘 ${done.rsv.used}/${done.rsv.limit}장`);
       await sleep(250);
     }
   } catch (e) {
-    console.error(`멈춤: ${e.message}`);
+    console.error(`멈춤: ${whyStop(e)}`);
     if (sent < toSend.length) {
-      console.error(`  ${sent}/${toSend.length}건까지 들어감 · 안 보낸 작업: ${toSend.slice(sent).map((j) => j.name).join(", ")}`);
+      console.error(`  ${sent}/${toSend.length}건까지 들어감 · 안 보낸 작업: ${toSend.filter((j) => !passed.has(j.name)).map((j) => j.name).join(", ")}`);
     }
     process.exitCode = 1;
   }
@@ -1202,8 +1264,8 @@ async function main() {
   // 결과까지 본 묶음은 '끝'(다시 실행해도 건너뜀) · 그림 0장으로 끝난 것은 기록에서 뺀다(다시 보낼 수 있게) · 안 끝난 것은 그대로(다시 실행하면 이어서)
   const markDone = () => {
     for (const b of batches) {
-      if (b.res?.finished) ledgerSet(b.rid, b.res.done ? { state: "끝" } : b.res.cancelled ? { state: "끝", note: "앱에서 멈춤" } : null);
-      else if (b.lost && groups[b.k]?.length) ledgerSet(b.rid, { state: "끝" });
+      // 전부 실패한 GIF · SVG 는 값이 나갔을 수 있어 기록을 지우지 않는다(다시 실행하면 묻는다). 그 밖의 실패는 과금이 없어 지워 다시 보낼 수 있게
+      if (b.res?.finished) ledgerSet(b.rid, b.res.done ? { state: "끝" } : b.res.cancelled ? { state: "끝", note: "앱에서 멈춤" } : fmtOf(b.j) !== "png" ? { state: "끝", note: "전부 실패 — 값이 나갔을 수 있다" } : null);
     }
   };
 
@@ -1220,7 +1282,7 @@ async function main() {
       let all = true, done = 0, failed = 0, count = 0;
       for (const b of batches) {
         const r = await get(`/api/batch?pid=${enc}&batch_id=${encodeURIComponent(b.id)}`);
-        if (!r?.ok) { b.lost = true; continue; }
+        if (!r?.ok) { b.lost = true; b.res = null; continue; }   // 옛 집계를 버린다 — 그 뒤에 나온 그림은 갤러리에서 찾는다
         b.res = r;
         done += r.done; failed += r.failed + r.cancelled; count += r.count;
         if (!r.finished) all = false;
@@ -1235,6 +1297,8 @@ async function main() {
       if (!files) files = ((await get(`/api/gallery?pid=${enc}&strict=1&batch_id=${encodeURIComponent(b.id)}`))?.items || []).map((x) => x.filepath);
       groups[b.k] = (files || []).map((filepath) => ({ filepath, model: b.model }));
       for (const e of b.res?.errors || []) log(`  ${b.j.name || `job_${b.k + 1}`} 실패 이유: ${e}`);
+      // 끝난 묶음은 실제 나온 장수로 사용 기록을 맞춘다 — 실패 · 취소가 하루 한도를 깎지 않게(30분 지난 것은 커넥터가 안 받는다 — 무시)
+      if (b.res?.finished && b.rsv && b.res.done !== countOf(b.j)) await usageApi("POST", "/usage/settle", { id: b.rsv.id, n: b.res.done }).catch(() => {});
     }
   } else {
     // 옛 앱 — 탭 요약만 읽고, 새로 들어온 그림을 프롬프트·모델로 작업에 나눈다
@@ -1259,9 +1323,16 @@ async function main() {
     other = fresh.filter((i) => !jobOf(i));
   }
   log(`새로 들어온 이미지 ${groups.reduce((a, g) => a + (g?.length || 0), 0)}장 — 작업별:`);
+  const short = [];
   for (const [k, j] of sentJobs.entries()) {
     log(`  ${j.name || `job_${k + 1}`} — ${(groups[k] || []).length}/${countOf(j)}장`);
     for (const i of groups[k] || []) log(`    ${i.filepath}`);
+    if ((groups[k] || []).length < countOf(j)) short.push(`${j.name || `job_${k + 1}`} ${(groups[k] || []).length}/${countOf(j)}장`);
+  }
+  // 모자라면 실패 코드로 — 코드만 보는 쪽이 성공으로 알지 않게
+  if (short.length && !(direct && batches.some((b) => b.res && !b.res.finished))) {
+    process.exitCode = 1;
+    process.on("exit", () => console.error(`확인할 것 — 장수가 모자란 작업: ${short.join(", ")} · 위 '실패 이유'를 볼 것`));
   }
   if (other.length) {
     log(`  어느 작업인지 모름 ${other.length}장 — 그사이 사람이 이 탭에서 만든 것일 수 있다`);
@@ -1318,6 +1389,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(`멈춤: ${e.message}`);
+  console.error(`멈춤: ${whyStop(e)}`);
   process.exitCode = 1;
 });

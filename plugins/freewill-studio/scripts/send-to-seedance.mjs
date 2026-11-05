@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // 실행 중인 시댄스 앱으로 영상 생성 요청을 보낸다 — 사람이 전송 버튼을 누르는 것과 같은 경로.
 //
-// 시댄스(26.10.304~) 서버의 '에이전트 작업함'에 요청을 넣으면, 앱 화면이 2초 안에 받아서 작성 칸을 잠깐 빌려
-// 설정·레퍼런스·프롬프트를 넣고 전송 버튼과 같은 함수로 보낸 뒤, 작성 칸을 원래대로 돌려놓는다. 그래서 앱에
+// 시댄스(26.10.304~) 서버의 '에이전트 작업함'에 요청을 넣으면, 앱 화면이 2초 안에 받아서 전송 버튼과 같은 함수로 보낸다
+// (26.10.2002~ 작성 칸을 건드리지 않고 입력 중 · 생성 중 · 갤러리 화면에서도 받는다). 그래서 앱에
 // 생성 중 카드가 뜨고, 권한 검사·크레딧 집계·영상 보관이 평소대로 된다. 레퍼런스 검사도 드래그와 같다.
+//
+// 앱에서 가져오는 건 과금(프로젝트 코드)뿐이다(사용자 11/6 "앱설정은 과금만 따르는 거임"). 앱은 안 적은 칸을 그 프로젝트의 지금 설정으로
+// 채우므로, 카드에 보이는 값을 전부 jobs.json 에 적게 하고 비어 있으면 보내지 않는다(아래 settingProblems).
 //
 // 무엇을 보낼 수 있는지는 앱이 직접 낸 **사용 설명서**가 정답이다(--manual). 앱이 업데이트되면 설명서도 바뀌고,
 // 예전 설명서 버전으로 보내면 앱이 "업데이트됐으니 다시 읽어" 로 돌려보낸다 — 이 스크립트는 그때 새 설명서를
@@ -46,9 +49,8 @@
 //   {
 //     "guide": "지침 버전 (freewill_guide(\"start\") 맨 위의 값) — 지침이 바뀌었으면 스크립트가 다시 읽으라고 멈춘다",
 //     "manual": "읽은 설명서 버전 (--manual 이 알려 준 값 그대로) — 앱이 바뀌었으면 앱이 받지 않는다",
-//     "project": "보낼 사이드바 프로젝트 이름 (사용자가 이 작업용으로 만들어 둔 것 — 안 열려 있으면 스크립트가 연다(project.open,
-//                 사이드바 클릭과 같음, dry-run 도). 생략하면 지금 열린 것)",
-//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 앱 전체에 하나, 사람이 앱에서 고른다. 다르면 안 보냄, 생략하면 지금 값)",
+//     "project": "보낼 사이드바 프로젝트 이름 (사용자가 이 작업용으로 만들어 둔 것 — 보낼 때 꼭 적는다. dry-run 만 생략하면 지금 열린 것)",
+//     "billing": "과금 프로젝트 이름 (확인 카드에 보여 준 것 — 앱 전체에 하나, 사람이 앱에서 고른다. 보낼 때 꼭 적는다. 다르면 안 보냄)",
 //     "work": "작업 폴더(사용자가 알려 준 프로젝트 폴더) — dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의
 //              '보낼 것'에 그림으로 뜨고, 끝나면 씬·컷 폴더 이름으로 목록에 적는다(지켜보기를 켜지 않아도 기다린다). 검수를 쓰면 받지 않고
 //              앱 주소로 검수 — 저장할 때 OK·보류만 받는다. 검수를 안 쓰거나 회사 보관소가 없는 앱이면 받아서 놓는다",
@@ -65,7 +67,8 @@
 //         "refs": [{ "path": "C:/a.png", "role": "first_frame", "why": "…" }, { "path": "C:/b.png", "role": "last_frame", "why": "…" }] }
 //     ]
 //   }
-// 설정 키와 값의 범위는 설명서에. 안 준 값은 앱의 지금 설정을 따른다(모델·모드를 바꾸면 그 조합의 기본값).
+// 설정 키와 값의 범위는 설명서에. 카드에 보일 값은 전부 적는다 — model · mode(Omni 는 omniTask) · draft(있는 모델) · resolution(초안이면 빼도 됨) ·
+// ratio · duration(모드가 고정하면 빼도 됨) · output_count · generate_audio(Omni 는 없음) · output_format(있는 모델). 비면 보내지 않는다.
 // 레퍼런스 순서가 프롬프트의 [Image N]·[Video N]·[Audio N] 번호다(종류별로 센다). 첫·끝 프레임은 role 로 정한다.
 // 레퍼런스마다 "why" — 그 그림·영상에서 가져올 것과, 같이 끌려올 수 있는 것을 어떻게 막는지 한 줄(사용자 10/20 "넣을 때 고민하라 — 생각 없이
 // 넣지 말고"). 없으면 멈춘다(user_format 이면 확인만). 작업 페이지 '보낼 것'에 그림과 같이 뜬다.
@@ -202,7 +205,9 @@ function placeName(work, pl, kind, ext, jobName, suffix = "") {
   const base = String(jobName || "job").replace(/[\\/:*?"<>|]+/g, "_").trim();
   for (let t = 0; ; t++) {
     const name = `${base}_${t < 26 ? String.fromCharCode(65 + t) : `Z${t - 25}`}${suffix}${ext}`;
-    if (![path.join(work, pl.rel, name), path.join(work, pl.rel, "보류", name)].some((p) => fs.existsSync(p))) return name;
+    // 앱 주소로 검수하는 영상은 파일이 없다 — 목록의 이름도 본다(테이크 B 가 A 와 같은 이름이 되어 검수에서 사라졌다)
+    const listed = readWorkList(work).some((r) => r["폴더"] === pl.rel && r["파일"] === name);
+    if (!listed && ![path.join(work, pl.rel, name), path.join(work, pl.rel, "보류", name)].some((p) => fs.existsSync(p))) return name;
   }
 }
 
@@ -512,8 +517,14 @@ const lastSent = (keys) => readLedger().filter((x) => keys.includes(x.key)).pop(
 // 작업의 마지막 기록 — 11/2 낮 판 기록(같은 작업이 같은 키로 여러 줄)은 몇 번째인지로 짝짓는다(11/4 뒤엔 없어도 됨)
 const lastOf = (j) => { const l = readLedger(); return l.filter((x) => x.key === j.key).pop() || l.filter((x) => x.key === j.legacy)[j.nth - 1]; };
 // 이번 실행이 시작된 뒤 남은 그 작업의 기록 — 같은 명령을 동시에 돌린 다른 실행이 넣은 것(그 전 줄은 분류에서 이미 봤다)
-const sentSince = (j) => readLedger().filter((x) => x.key === j.key && x.at >= RUN_AT).pop();
+const sentSince = (j) => readLedger().filter((x) => (x.key === j.key || x.same === j.same) && x.at >= RUN_AT).pop();
 const sentWhen = (e) => new Date(e.at).toLocaleString("ko-KR", { hour12: false });
+// 놓을 곳 · 프로젝트만 바꿔 다시 돌려도 같은 영상이 또 나가지 않게 — 내용(과금 · 프롬프트 · 설정 · 레퍼런스 파일 내용)이 같은 기록을 찾는다
+const sameContent = (j) => readLedger().filter((x) => x.same === j.same).pop();
+// 못 읽으면 멈춘다 — 빈 값으로 두면 "내용이 바뀐 새 작업"이 되어 또 나간다(백신 · 편집 프로그램이 잠깐 잡고 있을 때)
+const fileSig = (fp) => { try { return crypto.createHash("sha256").update(fs.readFileSync(fp)).digest("hex").slice(0, 16); } catch (e) { throw new Stop(`레퍼런스 파일을 못 읽어 보내지 않았다(${path.basename(fp)} — ${e.code || e.message}) — 다른 프로그램이 잡고 있으면 닫은 뒤 같은 명령을 다시 실행할 것`); } };
+// 업데이트 전에 보낸 줄(내용 지문이 없다) — 그 뒤 설정을 적어 키가 바뀌면 같은 작업인지 알 수 없으니, 이름이 같으면 묻는다. 24시간이면 사라진다
+const oldLine = (j, project) => readLedger().filter((x) => !x.same && x.name === j.name && x.project === project && !String(x.key).startsWith("do:")).pop();
 // 앱이 알려 준 요청의 끝 — "다시"(확실히 안 만들어짐) · "멈춤"(사람이 앱에서 취소) · "모름"(들어갔는지 모름) · null(만들었거나 만드는 중).
 // 앱은 카드가 전부 실패해도 요청을 done 으로 올린다 — 카드가 있고 전부 실패면 상태와 상관없이 "다시"(11/2 검수), 사람이 취소한 것이면 "멈춤"(다시 안 보냄)
 const CANCELLED = /취소했습니다|cancell?ed/i;
@@ -648,7 +659,8 @@ async function reserve(n, meta) {
   if (!ticketOwner()) fail((await loadTicket()) || NO_TICKET);
   const r = await usageApi("POST", "/usage", { app: "seedance", n, pc: os.hostname(), user: os.userInfo().username, device: device(), ...meta });
   if (!r.ok) fail(r.error || `사용 기록을 남기지 못함 (${r.http})`);
-  return { ...r, settle: (actual) => (actual === n ? Promise.resolve() : usageApi("POST", "/usage/settle", { id: r.id, n: actual }).catch(() => {})) };
+  let cur = n;   // 받은 뒤 한 번, 다 끝난 뒤 한 번 맞춘다(30분 지난 것은 커넥터가 안 받는다 — 무시)
+  return { ...r, settle: (actual) => { if (actual === cur) return Promise.resolve(); cur = actual; return usageApi("POST", "/usage/settle", { id: r.id, n: actual }).catch(() => {}); } };
 }
 
 async function req(method, p, body, ms = 10000) {
@@ -665,6 +677,9 @@ const post = (p, b, ms) => req("POST", p, b, ms);
 // 멈출 때는 던져서 main 끝에서 정리한다. process.exit() 를 바로 부르면 윈도의 Node 가 fetch 연결을 닫는 중에
 // 죽는다(libuv assertion, exit 127) — 에이전트에게는 엉뚱한 오류로 보인다.
 class Stop extends Error { constructor(msg, quiet = false) { super(msg); this.quiet = quiet; } }
+// 앱이 꺼지거나 다시 켜지는 중이면 fetch 가 그냥 "fetch failed" 만 던진다 — 할 일을 말해 준다
+const whyStop = (e) => (e instanceof Stop ? e.message : /fetch failed|timeout|aborted/i.test(String(e?.message))
+  ? "시댄스와 연결이 끊겼다(앱이 꺼졌거나 다시 켜는 중) — 앱이 켜진 걸 확인한 뒤 같은 명령을 다시 실행할 것. 이미 보낸 것은 다시 안 나간다" : e?.message);
 function fail(msg) {
   throw new Stop(msg);
 }
@@ -785,6 +800,7 @@ async function showStatus(ids) {
     const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
     if (j.http !== 200) { log(`${id}: ${j.error || j.raw || "없음"}`); continue; }
     log(`${j.name || id} — ${j.status}${j.project ? ` · ${j.project}` : ""}${j.error ? `\n  ${j.error}` : ""}`);
+    for (const w of j.warnings || []) log(`    앱 경고: ${w}`);
     for (const c of j.messages || []) log(`    카드 ${cardLine(c)}`);
   }
 }
@@ -822,7 +838,7 @@ async function waitTaken(id) {
       const why = !s.screenAlive ? "앱 화면이 응답하지 않음(창이 닫혔거나 멈춤)"
         : s.composer === false ? "앱이 갤러리 화면(채팅 화면으로 돌아오면 받음)"
         : s.generating ? "앱이 다른 생성을 보내는 중"
-        : "앱에서 입력 중이거나 앞 요청을 보내는 중";
+        : "앱이 앞 요청을 보내는 중이거나 프로젝트 코드 목록을 받는 중";
       log(`  기다리는 중 — ${why}. 10분 안에 못 받으면 취소된다.`);
       hinted = true;
     }
@@ -896,8 +912,9 @@ async function main() {
     if (!name) fail("--do 뒤에 명령 이름을 주세요 (설명서의 '명령' 목록)");
     let cargs = {};
     if (raw) { try { cargs = readJsonArg(raw); } catch (e) { fail(`인자 JSON 을 못 읽음 — ${e.message}`); } }
-    // 과금되는 명령도 하루 한도를 지킨다. 한 번에 3개까지(card.final 1 · card.regenerate 최대 3) — 앞에 돌고 있는 영상과 상관없이 보낸다.
+    // 과금되는 명령도 하루 한도를 지킨다(card.final · card.regenerate 는 한 번에 1편). 앞에 돌고 있는 영상 수는 세지 않으니,
     // 여러 카드를 본편으로 올릴 때는 3개씩 보내고 끝나는 걸 본 뒤 다음 3개(지침 7단계).
+    // card.final 의 실제 과금은 초안을 만든 코드다(card.regenerate 는 앱의 지금 코드) — 앱이 카드에 코드를 안 내주어 기록은 지금 코드로 남는다
     const need = COSTLY[name] || 0;
     let rsv = null, rid = "";
     if (need) {
@@ -1039,6 +1056,9 @@ async function main() {
   }
   const project = anyProject ? target.name : spec.project || s.project;
   const billing = anyProject ? target.billing.name : spec.billing || s.billing;
+  // 카드에 보여 준 과금 · 프로젝트를 적어 둬야 카드와 보내기 사이에 바뀐 걸 잡는다(안 적으면 그때의 값으로 대조해 그냥 통과한다 — 나노바나나와 같은 규칙)
+  if (!DRY && !spec.billing) fail(`jobs.json 에 "billing" 이 없다 — 보내지 않았다. 확인 카드에 보여 준 코드를 그대로 적을 것: "billing": "${billing}"`);
+  if (!DRY && !spec.project && !spec.projectId) fail(`jobs.json 에 "project" 가 없다 — 보내지 않았다. 확인 카드에 보여 준 프로젝트를 그대로 적을 것: "project": "${project}"`);
   const allowedModels = anyProject ? target.allowedModels : s.allowedModels;
   const fourK = anyProject ? target.fourK : s.fourK;
   log(`프로젝트 "${project}" · 과금 "${billing}" 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"} · 설명서 ${spec.manual}` +
@@ -1056,15 +1076,90 @@ async function main() {
     for (const k of keys) { const v = j[k] ?? defaults[k]; if (v !== undefined && v !== null) out[k] = v; }
     return out;
   };
-  const unknown = [...new Set(jobs.flatMap((j) => Object.keys({ ...defaults, ...j })).filter((k) =>
-    !keys.includes(k) && !["name", "prompt", "refs", "prompt_language", "user_format"].includes(k)))];
-  if (unknown.length) log(`  참고: 설명서에 없는 키는 보내지 않는다 — ${unknown.join(", ")}`);
-  for (const j of jobs) {
-    const model = j.model ?? defaults.model;
-    if (model && Array.isArray(allowedModels) && !allowedModels.includes(model)) {
-      log(`  주의: ${j.name || ""} 의 모델 ${model} 은 이 과금 프로젝트에 권한이 없다 — 앱이 막는다. 다른 모델을 사용자에게 물을 것`);
+  // 앱의 모델 표(설명서) — 이 PC 앱이 받는 값. 모델이 늘어도 이 스크립트를 안 고친다. 못 읽는 옛 앱이면 모델 · 개수만 필수
+  const modelsTable = Array.isArray(manual.manual?.models) ? manual.manual.models : [];
+  const modelOf = (j) => modelsTable.find((m) => m.id === settingsOf(j).model);
+  const modeInfo = (j) => modelOf(j)?.modes?.find((m) => m.id === settingsOf(j).mode);
+  // 앱에 보내는 값 — 마지막 프레임은 고를 일이 드물어 안 적으면 끈 채로 적어 보낸다(프로젝트에 켜 둔 값이 남아 있으면 오디오까지 꺼진다)
+  const finalOf = (j) => {
+    const st = settingsOf(j);
+    if (keys.includes("return_last_frame") && st.return_last_frame === undefined) st.return_last_frame = false;
+    return st;
+  };
+  // 카드 줄 — 앱이 실제로 쓰는 값으로 바꿔 보여 준다(초안은 480p, 모드가 고정한 비율 · 길이, 마지막 프레임을 켜면 무음)
+  const shownOf = (j) => {
+    const st = settingsOf(j), mo = modeInfo(j), m = modelOf(j);
+    const shown = { ...st };
+    if (st.draft === true) shown.resolution = "480p(초안)";
+    if (mo?.ratioLocked) shown.ratio = "adaptive(입력 기준)";
+    if (mo?.durationLocked) shown.duration = "자동(입력 기준)";
+    if (st.return_last_frame === true && st.generate_audio !== false) shown.generate_audio = "false(마지막 프레임을 켜면 무음)";
+    if (m?.provider === "gemini") {
+      delete shown.mode;   // Omni 는 mode 를 쓰지 않는다
+      if (["edit", "extend"].includes(st.omniTask)) shown.ratio = "원본 기준";
+      if (st.omniTask === "edit") shown.duration = "원본 기준";
     }
-  }
+    return Object.entries(shown).map(([k, v]) => `${k}=${v}`).join(" ");
+  };
+  const KINDS_OF = (j, kind) => j.refs.filter((r) => KINDS[kind].test(r.path)).length;
+  // 앱 설정은 과금만 따른다(사용자 11/6) — 안 적은 칸은 프로젝트에 남아 있는 값으로 나가, 같은 카드 줄이 480p 5초가 되기도 1080p 30초가 되기도 한다.
+  // 틀린 값도 여기서 멈춘다 — 앱은 작업을 받을 때 하나씩 거절해, 뒤쪽 작업이 걸리면 앞 작업은 이미 나간 뒤다. 이미 보낸 작업은 보지 않는다(값을 적게 하면 키가 바뀌어 또 나간다)
+  const OWN = new Set(["name", "prompt", "refs", "prompt_language", "user_format", "scene", "cut", "asset", "covers", "version", "key", "legacy", "nth", "same", "refSig"]);
+  const settingProblems = (j) => {
+    const st = settingsOf(j), out = [];
+    const blank = (k) => keys.includes(k) && (st[k] === undefined || st[k] === "");
+    const need = (k, why = "") => { if (blank(k)) out.push(`${k} 를 안 적었다 — 앱 설정을 따르지 않는다${why ? `. ${why}` : ""}`); };
+    const allowed = (k, list) => { if (!blank(k) && st[k] !== undefined && list && !list.map(String).includes(String(st[k]))) out.push(`${st.model} 에 안 맞는 ${k} ${st[k]} — 고를 수 있는 값: ${list.join(", ") || "(없음)"}`); };
+    for (const k of Object.keys({ ...defaults, ...j })) if (!keys.includes(k) && !OWN.has(k)) out.push(`${k} 는 앱이 받지 않는 칸이다 — 빼거나 프롬프트로(설명서 '설정 키')`);
+    need("model");
+    if (!st.model) return out;
+    if (Array.isArray(allowedModels) && allowedModels.length && !allowedModels.includes(st.model)) out.push(`모델 ${st.model} 은 이 과금 프로젝트에 권한이 없다 — 앱이 막는다. 다른 모델을 사용자에게 물을 것(쓸 수 있는 모델: ${allowedModels.join(", ")})`);
+    need("output_count", "한 번에 몇 개인지 적을 것");
+    if (!modelsTable.length) return out;
+    const m = modelOf(j);
+    if (!m) { out.push(`앱에 없는 모델 ${st.model} — 있는 모델: ${modelsTable.map((x) => x.id).join(", ")}`); return out; }
+    const omni = m.provider === "gemini";
+    const mo = modeInfo(j);
+    if (omni) { need("omniTask"); allowed("omniTask", (m.tasks || []).map((t) => t.id)); }
+    else { need("mode"); allowed("mode", (m.modes || []).map((x) => x.id)); }
+    if (m.draft) need("draft", "초안이면 true, 본편이면 false");
+    else if (st.draft === true) out.push(`${st.model} 은 초안(draft)이 없다 — draft 를 빼고 resolution 을 적을 것`);
+    if (st.draft !== true) { need("resolution"); allowed("resolution", m.resolutions); }
+    if (st.draft !== true && String(st.resolution) === "4k" && m.fourKNeedsGrant && fourK === false) out.push("이 프로젝트 코드에 4K 권한이 없다 — 앱이 조용히 1080p 로 낮춰 보낸다. 해상도를 낮추거나 권한이 있는 코드를 사용자에게 물을 것");
+    // Omni 편집은 비율 · 길이, 연장은 비율을 원본에서 가져온다(앱이 지워 보낸다)
+    // 비워도 되는 칸이어도 적은 값은 본다 — 앱은 작업 · 모드와 상관없이 검사해 거절한다
+    if (!mo?.ratioLocked && !["edit", "extend"].includes(omni ? st.omniTask : "")) need("ratio");
+    allowed("ratio", omni ? manual.manual?.ratios?.omni : manual.manual?.ratios?.seedance);
+    if (!mo?.durationLocked && !(omni && st.omniTask === "edit")) need("duration");
+    if (st.duration !== undefined && st.duration !== "") {
+      const d = Number(st.duration), r = m.duration || {};
+      if (!(d === -1 && r.auto) && !(Number.isInteger(d) && d >= r.min && d <= r.max)) out.push(`${st.model} 길이는 ${r.min}~${r.max}초${r.auto ? " 또는 -1(자동)" : ""}이다(지금 ${st.duration})`);
+    }
+    const oc = manual.manual?.outputCount || { min: 1, max: PER_REQUEST };
+    if (!blank("output_count") && !(Number.isInteger(Number(st.output_count)) && Number(st.output_count) >= oc.min && Number(st.output_count) <= oc.max)) out.push(`개수는 ${oc.min}~${oc.max} 이다(지금 ${st.output_count})`);
+    if (!omni && st.return_last_frame !== true) need("generate_audio", "소리를 낼지 true / false 로");
+    if (!omni && !blank("generate_audio") && st.generate_audio !== undefined && typeof st.generate_audio !== "boolean") out.push("generate_audio 는 true / false 다(따옴표 없이)");
+    if (st.draft !== undefined && typeof st.draft !== "boolean") out.push("draft 는 true / false 다(따옴표 없이)");
+    if (st.return_last_frame === true && (omni || !mo?.returnLastFrame)) out.push("이 모드에서는 마지막 프레임을 따로 받을 수 없다 — return_last_frame 을 뺄 것");
+    const formats = (m.outputFormats || []).map((f) => f.id);
+    if (formats.length) { need("output_format", "mov(편집용)가 기본, 사용자가 mp4 라고 했을 때만 mp4 — 작업을 시작할 때 한 번 물어 defaults 에 적는다(지침 3단계)"); allowed("output_format", formats); }
+    else if (st.output_format !== undefined) out.push(`${st.model} 은 출력 형식을 고를 수 없다 — output_format 을 뺄 것`);
+    // 모드와 안 맞는 첫 · 끝 프레임 표시는 앱이 조용히 무시한다 — 일반 레퍼런스로 나가거나 첫 프레임이 되어 그대로 과금된다
+    const roles = j.refs.filter((r) => r.role).map((r) => r.role);
+    const frameMode = omni ? st.omniTask === "image_to_video" : FRAME_MODES.includes(st.mode);
+    if (roles.length && !frameMode) out.push(`refs 의 role(${roles.join(", ")})은 첫·끝 프레임 모드에서만 쓰인다 — 지금 ${omni ? st.omniTask : st.mode}. 모드를 바꾸거나 role 을 뺄 것`);
+    if (frameMode && !omni && st.mode === "image_to_video_first" && roles.includes("last_frame")) out.push("첫 프레임 모드에 last_frame 을 넣었다 — 앱은 그 그림을 첫 프레임으로 쓴다. image_to_video_first_last 로 바꾸거나 first_frame 으로");
+    if (frameMode && !omni && st.mode === "image_to_video_first_last" && roles.length && !(roles.includes("first_frame") && roles.includes("last_frame"))) out.push("첫·끝 프레임 모드는 first_frame 과 last_frame 을 하나씩 적는다");
+    // 레퍼런스 수 — 엘리먼트 @{이름} 도 그림을 붙이므로 그림 수는 넘을 때만 본다
+    const caps = omni ? (m.tasks || []).find((t) => t.id === st.omniTask)?.refs : mo?.refs;
+    if (caps) for (const [kind, key] of [["Image", "image"], ["Video", "video"], ["Audio", "audio"]]) {
+      if (KINDS_OF(j, kind) > (caps[key] ?? 0)) out.push(`이 ${omni ? "작업" : "모드"}는 ${kind} 레퍼런스 ${caps[key] ?? 0}개까지다(지금 ${KINDS_OF(j, kind)}개)`);
+    }
+    // 꼭 있어야 하는 레퍼런스 — 앱이 그 작업에서 거절해, 뒤쪽 작업이면 앞 작업은 이미 나간 뒤다
+    const least = { image_to_video_first: ["Image", 1], image_to_video_first_last: ["Image", 2], edit_video: ["Video", 1], extend_video: ["Video", 1], edit: ["Video", 1], extend: ["Video", 1] }[omni ? st.omniTask : st.mode];
+    if (least && KINDS_OF(j, least[0]) < least[1]) out.push(`이 ${omni ? "작업" : "모드"}는 ${least[0]} 레퍼런스가 ${least[1]}개 필요하다(지금 ${KINDS_OF(j, least[0])}개)`);
+    return out;
+  };
   // dry-run 에서 먼저 걸리게 — 확인 카드 전에 고친다
   // 사용자가 개인 스킬·자기 프롬프트·다른 형식을 주면(지침 0절) "user_format": true — 사내 쓰는 법 점검은 막지 않고 확인할 것으로만.
   // 앱·BytePlus 가 실패하는 것(표기·바인딩·레퍼런스 수·소수 초)은 그래도 멈춘다.
@@ -1076,13 +1171,10 @@ async function main() {
   const goals = jobs.filter((j) => !userFormat(j)).map((j) => ({ p: String(j.prompt), g: (String(j.prompt).match(/【Generation Goal】([\s\S]*?)(?=【|$)/)?.[1] ?? blocksOf(j.prompt)["SCENE CONTEXT"] ?? "").trim() }));
   const same = goals.filter((x, i) => x.g && goals.some((y, k) => k !== i && y.g === x.g && y.p !== x.p));
   if (same.length) problems.push(`여러 작업의 목표 문장(【Generation Goal】·SCENE CONTEXT)이 똑같다(${same.length}건) — 장면마다 주 대상·주 사건을 그 장면 내용으로 쓴다(공통 문장을 끼워 넣지 않는다)`);
-  // 시댄스 2.5 출력 형식 — 안 적으면 앱의 지금 설정(사람이 mp4 로 바꿔 뒀을 수 있다)을 따른다. 사용자가 mp4 라고 하지 않았으면 mov(편집용)
-  // (사용자 10/20 "mp4 뽑으라고 미리 말하지 않는 이상 mov — 이 부분은 물어봐야지") — 작업을 시작할 때 한 번 묻고 defaults 에 적는다
-  if (keys.includes("output_format")) {
+  // 시댄스 2.5 출력 형식은 mov 가 기본, 사용자가 mp4 라고 했을 때만 mp4(사용자 10/20) — 작업을 시작할 때 한 번 묻고 defaults 에 적는다. 점검은 settingProblems 에서
+  if (modelsTable.length === 0 && keys.includes("output_format")) {
     for (const j of jobs.filter((x) => /seedance-2-5/.test(x.model ?? defaults.model ?? "") && settingsOf(x).output_format === undefined)) {
-      const msg = "output_format 이 없다 — 앱의 지금 설정을 따르게 된다. 시댄스 2.5 는 mov(편집용 · 앱 기본)가 기본이고 사용자가 mp4 라고 했을 때만 mp4 — 작업을 시작할 때 한 번 물어 defaults 에 적는다(지침 3단계)";
-      if (userFormat(j)) log(`  확인: ${nameOf(j)} — ${msg}`);
-      else problems.push(`${nameOf(j)}: ${msg}`);
+      problems.push(`${nameOf(j)}: output_format 이 없다 — 앱 설정을 따르지 않는다. 시댄스 2.5 는 mov(편집용)가 기본이고 사용자가 mp4 라고 했을 때만 mp4 — 작업을 시작할 때 한 번 물어 defaults 에 적는다(지침 3단계)`);
     }
   }
   // 레퍼런스는 넣을 때마다 따져 본다 — 가져올 것 · 같이 끌려올 것과 막는 법을 why 한 줄로(사용자 10/20 "생각 없이 넣지 말고")
@@ -1099,16 +1191,18 @@ async function main() {
 
   // 어셋 라이브러리 — 인물·장소·소품은 엘리먼트 @{이름} 이 기본(지침 6단계 시댄스 0). 지금 프로젝트에 연결된 컬렉션의 엘리먼트를
   // 보여 주고, 프롬프트의 @{이름} 이 거기 있는지 보내기 전에 본다(없으면 앱이 보낼 때 막는다). 프로젝트 하나에 컬렉션은 하나.
-  const elementModes = ["multimodal_reference", "edit_video"];
   const modeOf = (j) => j.mode ?? defaults.mode;
+  // 앱과 같은 판정 — 레퍼런스 · 편집, 그리고 연장은 그 모드가 그림을 받는 모델(2.5)만. 이름은 대소문자 · 공백을 안 가린다(앱의 mentionKey)
+  const elementMode = (j) => ["multimodal_reference", "edit_video"].includes(modeOf(j)) || (modeOf(j) === "extend_video" && (modeInfo(j)?.refs?.image ?? 0) > 0);
+  const elementKey = (n) => String(n).toLowerCase().replace(/\s+/g, "");
   const mentions = (j) => [...new Set([...String(j.prompt).matchAll(/@\{([^}\n]+)\}/g)].map((m) => m[1].trim()))];
   const seedanceJob = (j) => /seedance/.test(j.model ?? defaults.model ?? "");
   let library = null;
-  if (jobs.some((j) => seedanceJob(j) && (elementModes.includes(modeOf(j)) || mentions(j).length))) {
+  if (jobs.some((j) => seedanceJob(j) && (elementMode(j) || mentions(j).length))) {
     try {
       const raw = await sendCommand(spec.manual, "collections.list", {});
       const bound = (Array.isArray(raw) ? raw : raw?.collections || []).filter((c) => (c.boundTo || []).includes(project));
-      library = new Map(bound.flatMap((c) => (c.elements || []).map((e) => [e.name, { ...e, collection: c.name }])));
+      library = new Map(bound.flatMap((c) => (c.elements || []).map((e) => [elementKey(e.name), { ...e, collection: c.name }])));
       // 엘리먼트마다 무엇인지(분류 · 설명 · 그림 수)를 보여 준다 — 이름만 보고 엉뚱한 엘리먼트를 부르지 않게(사용자 10/22)
       log(library.size
         ? `  "${project}" 에 연결된 컬렉션 「${bound.map((c) => c.name).join("」「")}」의 엘리먼트 ${library.size}개:\n` +
@@ -1125,15 +1219,15 @@ async function main() {
   }
   for (const j of jobs) {
     const names = mentions(j);
-    if (names.length && seedanceJob(j) && !elementModes.includes(modeOf(j))) {
-      problems.push(`${nameOf(j)}: 엘리먼트 @{${names[0]}} 는 레퍼런스→영상·영상 편집 모드에서만 된다 — 이 모드에선 그림 파일(refs)로`);
+    if (names.length && seedanceJob(j) && !elementMode(j)) {
+      problems.push(`${nameOf(j)}: 엘리먼트 @{${names[0]}} 는 레퍼런스→영상 · 영상 편집(2.5 는 연장도) 모드에서만 된다 — 이 모드에선 그림 파일(refs)로`);
     }
-    if (library) for (const n of names.filter((n) => !library.has(n))) {
+    if (library) for (const n of names.filter((n) => !library.has(elementKey(n)))) {
       problems.push(`${nameOf(j)}: @{${n}} 가 "${project}" 에 연결된 컬렉션에 없다 — 이름을 고치거나 elements.add 로 등록(연결된 게 없으면 collection.bind)`);
     }
     // 이미 엘리먼트로 등록된 그림을 파일 [Image N] 으로 또 붙이지 않는다(사용자 10/22 "등록했으면 써먹어야지") — 파일 이름에서
     // 끝의 _A · _B 를 뗀 것이 연결된 컬렉션의 엘리먼트 이름이면 @{이름} 으로. 엘리먼트와 다른 그림을 일부러 쓰면 그 ref 에 "as_file": "이유".
-    if (library && elementModes.includes(modeOf(j))) {
+    if (library && elementMode(j)) {
       const byLower = new Map([...library.values()].map((e) => [e.name.toLowerCase(), e]));
       for (const r of j.refs.filter((x) => !x.role && KINDS.Image.test(x.path) && !String(x.as_file ?? "").trim())) {
         const stem = path.basename(r.path).replace(/\.[^.]+$/, "").toLowerCase();
@@ -1153,7 +1247,7 @@ async function main() {
       ? [`그림 파일 ${j.refs.filter((r) => !r.role && KINDS.Image.test(r.path)).length}장을 [Image N] 으로 붙였다 — 다시 쓸 인물·장소·소품이면 어셋 라이브러리 엘리먼트로 등록해 @{이름} 으로 부른다(지침 6단계 시댄스 0)`]
       : []),
     // 레퍼런스 블록(머리 줄 바로 아래, 빈 줄 전까지)의 줄마다 무엇을 가리키는지 묶여 있어야 한다 — 묶지 않은 줄은 그림이 안 붙는다(언급 누락)
-    ...(seedanceJob(j) && elementModes.includes(modeOf(j))
+    ...(seedanceJob(j) && elementMode(j)
       ? String((blocksOf(j.prompt)["ACTIVE REFERENCES"] ?? blocksOf(j.prompt)["REFERENCES"]) || "").replace(/^\s*\n/, "").split(/\n\s*\n/)[0]
         .split("\n").map((l) => l.trim())
         .filter((l) => l.length > 12 && !/^(?:SHOT|CUT|SEGMENT|Shot|Cut|Segment)\b/.test(l) && !/\[(?:Image|Video|Audio) \d+\]|@\{[^}\n]+\}/.test(l))
@@ -1187,18 +1281,33 @@ async function main() {
   const win = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
   const placeRel = (j) => (WORKDIR ? placeOf(spec, j, WORKDIR).rel : "");
   const hash = (v) => crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 24);
-  const seen = {};
+  const seen = {}, seenSame = {};
   for (const j of jobs) {
     const key = hash([target?.id || project, String(j.prompt).replace(/\s+/g, " ").trim(), Object.entries(settingsOf(j)).map(([k, v]) => [k, String(v)]),
       j.refs.map((r) => [win(r.path), r.role || ""]), WORKDIR, placeRel(j)]);
     j.nth = seen[key] = (seen[key] || 0) + 1;
     j.key = `${key}#${j.nth}`;
     j.legacy = hash([target?.id || project, String(j.prompt), settingsOf(j), j.refs.map((r) => [r.path, r.role || ""]), WORKDIR, placeRel(j) || SAVE_TO || ""]);
+    j.refSig = hash(j.refs.map((r) => [fileSig(r.path), r.role || ""]));
+    // 같은 파일에 일부러 여럿 적은 것(컷만 달라도)은 몇 번째인지로 가른다
+    const same = hash([billing, String(j.prompt).replace(/\s+/g, " ").trim(), Object.entries(settingsOf(j)).map(([k, v]) => [k, String(v)]).sort(), j.refSig]);
+    seenSame[same] = (seenSame[same] || 0) + 1;
+    j.same = `${seenSame[same]}:${same}`;
   }
-  const toSend = [], resumed = [], already = [], unsure = [];
+  const toSend = [], resumed = [], already = [], unsure = [], twins = [];
   for (const j of jobs) {
-    const e = AGAIN.has(j.name) ? null : lastOf(j);
-    if (!e) { toSend.push(j); continue; }
+    let e = AGAIN.has(j.name) ? null : lastOf(j);
+    // 경로는 같은데 그림을 새로 저장했으면 다른 작업이다 — 예전엔 "이미 보냄"으로 건너뛰었다
+    if (e?.refSig && e.refSig !== j.refSig) { log(`  참고: ${j.name} — 레퍼런스 파일 내용이 바뀌어 새 작업으로 본다`); e = null; }
+    if (!e) {
+      // 놓을 곳 · 프로젝트만 바꾼 같은 영상은 또 만들지 않는다 — 같은 장면을 일부러 또 만들면 사용자에게 물은 뒤 --again
+      const twin = AGAIN.has(j.name) ? null : sameContent(j);
+      if (twin) { twins.push({ name: j.name, why: `같은 내용을 ${sentWhen(twin)} 에 "${twin.project}" 프로젝트로 보냈다 — ${twin.note || (["보냄", "끝"].includes(twin.state) ? "카드는 그 프로젝트에 있다" : "그 프로젝트에서 카드를 확인할 것")}` }); continue; }
+      const old = AGAIN.has(j.name) ? null : oldLine(j, project);
+      if (old) { twins.push({ name: j.name, why: `이름이 같은 작업을 업데이트 전 ${sentWhen(old)} 에 보냈다 — 설정만 적어 다시 돌린 것이면 같은 영상이다. "${old.project}" 프로젝트에서 카드를 확인할 것` }); continue; }
+      toSend.push(j);
+      continue;
+    }
     const app = e.id ? await get(`/api/agent/jobs/${encodeURIComponent(e.id)}`) : null;
     const alive = app?.http === 200;
     const o = alive ? outcome(app) : e.state === "보냄" || e.state === "끝" ? null : "모름";
@@ -1212,13 +1321,24 @@ async function main() {
     // 앱이 화면으로 보냈거나 카드가 있으면 '보냄'으로 — 아직 대기(pending · taken)면 그대로 둔다(앱을 다시 켜면 사라질 수 있다)
     const confirmed = alive && ((app.messages || []).length > 0 || app.status === "sent" || app.status === "done");
     if (confirmed && e.state !== "보냄" && e.state !== "끝" && !DRY) ledgerSet(e.rid, { state: "보냄" });
-    if (e.state !== "끝" && alive && (WATCH || WORKDIR)) { resumed.push({ id: e.id, name: j.name, j, st: settingsOf(j), rid: e.rid }); continue; }
+    if (e.state !== "끝" && (alive || e.cards?.length) && (WATCH || WORKDIR)) { resumed.push({ id: e.id, name: j.name, j, st: settingsOf(j), rid: e.rid, cards: e.cards }); continue; }
     already.push(`${j.name} — ${sentWhen(e)} 에 보냄 · ${e.state === "끝" ? (WORKDIR ? "작업 폴더에 놓았다" : "끝났다")
       : alive ? `상태: --status ${e.id}` : "앱을 다시 켜 여기서는 결과를 못 이어 받는다(앱 카드에서 볼 것)"}`);
   }
   if (already.length) log(`  이미 보냄 — 다시 보내지 않는다(같은 것을 또 만들려면 사용자에게 물은 뒤 --again=작업 이름):\n${already.map((x) => `    ${x}`).join("\n")}`);
   if (resumed.length) log(`  이미 보냄 — 이어서 지켜보고 놓는다: ${resumed.map((x) => x.name).join(", ")}`);
-  if (already.length || resumed.length || unsure.length) log(`  보낼 것 ${toSend.length}건 · 이어 받기 ${resumed.length}건 · 건너뜀 ${already.length + unsure.length}건`);
+  if (already.length || resumed.length || unsure.length || twins.length) log(`  보낼 것 ${toSend.length}건 · 이어 받기 ${resumed.length}건 · 건너뜀 ${already.length + unsure.length + twins.length}건`);
+  if (twins.length) {
+    // 확인할 곳은 그 기록의 프로젝트다 — 지금 프로젝트에서 찾으면 없으니 "없으면 --again" 으로 두 번 과금된다
+    const msg = `또 나가면 두 번 과금될 수 있어 보내지 않는다:\n${twins.map((x) => `    ${x.name} — ${x.why}`).join("\n")}\n` +
+      `  일부러 또 만들거나, 프롬프트 · 레퍼런스를 고친 다른 작업이면 사용자에게 물은 뒤 --again=${twins.map((x) => x.name).join(",")}`;
+    if (!DRY && !toSend.length && !resumed.length && !unsure.length) fail(msg);
+    log(`  주의: ${msg}`);
+    if (!DRY) {
+      process.exitCode = 1;
+      process.on("exit", () => console.error(`확인할 것 — 또 나갈 뻔해 보내지 않은 작업: ${twins.map((x) => x.name).join(", ")} · 위 '주의' 참고`));
+    }
+  }
   if (unsure.length) {
     // 그 작업만 보내지 않는다 — 나머지는 보내고, 끝나면 실패 코드로 알린다
     const msg = `앱에 들어갔는지 모르는 요청은 보내지 않는다(다시 보내면 두 번 과금될 수 있다): ${unsure.map((x) => `${x.name}(${x.why})`).join(", ")}\n` +
@@ -1237,14 +1357,14 @@ async function main() {
   }
   if (WORKDIR && resumed.length && !DRY) keepJobs(WORKDIR, file);
 
-  // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다. output_count 를 안 적으면 앱 설정을 따르니 최대로 잡는다.
+  const settingBad = toSend.flatMap((j) => settingProblems(j).map((p) => `  - ${j.name}: ${p}`));
+  if (settingBad.length) fail(`한 개도 보내지 않았다 — 고칠 것(설명서 '모델' · 카드에 보일 값은 전부 jobs.json 에 적는다. 앱에서 가져오는 건 과금뿐이다. 이미 보낸 작업이 같은 파일에 있으면 defaults 말고 이 작업 줄에):\n${settingBad.join("\n")}`);
+
+  // 한도 — 하루 한도에 걸리면 하나도 보내지 않는다
   const videosOf = (j) => {
     const n = Number(settingsOf(j).output_count);
     return n >= 1 ? Math.min(Math.round(n), PER_REQUEST) : PER_REQUEST;
   };
-  if (toSend.some((j) => !(Number(settingsOf(j).output_count) >= 1))) {
-    log(`  참고: output_count 를 안 적은 작업은 앱 설정을 따르므로 ${PER_REQUEST}개로 잡고 센다(적어 두면 더 빨리 보낼 수 있다)`);
-  }
   const total = toSend.reduce((a, j) => a + videosOf(j), 0);
   if (toSend.length) {
     const q = await quota(total, `최대 ${total}개`);
@@ -1256,10 +1376,10 @@ async function main() {
   if (DRY) {
     for (const [i, j] of toSend.entries()) {
       const st = settingsOf(j);
-      log(`  ${i + 1}. ${j.name || ""} · ${Object.entries(st).map(([k, v]) => `${k}=${v}`).join(" ") || "(앱 지금 설정 그대로)"} · 레퍼런스 ${j.refs.length}개` +
+      log(`  ${i + 1}. ${j.name || ""} · ${shownOf(j)} · 레퍼런스 ${j.refs.length}개` +
         `${mentions(j).length ? ` · 엘리먼트 ${mentions(j).map((n) => `@{${n}}`).join(" ")}` : ""}`);
       // 부른 엘리먼트가 무엇인지 — 확인 카드의 '엘리먼트' 줄에 옮긴다
-      for (const n of mentions(j)) if (library?.has(n)) log(`     @{${n}} = ${elementLabel(library.get(n))}`);
+      for (const n of mentions(j)) if (library?.has(elementKey(n))) log(`     @{${n}} = ${elementLabel(library.get(elementKey(n)))}`);
       // 레퍼런스마다 무엇을 왜 — 확인 카드에 그대로 옮긴다
       const seen = {};
       for (const r of j.refs) {
@@ -1269,7 +1389,7 @@ async function main() {
       }
       if (WORKDIR) {
         const pl = placeOf(spec, j, WORKDIR);
-        log(`     → 놓을 곳 ${pl.rel}/${placeName(WORKDIR, pl, "V", `.${st.output_format || "mov"}`, j.name, resTail(st))}${videosOf(j) > 1 ? ` 부터 ${videosOf(j)}개` : ""}` +
+        log(`     → 놓을 곳 ${pl.rel}/${placeName(WORKDIR, pl, "V", `.${st.output_format || (modelOf(j) && !modelOf(j).outputFormats?.length ? "mp4" : "mov")}`, j.name, resTail(st))}${videosOf(j) > 1 ? ` 부터 ${videosOf(j)}개` : ""}` +
           `${pl.range ? ` · 범위 ${pl.range}` : ""}${pl.version ? ` · ${pl.version}안` : ""}`);
       }
     }
@@ -1284,6 +1404,7 @@ async function main() {
   for (const [i, j] of toSend.entries()) {
     const need = videosOf(j);
     const st = settingsOf(j);
+    const body = finalOf(j);
     let out = null;
     while (!out) {
       await waitForRoom(spec.manual, project, need, sent.map((x) => x.id), target?.id || "");
@@ -1303,11 +1424,11 @@ async function main() {
         }
         // 넣기 직전에 남긴다 — 여기서 끊기면(앱 답을 못 받음) 다음 실행은 '모름'으로 멈춘다. 못 남기면 보내지 않는다
         let rid;
-        try { rid = ledgerAdd({ key: j.key, name: j.name, project, state: "보내는 중" }); }
+        try { rid = ledgerAdd({ key: j.key, name: j.name, project, state: "보내는 중", same: j.same, refSig: j.refSig }); }
         catch (e) { await rsv.settle(0); if (e instanceof Stop) return { error: e.message }; throw e; }
         const r = await post("/api/agent/jobs", {
           manual: spec.manual, name: j.name, prompt: String(j.prompt), project, billing, ...(target ? { projectId: target.id } : {}),
-          settings: st, refs: j.refs,
+          settings: body, refs: j.refs,
         });
         if (r.http === 409 && r.stale) { ledgerSet(rid, null); await rsv.settle(0); return { stale: r.error }; }
         if (r.http !== 200 || !r.id) {
@@ -1319,8 +1440,10 @@ async function main() {
         const res = await waitTaken(r.id);
         const cards = res.messages || [];
         const o = outcome(res);
-        ledgerSet(rid, o === "다시" ? null : { state: o === "모름" ? "모름" : o === "멈춤" ? "끝" : "보냄", ...(o ? { note: String(res.error || o).slice(0, 200) } : {}) });
-        await rsv.settle(res.status === "failed" ? cards.length : (cards.length || need));
+        ledgerSet(rid, o === "다시" ? null : { state: o === "모름" ? "모름" : o === "멈춤" ? "끝" : "보냄", cards: cards.map((c) => c.id), ...(o ? { note: String(res.error || o).slice(0, 200) } : {}) });
+        // 들어갔는지 모르면 무르지 않는다(만들어졌을 수 있다) · 실패 카드는 세지 않는다 — 전부 실패가 기록에 남으면 다시 보낼 때 한도를 두 번 쓴다
+        const live = cards.filter((c) => c.status !== "failed").length;
+        await rsv.settle(o === "모름" ? need : res.status === "failed" || o === "다시" ? live : (live || (cards.length ? 0 : need)));
         return { r, res, cards, rsv, rid, unsure: o === "모름" };
       });
     }
@@ -1346,7 +1469,8 @@ async function main() {
       process.exitCode = 1;
       break;
     }
-    sent.push({ id: r.id, name: j.name, j, st, rid });
+    sent.push({ id: r.id, name: j.name, j, st, rid, rsv, cards: cards.map((c) => c.id) });
+    for (const w of res.warnings || []) log(`  앱 경고 ${j.name}: ${w}`);
     if (WORKDIR) keepJobs(WORKDIR, file);
     log(`  보냄 ${sent.length}/${toSend.length} ${j.name} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
       ` · 오늘 ${rsv.used - need + (cards.length || need)}/${rsv.limit}개`);
@@ -1367,7 +1491,7 @@ async function main() {
   let open = all.map((x) => x.id);
   while (open.length && Date.now() < deadline) {
     for (const id of [...open]) {
-      const j = await get(`/api/agent/jobs/${encodeURIComponent(id)}`);
+      const j = await jobView(all.find((x) => x.id === id), spec.manual);
       if (j.http !== 200) { lost.add(id); open = open.filter((x) => x !== id); continue; }
       const cards = j.messages || [];
       const line = cards.map((c) => c.status).join(", ");
@@ -1381,12 +1505,45 @@ async function main() {
   if (WORKDIR) await placeResults(all, spec, WORKDIR);
   else if (SAVE_TO) await saveResults(all, spec.manual);
   // 끝난 것은 '끝'(다시 실행해도 건너뜀) · 확실히 못 만든 것은 기록에서 뺀다(다시 보낼 수 있게) · 안 끝난 것은 그대로(다시 실행하면 이어서)
+  let failedCards = 0;
   for (const x of all.filter((x) => !open.includes(x.id) && !lost.has(x.id))) {
-    const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
-    ledgerSet(x.rid, j.http === 200 && outcome(j) === "다시" ? null : { state: "끝" });
+    const j = await jobView(x, spec.manual);
+    if (j.http !== 200) continue;
+    const cards = j.messages || [];
+    // 카드를 하나도 못 찾으면 만들었는지 알 수 없다 — '끝'으로 적지 않고 다음 실행에서 묻는다 · 안 끝난 카드가 있으면 그대로 둔다
+    if (cards.length && cards.every((c) => c.status === "missing")) {
+      ledgerSet(x.rid, { state: "모름", note: "카드를 찾지 못함 — 지웠거나 앱이 아직 못 읽음" });
+      console.error(`${x.name} — 카드를 찾지 못했다(지웠거나 앱이 아직 못 읽음). 놓지 못했다 — 앱을 확인한 뒤 같은 명령을 다시 실행할 것`);
+      process.exitCode = 1;
+      continue;
+    }
+    if (!cards.every((c) => DONE.has(c.status) || c.status === "missing")) continue;
+    // 받지 못한 영상이 있으면 '끝'으로 적지 않는다 — 다시 실행하면 이어 받는다(예전엔 "놓았다"고 말하고 파일이 없었다)
+    if (!NOT_PLACED.has(x.id)) ledgerSet(x.rid, outcome(j) === "다시" ? null : { state: "끝" });
+    failedCards += cards.filter((c) => c.status === "failed" && !CANCELLED.test(String(c.error || ""))).length;   // 사람이 취소한 것은 실패가 아니다
+    if (x.rsv && j.http === 200 && cards.length) await x.rsv.settle(cards.filter((c) => c.status === "succeeded").length);
+  }
+  if (NOT_PLACED.size || failedCards) {
+    if (NOT_PLACED.size) console.error(`받지 못한 영상이 있다 — 앱이 다 받은 뒤 같은 명령을 다시 실행하면 이어 받는다(새로 만들지 않는다)`);
+    if (failedCards) console.error(`실패한 카드 ${failedCards}개 — 위 '카드' 줄의 이유를 볼 것`);
+    process.exitCode = 1;
   }
 }
 
+// 그 요청의 지금 상태 — 앱을 다시 켜 작업함에서 사라졌어도 카드는 남아 있으니, 기록해 둔 카드 id 로 읽는다
+async function jobView(x, manual) {
+  const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
+  if (j.http === 200 || !x.cards?.length) return j;
+  const messages = [];
+  for (const id of x.cards) {
+    // 정말 없는 카드만 missing — 앱이 막 켜져 명령을 못 받는 순간(503)은 끝나지 않은 것으로 둔다(놓지도 않고 '끝'으로 적을 뻔했다)
+    try { messages.push(await sendCommand(manual, "card.get", { id })); }
+    catch (e) { if (e instanceof Stop && e.quiet) throw e; messages.push({ id, status: /카드를 찾지 못했습니다/.test(String(e.message)) ? "missing" : "unknown" }); }
+  }
+  return { http: 200, name: x.name, status: messages.every((c) => DONE.has(c.status) || c.status === "missing") ? "done" : "sent", messages };
+}
+// 받지 못한 영상이 있는 요청 — '끝'으로 적지 않는다(다시 실행하면 이어 받는다)
+const NOT_PLACED = new Set();
 // 끝난 카드를 받아(card.download — 앱이 다운로드 폴더에 저장한다) 작업 폴더로 옮긴다: <작업 이름>_A.mp4, _B … 같은 이름이 있으면 _2.
 // 어느 카드가 어느 파일인지는 그 폴더의 _목록.tsv 에 남긴다(프롬프트 북·검수 페이지가 읽는다).
 const safeName = (s) => String(s || "job").replace(/[\\/:*?"<>|]+/g, "_").trim();
@@ -1397,16 +1554,16 @@ async function saveResults(sent, manual) {
   // 끊긴 뒤 이어서 받을 때 이미 받은 카드는 건너뛴다(목록의 세 번째 칸이 카드)
   const have = new Set((fs.existsSync(list) ? fs.readFileSync(list, "utf8") : "").split(/\r?\n/).map((l) => l.split("\t")[2]).filter(Boolean));
   for (const x of sent) {
-    const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
+    const j = await jobView(x, manual);
     const done = (j.messages || []).filter((c) => c.status === "succeeded");
     for (const [k, c] of done.entries()) {
       if (have.has(c.id)) continue;
       have.add(c.id);
       let r;
       try { r = await sendCommand(manual, "card.download", { id: c.id }); }
-      catch (e) { log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
+      catch (e) { NOT_PLACED.add(x.id); log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
       const src = r?.path || r?.file || r?.saved;
-      if (!src || !fs.existsSync(src)) { log(`  못 받음 ${x.name} · 카드 ${c.id} — 앱이 저장 경로를 안 줬다`); continue; }
+      if (!src || !fs.existsSync(src)) { NOT_PLACED.add(x.id); log(`  못 받음 ${x.name} · 카드 ${c.id} — 앱이 저장 경로를 안 줬다(큰 파일이면 아직 받는 중일 수 있다)`); continue; }
       const take = String.fromCharCode(65 + k);
       const ext = path.extname(src) || ".mp4";
       let dest = path.join(SAVE_TO, `${safeName(x.name)}_${take}${ext}`);
@@ -1417,11 +1574,11 @@ async function saveResults(sent, manual) {
     }
   }
   if (rows.length) fs.appendFileSync(list, `${fs.existsSync(list) ? "" : "작업\t테이크\t카드\ttask\t파일\n"}${rows.join("\n")}\n`);
-  log(rows.length ? `영상 ${rows.length}개를 ${SAVE_TO} 로 옮겼다(다운로드 폴더에는 안 남김) · 목록 _목록.tsv` : "옮긴 영상 없음 — 끝난 카드가 없거나 받지 못했다");
+  log(rows.length ? `영상 ${rows.length}개를 ${SAVE_TO} 로 옮겼다 · 목록 _목록.tsv` : "옮긴 영상 없음 — 끝난 카드가 없거나 받지 못했다");
 }
 
 // 작업 폴더 — 끝난 카드를 받아(card.download) 씬·컷 폴더에 이름 규칙대로 옮긴다: <코드>_S010_C0010_V001_480.mov
-// (꼬리는 해상도 — 초안 480 · 본편 1080). 다운로드 폴더에는 남기지 않는다. 어느 카드가 어느 파일인지는 _검수/목록.tsv 에.
+// (꼬리는 해상도 — 초안 480 · 본편 1080). 어느 카드가 어느 파일인지는 _검수/목록.tsv 에.
 // 검수를 쓰는 작업은 받지 않는다 — 이름만 정해 목록에 "대기"로 적고, 검수 페이지가 앱 주소로 보여 준 뒤 OK·보류만 받는다
 // (앱이 그 영상을 못 내주거나 회사 보관소가 없는 앱이면 예전처럼 받는다).
 const resTail = (st) => (st?.draft ? "_480" : /^(\d+)p$/i.test(String(st?.resolution || "")) ? `_${String(st.resolution).replace(/p$/i, "")}` : st?.resolution ? `_${st.resolution}` : "");
@@ -1433,7 +1590,7 @@ async function placeResults(sent, spec, work) {
   for (const x of sent) {
     const pl = placeOf(spec, x.j, work);   // 보내기 전에 확인했다
     const dir = path.join(work, pl.rel);
-    const j = await get(`/api/agent/jobs/${encodeURIComponent(x.id)}`);
+    const j = await jobView(x, spec.manual);
     const done = (j.messages || []).filter((c) => c.status === "succeeded");
     for (const [k, c] of done.entries()) {
       if (have.has(c.id)) continue;
@@ -1454,9 +1611,9 @@ async function placeResults(sent, spec, work) {
       fs.mkdirSync(dir, { recursive: true });   // 씬 · 컷 폴더 — 있으면 그대로
       let r;
       try { r = await sendCommand(spec.manual, "card.download", { id: c.id }); }
-      catch (e) { log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
+      catch (e) { have.delete(c.id); NOT_PLACED.add(x.id); log(`  못 받음 ${x.name} · 카드 ${c.id} — ${e.message}`); continue; }
       const src = r?.path || r?.file || r?.saved;
-      if (!src || !fs.existsSync(src)) { log(`  못 받음 ${x.name} · 카드 ${c.id} — 앱이 저장 경로를 안 줬다`); continue; }
+      if (!src || !fs.existsSync(src)) { have.delete(c.id); NOT_PLACED.add(x.id); log(`  못 받음 ${x.name} · 카드 ${c.id} — 앱이 저장 경로를 안 줬다(큰 파일이면 아직 받는 중일 수 있다)`); continue; }
       const name = placeName(work, pl, "V", path.extname(src) || ".mov", x.name, tail);
       const dest = path.join(dir, name);
       try { fs.renameSync(src, dest); } catch { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); }
@@ -1467,7 +1624,7 @@ async function placeResults(sent, spec, work) {
   appendWorkList(work, rows);
   if (held) log(`영상 ${held}개는 받지 않았다 — 검수 페이지가 앱 주소로 보여 주고, 저장할 때 OK·보류만 그 자리로 받는다(탈락은 받지 않는다) · 목록 _검수/목록.tsv\n` +
     `  에이전트가 볼 접촉 시트: node make-review.mjs "${work}" --sheets`);
-  if (rows.length) log(`영상 ${rows.length}개를 작업 폴더에 놓았다(다운로드 폴더에는 안 남김) · 목록 _검수/목록.tsv — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`);
+  if (rows.length) log(`영상 ${rows.length}개를 작업 폴더에 놓았다 · 목록 _검수/목록.tsv — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`);
   if (!held && !rows.length) log("놓은 영상 없음 — 끝난 카드가 없거나 받지 못했다");
 }
 
@@ -1484,6 +1641,10 @@ async function saveFinal([draft, cardId]) {
   if (!fs.existsSync(draftPath) && !listedWork) fail(`초안 파일이 없다: ${draftPath}`);
   const manual = rememberedManual();
   if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual");
+  // 받기 전에 먼저 본다 — 받은 뒤 멈추면 다운로드 폴더에 파일이 남는다
+  const before = path.join(path.basename(path.dirname(draftPath)) === "보류" ? path.dirname(path.dirname(draftPath)) : path.dirname(draftPath),
+    `${path.basename(draftPath, path.extname(draftPath)).replace(/_480$/, "")}_1080${path.extname(draftPath)}`);
+  if (fs.existsSync(before)) fail(`이미 있다: ${before} — 덮어쓰지 않는다`);
   const r = await sendCommand(manual, "card.download", { id: cardId });
   const src = r?.path || r?.file || r?.saved;
   if (!src || !fs.existsSync(src)) fail(`본편 카드 ${cardId} 를 못 받음 — 아직 안 끝났거나 앱이 저장 경로를 안 줬다`);
@@ -1505,10 +1666,10 @@ async function saveFinal([draft, cardId]) {
     appendWorkList(work, [{ ...prev, 폴더: path.relative(work, dir).split(path.sep).join("/"), 파일: name, 카드: cardId, task: "", 해상도: "1080",
       "받은 시각": new Date().toISOString(), 받기: "" }]);
   }
-  log(`본편을 받아 ${dest} 로 옮겼다(다운로드 폴더에는 안 남김)`);
+  log(`본편을 받아 ${dest} 로 옮겼다`);
 }
 
 main().catch((e) => {
-  if (!(e instanceof Stop && e.quiet)) console.error(`멈춤: ${e.message}`);
+  if (!(e instanceof Stop && e.quiet)) console.error(`멈춤: ${whyStop(e)}`);
   process.exitCode = 1;
 });
