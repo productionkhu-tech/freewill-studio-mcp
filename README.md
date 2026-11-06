@@ -69,10 +69,10 @@ Claude·구글 계정 하나를 여러 사람이 같이 써도 PC 마다 따로 
 정하면 그 계정으로 보낸 모든 PC 의 합계도 막는다 — 모두 배포 없이 바로 적용.
 앱에서 사람이 직접 만든 것은 여기 없고 각 앱의 집계에 있다.
 
-> **플러그인에는 커넥터가 들어 있다**(2026-10-08~). Codex·Claude Code 는 플러그인 하나만 설치하면 되고, 커넥터를 따로 추가해 둔 게 있으면 지운다(같은 이름 freewill 이 둘이 된다). claude.ai 웹·데스크톱 채팅은 위 커스텀 커넥터로.
+> **Claude 는 커넥터만 쓴다** — 위 표대로 설정 → 커넥터에서 붙이고 플러그인은 설치하지 않는다(같이 깔면 같은 도구가 두 번 잡힌다. 이미 깔았으면 지운다). **Codex 는 플러그인 안에 커넥터가 들어 있어** 플러그인 하나만 설치하면 된다.
 > 보내기는 커넥터 로그인 뒤 `freewill_script` 로 받은 스크립트로만 된다 — 플러그인 폴더에 깔린 사본은 커넥터를 거치지 않아 보내지 못한다.
 
-## 플러그인으로 설치 (Codex·Claude Code — 커넥터 포함)
+## 플러그인으로 설치 (Codex — 커넥터 포함)
 
 공개 저장소라 GitHub 계정은 필요 없다. 마켓플레이스 주소는 어디서든 이것 하나:
 
@@ -81,35 +81,6 @@ https://github.com/productionkhu-tech/freewill-studio-mcp.git
 ```
 
 > 주소는 꼭 `https://…git` 전체로. `productionkhu-tech/freewill-studio-mcp` 처럼 줄여 쓰면 SSH 로 받으려다 실패하는 경우가 있다.
-> 플러그인은 마켓플레이스마다 **자동 업데이트를 한 번 켜야** 계속 최신을 받는다 (주소로 추가한 목록은 기본이 꺼짐).
-
-### Claude 에서 불러오기
-
-1. Claude 앱 → **Customize(사용자 지정) → Plugins → Add → Add marketplace**
-2. 위 주소를 붙여넣는다
-3. 목록에 뜬 **freewill-studio** 를 설치한다
-
-Code 탭 대화창의 `/plugin` 명령은 데스크톱 앱에서는 안 된다 (터미널 Claude Code 전용).
-
-<details>
-<summary>위 메뉴가 안 보이거나 Code 탭에 바로 넣고 싶을 때 (PowerShell)</summary>
-
-통째로 붙여넣는다. 플러그인을 설치하고 자동 업데이트까지 켠다 (설정 파일의 기존 내용은 그대로 두고 한 칸만 넣는다).
-
-```powershell
-$c = (Get-ChildItem "$env:APPDATA\Claude\claude-code" -Recurse -Filter claude.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-& $c plugin marketplace add https://github.com/productionkhu-tech/freewill-studio-mcp.git
-& $c plugin install freewill-studio@freewill
-$cfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $env:USERPROFILE ".claude" }
-$s = Join-Path $cfg "settings.json"
-$j = [IO.File]::ReadAllText($s) | ConvertFrom-Json
-$j.extraKnownMarketplaces.freewill | Add-Member -NotePropertyName autoUpdate -NotePropertyValue $true -Force
-[IO.File]::WriteAllText($s, ($j | ConvertTo-Json -Depth 32), (New-Object Text.UTF8Encoding $false))
-```
-
-터미널 Claude Code: `/plugin marketplace add <주소>` → `/plugin install freewill-studio@freewill`,
-자동 업데이트는 `/plugin` → Marketplaces → `freewill` → Enable auto-update.
-</details>
 
 ### GPT 에서 불러오기 (Codex 앱 · ChatGPT 데스크톱)
 
