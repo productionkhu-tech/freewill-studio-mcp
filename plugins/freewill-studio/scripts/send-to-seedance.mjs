@@ -5,8 +5,8 @@
 // (26.10.2002~ 작성 칸을 건드리지 않고 입력 중 · 생성 중 · 갤러리 화면에서도 받는다). 그래서 앱에
 // 생성 중 카드가 뜨고, 권한 검사·크레딧 집계·영상 보관이 평소대로 된다. 레퍼런스 검사도 드래그와 같다.
 //
-// 앱에서 가져오는 건 과금(프로젝트 코드)뿐이다(사용자 11/6 "앱설정은 과금만 따르는 거임"). 앱은 안 적은 칸을 그 프로젝트의 지금 설정으로
-// 채우므로, 카드에 보이는 값을 전부 jobs.json 에 적게 하고 비어 있으면 보내지 않는다(아래 settingProblems).
+// 앱에서 가져오는 건 과금(프로젝트 코드)뿐이다(사용자 11/6 "앱설정은 과금만 따르는 거임"). 안 적은 칸은 앱이 채운다 — 26.11.601~ 는 모델 기본값, 그 전 앱은
+// 그 프로젝트의 지금 설정. 어느 쪽이든 카드와 달라질 수 있어, 카드에 보이는 값을 전부 jobs.json 에 적게 하고 비어 있으면 보내지 않는다(아래 settingProblems).
 //
 // 무엇을 보낼 수 있는지는 앱이 직접 낸 **사용 설명서**가 정답이다(--manual). 앱이 업데이트되면 설명서도 바뀌고,
 // 예전 설명서 버전으로 보내면 앱이 "업데이트됐으니 다시 읽어" 로 돌려보낸다 — 이 스크립트는 그때 새 설명서를
@@ -836,6 +836,7 @@ async function waitTaken(id) {
     if (!hinted && Date.now() - started > 8000) {
       const s = await appStatus();
       const why = !s.screenAlive ? "앱 화면이 응답하지 않음(창이 닫혔거나 멈춤)"
+        : s.billingReady === false ? "앱이 프로젝트 코드 목록(시트)을 아직 못 받았다. 앱의 인터넷 · 시트 연결을 사용자에게 확인해 달라고 할 것"
         : s.composer === false ? "앱이 갤러리 화면(채팅 화면으로 돌아오면 받음)"
         : s.generating ? "앱이 다른 생성을 보내는 중"
         : "앱이 앞 요청을 보내는 중이거나 프로젝트 코드 목록을 받는 중";
@@ -912,11 +913,14 @@ async function main() {
     if (!name) fail("--do 뒤에 명령 이름을 주세요 (설명서의 '명령' 목록)");
     let cargs = {};
     if (raw) { try { cargs = readJsonArg(raw); } catch (e) { fail(`인자 JSON 을 못 읽음 — ${e.message}`); } }
+    // "billing" 은 확인 카드에 보여 준 코드 — 앱에 보내지 않고 대조만 한다(키에도 안 넣는다 — 전에 보낸 기록과 맞아야 또 안 나간다)
+    const askedBilling = cargs?.billing;
+    if (cargs && typeof cargs === "object") delete cargs.billing;
     // 과금되는 명령도 하루 한도를 지킨다(card.final · card.regenerate 는 한 번에 1편). 앞에 돌고 있는 영상 수는 세지 않으니,
     // 여러 카드를 본편으로 올릴 때는 3개씩 보내고 끝나는 걸 본 뒤 다음 3개(지침 7단계).
-    // card.final 의 실제 과금은 초안을 만든 코드다(card.regenerate 는 앱의 지금 코드) — 앱이 카드에 코드를 안 내주어 기록은 지금 코드로 남는다
+    // card.final 의 실제 과금은 초안을 만든 코드다(card.regenerate 는 앱의 지금 코드, 실패한 본편을 다시 만들면 초안의 코드)
     const need = COSTLY[name] || 0;
-    let rsv = null, rid = "";
+    let rsv = null, rid = "", code = "";
     if (need) {
       const manual = rememberedManual();
       if (!manual) fail("설명서를 먼저 읽을 것 — node send-to-seedance.mjs --manual (그때 버전을 기억해 둔다)");
@@ -930,20 +934,33 @@ async function main() {
       }
       await quota(need, name);
       const s = await appStatus(manual);
-      rsv = await reserve(need, { kind: name, project: s.project, billing: s.billing, job: String(cargs?.id || "") });
-      try { rid = ledgerAdd({ key, name, project: s.project, state: "보내는 중" }); } catch (err) { await rsv.settle(0); throw err; }
+      // 실제 과금 코드 — 본편은 초안을 만든 코드로 나간다(앱의 지금 코드가 아닐 수 있다). 앱이 카드에 코드를 내주면(26.11.601~) 그것으로 카드 대조 · 사용 기록을 맞춘다
+      let card = null;
+      try { card = await sendCommand(manual, "card.get", { id: cargs?.id }); } catch (e) { if (e instanceof Stop && e.quiet) throw e; }
+      const fromDraft = name === "card.final" || (name === "card.regenerate" && card?.finalOf && card?.status === "failed");
+      code = card && "billing" in card && fromDraft && card.billing?.name ? card.billing.name : s.billing;
+      if (card && "billing" in card) {
+        const other = code !== s.billing ? `(초안을 만든 코드 — 앱에 지금 골라 둔 코드 "${s.billing}" 와 다르다)` : "";
+        if (!askedBilling) fail(`${name} 은 과금 코드 "${code}" 로 나간다${other}. 보내지 않았다 — 확인 카드에 이 코드를 보여 주고 인자에 "billing": "${code}" 를 적어 다시 실행할 것`);
+        if (askedBilling !== code) fail(`${name} 의 과금 코드는 "${code}"${other} — 확인 카드의 "${askedBilling}" 와 다르다. 보내지 않았다 — 사용자에게 어느 쪽이 맞는지 묻고 카드를 다시`);
+      }
+      const where = card?.project ?? s.project;
+      rsv = await reserve(need, { kind: name, project: where, billing: code, job: String(cargs?.id || "") });
+      try { rid = ledgerAdd({ key, name, project: where, state: "보내는 중" }); } catch (err) { await rsv.settle(0); throw err; }
     }
     let result;
     try {
       result = await runCommand(name, cargs);
     } catch (e) {
-      if (rsv) await rsv.settle(0);
-      // 앱이 받았다가 끊긴 것(응답 없음 · 앱 재시작)은 '모름'으로 남겨 다시 보내지 않게, 앱이 거절한 것은 빼서 다시 보낼 수 있게
-      if (rid) ledgerSet(rid, e instanceof Stop && !UNSURE.test(e.message) ? null : { state: "모름", note: String(e.message).slice(0, 200) });
+      // 앱이 받았다가 끊긴 것(응답 없음 · 앱 재시작)은 '모름'으로 남겨 다시 보내지 않게 · 사용 기록도 무르지 않는다(만들어졌을 수 있다). 앱이 거절한 것은 빼서 다시 보낼 수 있게
+      const refused = e instanceof Stop && !UNSURE.test(e.message);
+      if (rsv && refused) await rsv.settle(0);
+      if (rid) ledgerSet(rid, refused ? null : { state: "모름", note: String(e.message).slice(0, 200) });
       throw e;
     }
     if (rid) ledgerSet(rid, { state: "보냄" });
     if (rsv) await rsv.settle(Array.isArray(result?.cards) ? result.cards.length : 1);
+    if (rsv && result?.billing?.name && result.billing.name !== code) log(`  확인할 것: 실제 과금 코드가 "${result.billing.name}" 다 — 사용 기록은 "${code}" 로 남았다`);
     log(JSON.stringify(result, null, 2));
     return;
   }
@@ -1065,6 +1082,7 @@ async function main() {
     `${anyProject && project !== s.project ? ` — 열린 프로젝트("${s.project || "없음"}")는 그대로 둔다` : ""}`);
   if (Array.isArray(allowedModels)) log(`  이 프로젝트 코드로 쓸 수 있는 모델: ${allowedModels.join(", ") || "(없음)"}${fourK ? " · 4K 가능" : ""}`);
   if (!anyProject && s.composer === false) log("  참고: 앱이 갤러리 화면이다 — 채팅 화면으로 돌아와야 받는다");
+  if (s.billingReady === false) log("  참고: 앱이 프로젝트 코드 목록(시트)을 아직 못 받아 요청을 가져가지 못한다 — 앱의 인터넷 · 시트 연결을 확인할 것(10분 안에 못 받으면 취소된다)");
   if (s.pending) log(`  참고: 앱이 아직 받지 않은 요청이 ${s.pending}건 있다`);
 
   // 설정 키는 설명서에서 읽는다 — 앱에 새 설정이 생기면 그대로 넘어간다.
@@ -1125,7 +1143,7 @@ async function main() {
     if (m.draft) need("draft", "초안이면 true, 본편이면 false");
     else if (st.draft === true) out.push(`${st.model} 은 초안(draft)이 없다 — draft 를 빼고 resolution 을 적을 것`);
     if (st.draft !== true) { need("resolution"); allowed("resolution", m.resolutions); }
-    if (st.draft !== true && String(st.resolution) === "4k" && m.fourKNeedsGrant && fourK === false) out.push("이 프로젝트 코드에 4K 권한이 없다 — 앱이 조용히 1080p 로 낮춰 보낸다. 해상도를 낮추거나 권한이 있는 코드를 사용자에게 물을 것");
+    if (st.draft !== true && String(st.resolution) === "4k" && m.fourKNeedsGrant && fourK === false) out.push("이 프로젝트 코드에 4K 권한이 없다 — 앱이 거절한다. 해상도를 낮추거나 권한이 있는 코드를 사용자에게 물을 것");
     // Omni 편집은 비율 · 길이, 연장은 비율을 원본에서 가져온다(앱이 지워 보낸다)
     // 비워도 되는 칸이어도 적은 값은 본다 — 앱은 작업 · 모드와 상관없이 검사해 거절한다
     if (!mo?.ratioLocked && !["edit", "extend"].includes(omni ? st.omniTask : "")) need("ratio");
@@ -1471,6 +1489,7 @@ async function main() {
     }
     sent.push({ id: r.id, name: j.name, j, st, rid, rsv, cards: cards.map((c) => c.id) });
     for (const w of res.warnings || []) log(`  앱 경고 ${j.name}: ${w}`);
+    for (const c of cards) if (c.billing?.name && c.billing.name !== billing) log(`  확인할 것: ${j.name} 카드 ${c.id} 의 실제 과금 코드가 "${c.billing.name}" 다 — 확인 카드는 "${billing}"`);
     if (WORKDIR) keepJobs(WORKDIR, file);
     log(`  보냄 ${sent.length}/${toSend.length} ${j.name} — 카드 ${cards.length}개${cards.some((c) => c.status === "failed") ? ` (실패 ${cards.filter((c) => c.status === "failed").length})` : ""} · id ${r.id}` +
       ` · 오늘 ${rsv.used - need + (cards.length || need)}/${rsv.limit}개`);

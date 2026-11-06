@@ -404,7 +404,7 @@ node "<플러그인 폴더>/scripts/send-to-seedance.mjs" --do elements.add @<�
 - 결과 다루기: `cards.list`(최신순 · 상태 · 초안 여부) · `card.get` · `card.star`(채택) · `card.download`(다운로드 폴더에
   저장 — 넘길 파일만, 보려고 받지 않는다) · `card.cancel`(대기 중만).
 - **과금되는 명령(💰 `card.final` 초안 → 1080p 본편, `card.regenerate`)은 생성과 똑같이 확인 카드를 받은 뒤에만.**
-  하루 200개 한도도 생성과 같이 센다. `--do` 는 동시 수를 세지 않으니 여러 카드는 3개씩 보내고 끝난 걸 본 뒤 다음 3개. 본편은 초안을 만든 코드로 과금된다.
+  하루 200개 한도도 생성과 같이 센다. `--do` 는 동시 수를 세지 않으니 3개씩 보내고 끝난 걸 본 뒤 다음 3개. 본편은 초안의 코드로 과금 — 인자에 `"billing"`(스크립트가 알려 줌).
 - `billing.list` 는 과금 프로젝트별 영상 수·토큰·2.5/4K 권한(크레딧 대시보드의 숫자)을 보여 줄 때만 — 고르는 건 사람이 앱에서.
 - `projects.list` · `project.create`(사용자가 "만들어"라고 할 때만, `"open": false` — 화면 안 바뀜)로 사이드바 프로젝트를 다룬다.
   `card.regenerate` 는 늘 1편. 26.10.2002~ 는 보낼 때 `project.open` 이 필요 없다.

@@ -111,6 +111,7 @@ async function seedance() {
       : !agent.project ? "열린 프로젝트 없음"
       : `프로젝트 "${agent.project}" · 과금 ${agent.billing ? `"${agent.billing}"` : "**선택 안 됨 — 앱에서 먼저 고르게 할 것**"}${agent.composer === false ? " · 갤러리 화면" : ""}`;
     out.push(`- 자동 보내기: **가능** (send-to-seedance) — ${where}`);
+    if (agent.billingReady === false) out.push("- 앱이 프로젝트 코드 목록(시트)을 아직 못 받아 요청을 가져가지 못한다 — 앱의 인터넷 · 시트 연결을 확인해 달라고 할 것");
     out.push("- 앱에서 가져오는 건 과금(프로젝트 코드)뿐 — 프로젝트의 지금 설정은 쓰지 않는다. 모델 · 모드 · 초안 · 해상도 · 비율 · 길이 · 개수 · 오디오 · 출력 형식을 jobs.json 에 전부 적는다(비면 보내지 않는다)");
     if (Array.isArray(agent.allowedModels)) out.push(`- 이 과금 프로젝트로 쓸 수 있는 모델: ${agent.allowedModels.join(", ") || "(없음)"}${agent.fourK ? " · 4K 가능" : ""}`);
     if (agent.allowedModels?.length) out.push(`- 계열 SOTA(모델 추천은 이것부터): ${sotaLines(agent.allowedModels).join(" / ")}`);
