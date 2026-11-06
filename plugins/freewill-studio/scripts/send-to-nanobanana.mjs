@@ -100,6 +100,7 @@ const TAB_ONLY = /^(output_dir|fixed_prompt|prompt_sections|naming_\w+|gallery_c
 const BLOCKED = "이 실행 환경이 네트워크를 막고 있다(예: Codex 샌드박스 — network_access 꺼짐). 앱이 켜져 있어도 이렇게 나온다. 네트워크가 허용된 상태(샌드박스 밖, 실행 승인)로 이 명령을 다시 실행할 것";
 const MAX_IN_FLIGHT = 10;   // 앱 전체에서 동시에 진행 중인 이미지
 const GENERATE_MS = 5 * 60 * 1000;   // /api/generate 답을 기다리는 시간
+const SAME_ID_MS = 30 * 60 * 1000;   // 같은 묶음 id 로 묻지 않고 다시 보내도 되는 때 — 앱은 끝난 묶음을 탭당 50개만 기억해, 오래되면 있었던 묶음도 처음 보는 id 가 된다
 
 // 커넥터 — 사용 기록과 하루 한도.
 const FREEWILL = "https://freewill-mcp.production-khu.workers.dev";
@@ -945,7 +946,8 @@ async function main() {
     if (items.length) return "보냄";
     // 이쪽이 만든 id 이고, 앱이 받았다는 답을 못 봤고, 그 사이 앱이 안 꺼졌으면 — 앱이 없다고 한 것이 사실이니 같은 id 로 다시 보내도 두 번 안 만든다.
     // 앱이 받았다고 확인한 줄('보냄')이나 재시작을 건넌 줄은 묻는다: 앱은 재시작 전 묶음을 기억하지 못해 새로 만들고, 그때 돌던 장은 값이 나갔을 수 있다
-    if (e.own && feats.has("caller_batch_id") && ["보내는 중", "모름"].includes(e.state) && e.run === appRun()) return "같은 id";
+    // 오래된 줄도 묻는다 — 앱이 켜진 채로도 묶음 50개가 지나면 집계에서 빠져, 그림 없는 실패 묶음을 새로 만든다
+    if (e.own && feats.has("caller_batch_id") && ["보내는 중", "모름"].includes(e.state) && e.run === appRun() && Date.now() - e.at < SAME_ID_MS) return "같은 id";
     // 묶음 id 까지 받았는데 집계도 그림도 없다 = 앱을 다시 켜 대기 중이던 것이 사라졌을 수 있다(앱은 큐를 되살리지 않는다)
     if (!e.note) e.note = "앱을 다시 켜 사라졌을 수 있다";
     return "모름";
