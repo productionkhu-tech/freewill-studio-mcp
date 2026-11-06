@@ -53,9 +53,9 @@
         "gemini-omni"
       ],
       "version": null,
-      "hash": "b199a222445fc0d27754dfc7caa95b1af8a74982d48dcef7f3d8f24d1891007c",
+      "hash": "a2991071e6830862665246379f8ac984ac49694fb9840e1809875c836065c13c",
       "digest": null,
-      "appliedAt": "2026-10-31",
+      "appliedAt": "2026-11-06",
       "files": [
         "SKILL.md"
       ]
@@ -561,7 +561,7 @@
   },
   "held": {
     "higgsfield": "dc0377a481aff139ec8c0af12c985dd7140dc69dc82f37869cfbd27d9ef59f09",
-    "nano-banana": "ca5b736fa170f5b7faf8a4635d926f51518a92695d0a68355766d3e68f04073b"
+    "nano-banana": "d2ab434be138d2e39de24eef6d1e27b913611d5b939f31565a1b24132510984a"
   },
   "known": {
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [
@@ -662,6 +662,7 @@
         "hint",
         "qualities",
         "refHint",
+        "refLimit",
         "resolutions",
         "showBackground",
         "showQuality"
@@ -669,12 +670,12 @@
     },
     "seedance": {
       "models": [
+        "dreamina-seedance-2-5-260628",
         "dreamina-seedance-2-0-260128",
         "dreamina-seedance-2-0-fast-260128",
         "dreamina-seedance-2-0-mini-260615",
         "gemini-omni-flash-preview",
-        "gemini-omni-1.1-flash",
-        "dreamina-seedance-2-5-260628"
+        "gemini-omni-1.1-flash"
       ],
       "fields": []
     }

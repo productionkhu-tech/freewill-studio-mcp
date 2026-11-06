@@ -2,6 +2,10 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-11-06
+
+- **gemini-omni-flash-api** (Google) #b199a222 → #a2991071 · 파일 2개, +130 −178줄
+
 ## 2026-11-05
 
 - **higgsfield-generate** (Higgsfield) 0.14.0 → 0.14.0 · 파일 3개, +33 −12줄
