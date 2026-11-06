@@ -60,6 +60,7 @@ async function nanobanana() {
   const pinned = js?.match(/SOTA_MODELS\s*=\s*\[([^\]]*)\]/)?.[1].match(/[\w.-]+/g) || [];
   if (settings) {
     const s = settings;
+    for (const t of projects?.waiting_tabs || []) out.push(`- 연결 대기 탭 "${t.name}" — 저장 폴더가 연결되지 않아 아직 안 열렸다. 새로 만들지 말고 사용자에게 드라이브를 물을 것`);
     if (projects?.restoring) out.push("- 앱이 지난 탭을 여는 중 — 위 탭 목록이 아직 덜 왔을 수 있다. 없는 탭으로 단정하지 말고 잠시 뒤 다시 읽을 것");
     out.push("- 아래 '지금 설정'은 사람이 앱 탭에서 쓰는 값 — MCP 요청에는 안 쓰인다. jobs.json 에 비운 칸은 그 모델의 맨 위 · 기본(`send-to-nanobanana --dry-run` 줄에 나온 값이 실제 값)");
     out.push(`- 지금 설정: 모델 \`${s.model}\` · 해상도 ${s.resolution} · 비율 ${s.aspect}` +
@@ -246,7 +247,7 @@ function sotaLines(ids, pinned = []) {
 }
 
 // 사내 문서가 아는 앱 사양 칸 — 여기 없는 칸이 생기면 에이전트에게 알린다
-const KNOWN_SPEC_FIELDS = new Set(["formats", "aspects", "resolutions", "counts", "showQuality", "qualities", "showBackground", "complexities", "defaultAspect", "defaultResolution", "defaultQuality", "defaultComplexity", "hint", "refHint"]);
+const KNOWN_SPEC_FIELDS = new Set(["formats", "refLimit", "aspects", "resolutions", "counts", "showQuality", "qualities", "showBackground", "complexities", "defaultAspect", "defaultResolution", "defaultQuality", "defaultComplexity", "hint", "refHint"]);
 // MODEL_SPECS 에서 모델 이름과 칸 이름만 글로 뽑는다(코드를 실행하지 않는다)
 function parseSpecs(specs) {
   const out = [], head = /"([a-z0-9][\w.-]*)"\s*:\s*\{/g;

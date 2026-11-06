@@ -319,6 +319,7 @@ let sourcesChanged = false;
 // 앱에 새 모델 · 옵션이 들어오면 사람에게 알린다(이슈). 추천(계열 SOTA)과 옵션 전달은 자동이고, 사용 요령만 사람이 사내 문서에 적을 일이다(사용자 11/5).
 const APP_WATCH = [
   { key: "nanobanana", name: "나노바나나", url: "https://raw.githubusercontent.com/productionkhu-tech/freewill-nanobanana/main/static/app.js",
+    known: ["refLimit"],   // 스크립트가 이미 쓰는 칸 — 앱 배포 때 알리지 않는다
     read: (s) => {
       const at = s.indexOf("{", s.indexOf("MODEL_SPECS"));
       const block = s.slice(at, s.indexOf("\n};", at));
@@ -345,7 +346,7 @@ async function watchApps() {
     }
     const prev = lock.apps[app.key];
     const models = prev ? now.models.filter((m) => !prev.models.includes(m)) : [];
-    const fields = prev ? now.fields.filter((f) => !prev.fields.includes(f)) : [];
+    const fields = prev ? now.fields.filter((f) => !prev.fields.includes(f) && !(app.known || []).includes(f)) : [];
     if (models.length || fields.length) {
       attention.push(`- 🆕 **${app.name} 앱**에 새로 들어옴${models.length ? ` — 모델 ${models.join(", ")}` : ""}${fields.length ? ` — 옵션 칸 ${fields.join(", ")}` : ""}\n` +
         "  → 추천(계열 SOTA)과 옵션 전달은 자동으로 따라간다. 사용 요령 · 비용 차이가 있으면 `references/image-prompting.md` 에 적고, SOTA 표가 맞게 골랐는지 · `read-local-apps.mjs` 의 `KNOWN_SPEC_FIELDS` 를 볼 것");
