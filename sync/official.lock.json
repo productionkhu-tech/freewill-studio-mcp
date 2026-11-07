@@ -176,10 +176,10 @@
         "gpt-image"
       ],
       "version": null,
-      "hash": "97f39da0ab2fc63ed110c6a0d1e5f5afd1233ae877c73b6bab6dd0e30d893d5a",
+      "hash": "f2359f661f17945095bd36465b189af2d43f9e7ef23bd7e25a0f9aa88fe475de",
       "digest": null,
-      "appliedAt": "2026-11-05",
-      "chars": 76452,
+      "appliedAt": "2026-11-07",
+      "chars": 76411,
       "files": []
     },
     "higgsfield-seedance-2-5": {
