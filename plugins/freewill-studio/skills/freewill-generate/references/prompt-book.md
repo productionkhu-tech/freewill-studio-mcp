@@ -36,7 +36,7 @@ freewill_ask(message   = "컷 11개 · 채택 14 · 본편 11 — 프롬프트·
    node make-prompt-book.mjs <book.json> --out "<사용자가 고른 경로>.html"
    ```
 - **'OK 한 것만' 작업**(`make-review --book on`)은 book.json 을 손으로 쓰지 않는다. 검수 도구가 저장마다
-  `_검수\북.json` 을 쓰니(검수를 안 쓰면 결과를 받은 뒤 `make-review "<작업 폴더>"` 를 먼저), 저장 뒤마다 묻지 않고 `node make-prompt-book.mjs --work "<작업 폴더>"` 만 돌린다(→ `05_프롬프트\<작업 이름> 프롬프트 북.html`).
+  `05_prompts\review\북.json` 을 쓰니(검수를 안 쓰면 결과를 받은 뒤 `make-review "<작업 폴더>"` 를 먼저), 저장 뒤마다 묻지 않고 `node make-prompt-book.mjs --work "<작업 폴더>"` 만 돌린다(→ `05_prompts\<작업 이름> 프롬프트 북.html`).
 
 4. 출력 줄(저장 경로 · 컷 수 · 복사한 파일 · 없는 파일)을 확인하고 사용자에게 경로를 알려 준다. "없는 파일" 이 나오면 무엇이
    빠졌는지 말한다. 열어 달라고 하면 그때 연다.

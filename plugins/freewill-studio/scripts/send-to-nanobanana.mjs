@@ -51,11 +51,11 @@
 //     "tab": "보낼 탭 이름 — 사용자가 이 작업용으로 만들어 둔 탭(팀·프로젝트가 골라져 있어야 한다). 탭이 둘 이상이면 꼭 적는다(비우면 멈춘다).
 //             과금은 탭에 달려 있어 한 파일은 한 탭 — 프로젝트(탭)가 여럿이면 탭마다 파일 하나(작업 줄에 tab · billing 을 적으면 멈춘다)",
 //     "billing": "확인 카드에 보여 준 과금 — dry-run 의 '과금 TA팀 · [26P47]…' 이름 그대로(팀까지). 보낼 때 꼭 적는다. 그 탭 과금과 다르거나 보내는 도중 바뀌면 멈춘다",
-//     "work": "작업 폴더(사용자가 알려 준 프로젝트 폴더) — dry-run 이 <작업 폴더>/_검수/보낼것.json 에 레퍼런스를 남겨 작업 페이지의
-//              '보낼 것'에 그림으로 뜨고, 끝나면 결과를 씬·컷 폴더에 놓는다(지켜보기를 켜지 않아도 기다렸다 놓는다)",
-//     "code": "프로젝트 코드(예: ABC) — 파일 이름 맨 앞. 한 번 적으면 _작업설정.json 에 남는다",
-//     작업마다 "scene": "S010", "cut": "C0010" → <작업>\S010\C0010\ABC_S010_C0010_I001.png (번호는 그 컷에서 이어서)
-//              또는 "asset": "인물|로케이션|프랍|참고" → <작업>\01_에셋\인물\<작업 이름>_A.png
+//     "work": "작업 폴더(사용자가 알려 준 프로젝트 폴더) — dry-run 이 <작업 폴더>/05_prompts/review/보낼것.json(예전 틀은 _검수) 에 레퍼런스를 남겨
+//              작업 페이지의 '보낼 것'에 그림으로 뜨고, 끝나면 결과를 씬 · 컷 폴더에 놓는다(지켜보기를 켜지 않아도 기다렸다 놓는다)",
+//     "code": "프로젝트 코드(예: ABC) — 파일 이름 맨 앞. 한 번 적으면 작업 설정(05_prompts/review/settings.json)에 남는다",
+//     작업마다 "scene": "S010", "cut": "C0010" → <작업>\02_images\S010\C0010\ABC_S010_C0010_I001.png (번호는 그 컷에서 이어서)
+//              또는 "asset": "character|location|prop|reference"(인물 · 로케이션 · 프랍 · 참고도 됨) → <작업>\01_assets\character\<작업 이름>_A.png
 //              "version": "A"(A/B안 — 목록에 남김), "covers": "C0010~C0040"(한 장이 여러 컷을 덮으면)
 //     "defaults": { "model": "gpt-image-2.6-sunburst", "resolution": "4K", "aspect": "16:9",
 //                   "quality": "max", "count": 1 },
@@ -416,14 +416,14 @@ async function setRefs(paths) {
 }
 
 // 작업 페이지(make-review)의 '보낼 것' — 보내기 전에 레퍼런스를 그림으로 본다(사용자 10/20 "돌리기 전에 어떤 레퍼런스 쓸 건지 시각적으로").
-// jobs.json 에 "work"(작업 폴더)가 있을 때만. 보낸 뒤에는 '보냄'으로 바꾸고, 보낸 jobs.json 을 그 작업 폴더의 05_프롬프트 에 남긴다.
-// 보낸 jobs.json 원문을 작업 폴더 05_프롬프트 에 남긴다 — 프롬프트 북 · 작업 페이지가 결과를 만든 프롬프트를 여기서 찾는다(목록의 판 지문).
+// jobs.json 에 "work"(작업 폴더)가 있을 때만. 보낸 뒤에는 '보냄'으로 바꾸고, 보낸 jobs.json 을 그 작업 폴더의 05_prompts 에 남긴다.
+// 보낸 jobs.json 원문을 작업 폴더 05_prompts(예전 틀 05_프롬프트) 에 남긴다 — 프롬프트 북 · 작업 페이지가 결과를 만든 프롬프트를 여기서 찾는다(목록의 판 지문).
 // 읽을 때 잡아 둔 원문 그대로(보내는 사이 파일을 고쳐도), 같은 원문이 이미 있으면 두지 않고, 이름이 겹치면 시각을 붙인다.
-// jobs 파일이 05_프롬프트 안에 있어도 따로 남긴다 — 제자리에서 고쳐 다시 보내면 앞 판이 사라지므로(11/2 검수). 작업마다 넣은 뒤 · 이어 받을 때 부른다
+// jobs 파일이 05_prompts 안에 있어도 따로 남긴다 — 제자리에서 고쳐 다시 보내면 앞 판이 사라지므로(11/2 검수). 작업마다 넣은 뒤 · 이어 받을 때 부른다
 let JOBS_TEXT = "";
 function keepJobs(work, jobsFile) {
   try {
-    const pd = path.join(work, "05_프롬프트");
+    const pd = layoutOf(work).prompts;
     fs.mkdirSync(pd, { recursive: true });
     const self = path.resolve(jobsFile);
     // 같은 원문 찾기 — 못 읽는 것(폴더 · 잠긴 파일)은 건너뛴다
@@ -433,26 +433,59 @@ function keepJobs(work, jobsFile) {
     let to = path.join(pd, `${stem}.json`);
     for (let n = 1; fs.existsSync(to); n++) to = path.join(pd, `${stem}_${stamp}${n > 1 ? `_${n}` : ""}.json`);
     fs.writeFileSync(to, JOBS_TEXT);
-  } catch (e) { log(`  참고: 보낸 jobs.json 을 05_프롬프트 에 못 남김 — ${e.message}`); }
+  } catch (e) { log(`  참고: 보낸 jobs.json 을 프롬프트 폴더(${path.basename(layoutOf(work).prompts)})에 못 남김 — ${e.message}`); }
 }
 function writePlan(spec, plan, { sent = false, jobsFile = "" } = {}) {
   if (!spec.work) return;
   const work = path.resolve(String(spec.work));
   if (!fs.existsSync(work)) { log(`  참고: 작업 폴더가 없다(${work}) — 보낼 것을 남기지 않았다`); return; }
   try {
-    const dir = path.join(work, "_검수");
+    const dir = layoutOf(work).review;
     fs.mkdirSync(dir, { recursive: true });
     const now = new Date().toISOString();
     fs.writeFileSync(path.join(dir, "보낼것.json"), JSON.stringify({ ...plan, at: now, sent, ...(sent ? { sentAt: now } : {}) }, null, 1));
     if (sent && jobsFile) keepJobs(work, jobsFile);
-    log(`  작업 페이지 '보낼 것'${sent ? "을 보냄으로 바꿨다(jobs.json 은 05_프롬프트 에)" : "에 레퍼런스를 올렸다 — 페이지에서 그림으로 보여 준 뒤 확인 카드로"}: ${path.join(dir, "보낼것.json")}`);
+    log(`  작업 페이지 '보낼 것'${sent ? `을 보냄으로 바꿨다(jobs.json 은 ${path.basename(layoutOf(work).prompts)} 에)` : "에 레퍼런스를 올렸다 — 페이지에서 그림으로 보여 준 뒤 확인 카드로"}: ${path.join(dir, "보낼것.json")}`);
   } catch (e) { log(`  참고: 보낼 것을 못 남김 — ${e.message}`); }
 }
 
-// ---------- 작업 폴더에 놓기 (사용자 10/21 "씬 폴더 → 컷 폴더, OK 는 컷 폴더 바로 아래, 보류는 보류 폴더, 탈락은 버림") ----------
-// 씬·컷: <작업>\S010\C0010\<코드>_S010_C0010_I001.png — 그 컷에서 번호를 이어 붙인다(다시 만든 것 · A/B안도 이어서, 어느 안인지는 목록에).
-// 에셋: <작업>\01_에셋\<인물|로케이션|프랍|참고>\<작업 이름>_A.png. 검수 뒤 OK 는 그 자리, 보류는 그 안 보류\, 탈락은 지운다(앱 원본은 앱에 남는다).
-// 어느 파일이 어디서 왔는지는 <작업>\_검수\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다.
+// ---------- 작업 폴더 틀 (사용자 11/9 "폴더는 웬만하면 영어로 — 01 에셋 · 02 이미지 · 03 초안 비디오 · 04 본편 비디오 ·
+// 05 프롬프트 북 및 검수 서버 파일, 이미지 · 영상은 씬별 폴더로 나눠 필요 없는 걸 지우기 쉽게, 씬 · 컷 번호는 잘 붙이고" ·
+// "씬 안엔 컷 폴더도 있어야지") ----------
+// 새 틀: 01_assets/<character|location|prop|reference> · 02_images/S010/C0010 · 03_video_draft/S010/C0010(480) · 04_video_final/S010/C0010(그 밖의 해상도 ·
+//        본편) · 05_prompts(보낸 jobs.json · 프롬프트 북) · 05_prompts/review(목록 · 회차 · 작업 설정 — 사람이 열 일 없음). 보류는 그 폴더 안 hold/.
+//        파일 이름은 그대로 <코드>_S010_C0010_I001.
+// 예전 틀(11/8 까지 만든 작업 — _검수 · _작업설정.json · 01_에셋 · 05_프롬프트 · _컷목록.tsv 중 하나라도 있으면): S010/C0010 · 01_에셋/인물 ·
+//        05_프롬프트 · _검수 · 보류/ — 하던 작업은 그 틀 그대로 이어 간다(폴더를 옮기지 않는다). 세 스크립트(보내기 둘 · make-review)와
+//        make-prompt-book 이 같은 표를 쓴다.
+const ASSET_EN = { 인물: "character", 로케이션: "location", 프랍: "prop", 참고: "reference" };
+const ASSET_KO = Object.fromEntries(Object.entries(ASSET_EN).map(([k, v]) => [v, k]));
+const OLD_MARKS = ["_검수", "_작업설정.json", "01_에셋", "05_프롬프트", "_컷목록.tsv"];
+const KIND_DIR = { I: "02_images", draft: "03_video_draft", final: "04_video_final" };
+function layoutOf(work) {
+  const old = OLD_MARKS.some((m) => fs.existsSync(path.join(work, m)));
+  return old
+    ? { old, review: path.join(work, "_검수"), settings: path.join(work, "_작업설정.json"), prompts: path.join(work, "05_프롬프트"), hold: "보류",
+        asset: (k) => `01_에셋/${ASSET_KO[k] || k}`, scene: (kind, s, c) => `${s}/${c}` }
+    : { old, review: path.join(work, "05_prompts", "review"), settings: path.join(work, "05_prompts", "review", "settings.json"),
+        prompts: path.join(work, "05_prompts"), hold: "hold", asset: (k) => `01_assets/${ASSET_EN[k] || k}`, scene: (kind, s, c) => `${KIND_DIR[kind]}/${s}/${c}` };
+}
+// 파일 자리에서 위로 올라가며 작업 폴더를 찾는다(새 틀은 05_prompts/review, 예전 틀은 _검수 가 있는 폴더)
+function findWork(start) {
+  let w = path.resolve(start);
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(w, "_검수")) || fs.existsSync(path.join(w, "05_prompts", "review"))) return w;
+    const up = path.dirname(w);
+    if (up === w) break;
+    w = up;
+  }
+  return "";
+}
+
+// ---------- 작업 폴더에 놓기 (사용자 10/21 "OK 는 그 자리, 보류는 보류 폴더, 탈락은 버림" · 11/9 영어 폴더 틀) ----------
+// 씬·컷: <작업>\02_images\S010\C0010\<코드>_S010_C0010_I001.png — 그 컷에서 번호를 이어 붙인다(다시 만든 것 · A/B안도 이어서, 어느 안인지는 목록에).
+// 에셋: <작업>\01_assets\<character|location|prop|reference>\<작업 이름>_A.png. 검수 뒤 OK 는 그 자리, 보류는 그 안 hold\, 탈락은 지운다(앱 원본은 앱에 남는다).
+// 어느 파일이 어디서 왔는지는 <작업>\05_prompts\review\목록.tsv 한 곳에 — 컷 폴더에는 전달할 파일만 둔다. 예전 틀 작업은 위 표대로.
 // 시댄스와 같은 목록에 쓴다 — 칸도 같게. 프롬프트 = 그 그림을 만든 판의 지문(같은 작업 이름으로 고쳐 다시 보내도 북이 판마다 맞는 프롬프트를 붙이게, 11/2)
 const LIST_HEAD = ["폴더", "파일", "작업", "테이크", "모델", "원본", "카드", "task", "씬", "컷", "범위", "안", "해상도", "받은 시각", "받기", "프롬프트"];
 // 판 지문 — 프롬프트 글(공백 정리) · 주요 설정 · 레퍼런스 파일 이름. 보내기 스크립트 둘과 make-review 가 같은 식으로 센다(jobs.json 원문 기준)
@@ -463,29 +496,30 @@ const takePrint = (spec, j) => crypto.createHash("sha256").update(JSON.stringify
   (j.refs || []).map((r) => path.basename(String(typeof r === "string" ? r : r?.path || "")).toLowerCase()),
 ])).digest("hex").slice(0, 12);
 const BOM = new RegExp("^" + String.fromCharCode(0xfeff));
-const ASSET_KINDS = ["인물", "로케이션", "프랍", "참고"];
+const ASSET_KINDS = [...Object.values(ASSET_EN), ...Object.keys(ASSET_EN)];
 const readJsonSafe = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8").replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")); } catch { return {}; } };
-const workCode = (spec, work) => String(spec.code || readJsonSafe(path.join(work, "_작업설정.json")).code || "").trim();
-// 이 작업의 결과가 놓일 곳 — { rel, prefix?, scene, cut, range, version } 또는 고칠 점(문자열)
+const workCode = (spec, work) => String(spec.code || readJsonSafe(layoutOf(work).settings).code || "").trim();
+// 이 작업의 결과가 놓일 곳 — { rel, hold, prefix?, scene, cut, range, version } 또는 고칠 점(문자열)
 function placeOf(spec, j, work) {
   const d = spec.defaults || {};
   const scene = String(j.scene ?? d.scene ?? "").trim(), cut = String(j.cut ?? d.cut ?? "").trim();
   const asset = String(j.asset ?? d.asset ?? "").trim();
   const version = String(j.version ?? d.version ?? "").trim();
+  const L = layoutOf(work);
   if (scene || cut) {
     const code = workCode(spec, work);
-    if (!/^[A-Za-z0-9]+$/.test(code)) return "프로젝트 코드가 없다 — jobs.json \"code\"(예: \"ABC\")를 적을 것(한 번 적으면 _작업설정.json 에 남는다)";
-    if (!/^S\d{3}$/.test(scene) || !/^C\d{4}$/.test(cut)) return `씬·컷은 "S010" · "C0010" 꼴로(지금 "${scene}" · "${cut}")`;
-    return { rel: `${scene}/${cut}`, prefix: `${code}_${scene}_${cut}_`, scene, cut, range: String(j.covers ?? "").trim(), version };
+    if (!/^[A-Za-z0-9]+$/.test(code)) return "프로젝트 코드가 없다 — jobs.json \"code\"(예: \"ABC\")를 적을 것(한 번 적으면 작업 설정에 남는다)";
+    if (!/^S\d{3}$/.test(scene) || !/^C\d{4}$/.test(cut)) return `씬·컷은 "S010" · "C0010" 꼴로 둘 다(지금 "${scene}" · "${cut}") — 콘티 번호를 사용자에게 묻는다`;
+    return { rel: L.scene("I", scene, cut), hold: L.hold, prefix: `${code}_${scene}_${cut}_`, scene, cut, range: String(j.covers ?? "").trim(), version };
   }
   if (asset) {
-    if (!ASSET_KINDS.includes(asset)) return `asset 은 ${ASSET_KINDS.join(" · ")} 중 하나(지금 "${asset}")`;
-    return { rel: `01_에셋/${asset}`, asset, version };
+    if (!ASSET_KINDS.includes(asset)) return `asset 은 ${Object.values(ASSET_EN).join(" · ")} 중 하나(지금 "${asset}")`;
+    return { rel: L.asset(ASSET_EN[asset] || asset), hold: L.hold, asset: ASSET_EN[asset] || asset, version };
   }
-  return `둘 자리가 없다 — 작업마다 "scene"·"cut"(예: "S010" · "C0010") 또는 "asset"(${ASSET_KINDS.join(" · ")})을 적을 것. 애매하면 사용자에게 묻는다`;
+  return `둘 자리가 없다 — 작업마다 "scene"·"cut"(예: "S010" · "C0010") 또는 "asset"(${Object.values(ASSET_EN).join(" · ")})을 적을 것. 애매하면 사용자에게 묻는다`;
 }
 function readWorkList(work) {
-  const p = path.join(work, "_검수", "목록.tsv");
+  const p = path.join(layoutOf(work).review, "목록.tsv");
   if (!fs.existsSync(p)) return [];
   const lines = fs.readFileSync(p, "utf8").replace(BOM, "").split(/\r?\n/).filter((l) => l.trim());
   const head = (lines.shift() || "").split("\t");
@@ -493,8 +527,9 @@ function readWorkList(work) {
 }
 function appendWorkList(work, rows) {
   if (!rows.length) return;
-  fs.mkdirSync(path.join(work, "_검수"), { recursive: true });
-  const p = path.join(work, "_검수", "목록.tsv");
+  const dir = layoutOf(work).review;
+  fs.mkdirSync(dir, { recursive: true });
+  const p = path.join(dir, "목록.tsv");
   const clean = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
   // 머리줄은 make-review 처럼 찾고(BOM · 앞 빈 줄 건너뜀), 있던 칸 + 모자란 칸을 뒤에 — 예전 줄은 늘어난 칸을 빈칸으로 읽는다.
   // 머리줄을 고쳐야 하면(칸이 늘거나 BOM · 앞 빈 줄) 다시 쓰고, 끝 줄바꿈이 없으면 붙인 뒤 잇는다
@@ -513,7 +548,7 @@ function nextNumber(work, pl, kind) {
   const re = new RegExp(`^${pl.prefix}${kind}(\\d{3})`);
   let max = 0;
   for (const r of readWorkList(work)) { const m = re.exec(r["파일"] || ""); if (m) max = Math.max(max, Number(m[1])); }
-  for (const d of [path.join(work, pl.rel), path.join(work, pl.rel, "보류")]) {
+  for (const d of [path.join(work, pl.rel), path.join(work, pl.rel, pl.hold)]) {
     if (fs.existsSync(d)) for (const f of fs.readdirSync(d)) { const m = re.exec(f); if (m) max = Math.max(max, Number(m[1])); }
   }
   return max + 1;
@@ -524,7 +559,7 @@ function placeName(work, pl, kind, ext, jobName, suffix = "") {
   const base = String(jobName || "job").replace(/[\\/:*?"<>|]+/g, "_").trim();
   for (let t = 0; ; t++) {
     const name = `${base}_${t < 26 ? String.fromCharCode(65 + t) : `Z${t - 25}`}${suffix}${ext}`;
-    if (![path.join(work, pl.rel, name), path.join(work, pl.rel, "보류", name)].some((p) => fs.existsSync(p))) return name;
+    if (![path.join(work, pl.rel, name), path.join(work, pl.rel, pl.hold, name)].some((p) => fs.existsSync(p))) return name;
   }
 }
 
@@ -743,17 +778,18 @@ async function main() {
     j.refWhy = list.map((r) => String(r.why ?? "").trim());
     for (const fp of j.refs) if (!fp || !fs.existsSync(fp)) fail(`레퍼런스 파일이 없음: ${fp}`);
   }
-  // 작업 폴더(사용자가 알려 준 프로젝트 폴더) — 결과를 씬·컷(또는 에셋 종류) 폴더에 놓는다. 자리를 못 정한 작업이 있으면 보내기 전에 멈춘다.
+  // 작업 폴더(사용자가 알려 준 프로젝트 폴더) — 결과를 씬 · 컷(또는 에셋 종류) 폴더에 놓는다. 자리를 못 정한 작업이 있으면 보내기 전에 멈춘다.
   const WORKDIR = spec.work ? path.resolve(String(spec.work)) : "";
-  if (WORKDIR && path.resolve(path.dirname(file)).toLowerCase() === path.join(WORKDIR, "05_프롬프트").toLowerCase()) {
-    log("  참고: jobs.json 은 05_프롬프트 밖에 둘 것 — 이 폴더의 .json 은 모두 보낸 프롬프트로 읽혀, 보내지 않은 초안도 작업 페이지 · 북에 섞인다");
+  if (WORKDIR && path.resolve(path.dirname(file)).toLowerCase() === layoutOf(WORKDIR).prompts.toLowerCase()) {
+    log("  참고: jobs.json 은 프롬프트 폴더(05_prompts) 밖에 둘 것 — 이 폴더의 .json 은 모두 보낸 프롬프트로 읽혀, 보내지 않은 초안도 작업 페이지 · 북에 섞인다");
   }
   if (WORKDIR) {
     if (!fs.existsSync(WORKDIR)) fail(`작업 폴더가 없다: ${WORKDIR} — 사용자가 알려 준 프로젝트 폴더인지 확인할 것`);
     const probs = jobs.map((j) => [j, placeOf(spec, j, WORKDIR)]).filter(([, p]) => typeof p === "string");
     if (probs.length) fail(`결과를 놓을 자리를 정할 것 (작업 폴더 ${WORKDIR}):\n${probs.map(([j, p]) => `  - ${j.name || "(이름 없음)"}: ${p}`).join("\n")}`);
-    const setFile = path.join(WORKDIR, "_작업설정.json");
+    const setFile = layoutOf(WORKDIR).settings;
     if (spec.code && readJsonSafe(setFile).code !== String(spec.code).trim()) {
+      fs.mkdirSync(path.dirname(setFile), { recursive: true });
       fs.writeFileSync(setFile, JSON.stringify({ ...readJsonSafe(setFile), code: String(spec.code).trim() }, null, 2));
     }
   }
@@ -1419,7 +1455,7 @@ async function main() {
       }
     }
     appendWorkList(WORKDIR, rows);
-    log(rows.length ? `그림 ${rows.length}장을 작업 폴더에 놓았다(앱 원본은 그대로) · 목록 _검수/목록.tsv — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`
+    log(rows.length ? `그림 ${rows.length}장을 작업 폴더에 놓았다(앱 원본은 그대로) · 목록 ${path.relative(WORKDIR, path.join(layoutOf(WORKDIR).review, "목록.tsv"))} — 검수 뒤 OK 는 그 자리, 보류는 보류 폴더, 탈락은 지운다`
       : "놓은 그림 없음");
     markDone();
     return;

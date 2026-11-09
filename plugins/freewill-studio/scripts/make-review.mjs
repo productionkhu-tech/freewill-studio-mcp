@@ -18,13 +18,14 @@
 //                                                                    한 곳(%TEMP%\freewill-review)에만 — 7일 지난 시트는 돌릴 때마다 지운다
 //   node make-review.mjs <작업 폴더> --apply <저장본.json>              → (파일로 연 페이지의 저장본) 분류대로 옮김 · 회차 · 페이지 다시
 //   node make-review.mjs [<작업 폴더>] --review on|off|status          → 검수를 켜고 끔(폴더를 주면 그 작업만, 안 주면 이 PC 사용자의 모든 작업)
-//   node make-review.mjs [<작업 폴더>] --book on|off|status            → 프롬프트 북 OK 한 것만(on — OK 를 저장할 때마다 05_프롬프트 의
-//                                                                    「<작업 이름> 프롬프트 북.html」을 사내 양식으로 — 이 스크립트는 _검수/북.json 을 쓰고 make-prompt-book --work 가 그린다)
+//   node make-review.mjs [<작업 폴더>] --book on|off|status            → 프롬프트 북 OK 한 것만(on — OK 를 저장할 때마다 05_prompts 의
+//                                                                    「<작업 이름> 프롬프트 북.html」을 사내 양식으로 — 이 스크립트는 05_prompts/review/북.json 을 쓰고 make-prompt-book --work 가 그린다)
 //                                                                    / 만들지 않음(off)
 //
-// 폴더: 받은 결과는 종류별 폴더(01_에셋/인물 · 01_에셋/로케이션 · 01_에셋/프랍, 02_이미지, 03_영상_초안, 04_영상_본편 …)의
-//       _목록.tsv(보내기 스크립트 --save-to 가 남김)로 찾는다. 검수 뒤에는 그 폴더 안이 OK/ · 보류/ · 탈락/ 으로 나뉜다.
-// 보낼 것: 보내기 스크립트가 jobs.json 의 "work" 로 <작업 폴더>/_검수/보낼것.json 을 남기면 그 레퍼런스를 그림으로 보여 준다
+// 폴더(11/9 새 틀): 01_assets/<종류> · 02_images/<씬>/<컷> · 03_video_draft/<씬>/<컷> · 04_video_final/<씬>/<컷> · 05_prompts(북 · 보낸 jobs) · 05_prompts/review(목록 ·
+//       회차 · 설정 · 서버). 보류는 그 폴더 안 hold/. 예전 틀(_검수 · 씬/컷 폴더 · 보류/)과 그보다 앞선 종류 폴더 판(폴더마다 _목록.tsv · OK/ · 보류/ ·
+//       탈락/)도 그대로 읽는다 — 틀은 아래 layoutOf 가 작업 폴더를 보고 정한다.
+// 보낼 것: 보내기 스크립트가 jobs.json 의 "work" 로 <검수 폴더>/보낼것.json 을 남기면 그 레퍼런스를 그림으로 보여 준다
 //          (사용자 10/20 "돌리기 전에 어떤 레퍼런스 쓸 건지 시각적으로").
 import fs from "node:fs";
 import os from "node:os";
@@ -52,12 +53,46 @@ for (let i = 0; i < argv.length; i++) {
 }
 if (!((reviewArg || bookArg) && !work) && (!work || !fs.existsSync(work) || !fs.statSync(work).isDirectory())) { console.error(USAGE); process.exit(2); }
 if (work) work = path.resolve(work);
-const REVIEW_DIR = path.join(work, "_검수");
-const MASTER = path.join(work, "_컷목록.tsv");
+// ---------- 작업 폴더 틀 (사용자 11/9 "폴더는 웬만하면 영어로 — 01 에셋 · 02 이미지 · 03 초안 비디오 · 04 본편 비디오 ·
+// 05 프롬프트 북 및 검수 서버 파일, 이미지 · 영상은 씬별 폴더로 나눠 필요 없는 걸 지우기 쉽게, 씬 · 컷 번호는 잘 붙이고" ·
+// "씬 안엔 컷 폴더도 있어야지") ----------
+// 새 틀: 01_assets/<character|location|prop|reference> · 02_images/S010/C0010 · 03_video_draft/S010/C0010(480) · 04_video_final/S010/C0010(그 밖의 해상도 ·
+//        본편) · 05_prompts(보낸 jobs.json · 프롬프트 북) · 05_prompts/review(목록 · 회차 · 작업 설정 — 사람이 열 일 없음). 보류는 그 폴더 안 hold/.
+//        파일 이름은 그대로 <코드>_S010_C0010_I001.
+// 예전 틀(11/8 까지 만든 작업 — _검수 · _작업설정.json · 01_에셋 · 05_프롬프트 · _컷목록.tsv 중 하나라도 있으면): S010/C0010 · 01_에셋/인물 ·
+//        05_프롬프트 · _검수 · 보류/ — 하던 작업은 그 틀 그대로 이어 간다(폴더를 옮기지 않는다). 세 스크립트(보내기 둘 · make-review)와
+//        make-prompt-book 이 같은 표를 쓴다.
+const ASSET_EN = { 인물: "character", 로케이션: "location", 프랍: "prop", 참고: "reference" };
+const ASSET_KO = Object.fromEntries(Object.entries(ASSET_EN).map(([k, v]) => [v, k]));
+const OLD_MARKS = ["_검수", "_작업설정.json", "01_에셋", "05_프롬프트", "_컷목록.tsv"];
+const KIND_DIR = { I: "02_images", draft: "03_video_draft", final: "04_video_final" };
+function layoutOf(work) {
+  const old = OLD_MARKS.some((m) => fs.existsSync(path.join(work, m)));
+  return old
+    ? { old, review: path.join(work, "_검수"), settings: path.join(work, "_작업설정.json"), prompts: path.join(work, "05_프롬프트"), hold: "보류",
+        asset: (k) => `01_에셋/${ASSET_KO[k] || k}`, scene: (kind, s, c) => `${s}/${c}` }
+    : { old, review: path.join(work, "05_prompts", "review"), settings: path.join(work, "05_prompts", "review", "settings.json"),
+        prompts: path.join(work, "05_prompts"), hold: "hold", asset: (k) => `01_assets/${ASSET_EN[k] || k}`, scene: (kind, s, c) => `${KIND_DIR[kind]}/${s}/${c}` };
+}
+// 파일 자리에서 위로 올라가며 작업 폴더를 찾는다(새 틀은 05_prompts/review, 예전 틀은 _검수 가 있는 폴더)
+function findWork(start) {
+  let w = path.resolve(start);
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(w, "_검수")) || fs.existsSync(path.join(w, "05_prompts", "review"))) return w;
+    const up = path.dirname(w);
+    if (up === w) break;
+    w = up;
+  }
+  return "";
+}
+const L = layoutOf(work || ".");
+const REVIEW_DIR = L.review;
+const HOLD = L.hold;   // 보류 폴더 이름 — 새 틀 hold, 예전 틀 보류 (상태 이름은 그대로 "보류")
+const MASTER = L.old ? path.join(work, "_컷목록.tsv") : path.join(REVIEW_DIR, "컷목록.tsv");
 const ROUNDS = path.join(REVIEW_DIR, "회차.json");
 const PLAN = path.join(REVIEW_DIR, "보낼것.json");
 const SERVER_FILE = path.join(REVIEW_DIR, "서버.json");
-const WORK_SETTINGS = path.join(work, "_작업설정.json");
+const WORK_SETTINGS = L.settings;
 const WORK_LIST = path.join(REVIEW_DIR, "목록.tsv");   // 씬·컷 배치의 목록(보내기 스크립트가 쓴다)
 const ME_SETTINGS = path.join(os.homedir(), ".freewill-studio", "settings.json");
 const STATUSES = ["OK", "보류", "탈락"];
@@ -86,7 +121,7 @@ function readTsv(p) {
 }
 const rel = (p) => path.relative(work, p).split(path.sep).join("/");
 // 씬·컷 배치인가 — 그러면 OK 는 제자리, 보류는 보류/, 탈락은 지운다
-const isFlat = () => fs.existsSync(WORK_LIST) || Boolean(readJson(WORK_SETTINGS).code);
+const isFlat = () => !L.old || fs.existsSync(WORK_LIST) || Boolean(readJson(WORK_SETTINGS).code);
 // 지난 회차까지 정한 상태(마지막 것) — 씬·컷 배치에선 OK 와 미정이 같은 자리라 기록으로 가른다
 function decidedStatus() {
   const m = new Map();
@@ -94,10 +129,11 @@ function decidedStatus() {
   return m;
 }
 
-// 작업 이름 = 페이지 파일 이름. 한 번 정하면 _작업설정.json 에 남겨 다음에도 같은 파일을 고친다.
+// 작업 이름 = 페이지 파일 이름. 한 번 정하면 작업 설정(05_prompts/review/settings.json · 예전 틀 _작업설정.json)에 남겨 다음에도 같은 파일을 고친다.
 function workTitle() {
   const saved = work ? readJson(WORK_SETTINGS).title : "";
   const t = (title || saved || path.basename(work || "")).replace(/[\\/:*?"<>|]/g, " ").trim() || "작업";
+  if (work && title && title !== saved) fs.mkdirSync(path.dirname(WORK_SETTINGS), { recursive: true });
   if (work && title && title !== saved) fs.writeFileSync(WORK_SETTINGS, JSON.stringify({ ...readJson(WORK_SETTINGS), title: t }, null, 2));
   return t;
 }
@@ -106,7 +142,7 @@ function workTitle() {
 function locate(folder, file, decided = null) {
   const base = path.join(work, folder);
   const here = decided && decided.get(`${folder}/${file}`) === "OK" ? "OK" : "";
-  const spots = [[path.join(base, file), here], [path.join(base, "OK", file), "OK"], [path.join(base, "보류", file), "보류"],
+  const spots = [[path.join(base, file), here], [path.join(base, "OK", file), "OK"], [path.join(base, HOLD, file), "보류"],
     [path.join(base, "탈락", file), "탈락"], [path.join(work, "_후보", folder, file), "탈락"]];
   const hit = spots.find(([p]) => fs.existsSync(p));
   return hit ? { abs: hit[0], status: hit[1] } : null;
@@ -116,7 +152,7 @@ function locate(folder, file, decided = null) {
 function listFolders(dir = work, depth = 0, out = []) {
   if (depth > 4) return out;
   for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!d.isDirectory() || d.name.startsWith("_") || d.name.startsWith(".") || STATUSES.includes(d.name)) continue;
+    if (!d.isDirectory() || d.name.startsWith("_") || d.name.startsWith(".") || STATUSES.includes(d.name) || d.name === "hold") continue;
     const p = path.join(dir, d.name);
     if (fs.existsSync(path.join(p, "_목록.tsv"))) out.push(rel(p));
     listFolders(p, depth + 1, out);
@@ -142,7 +178,7 @@ function scan() {
       // 받지 않은 영상 — 앱 주소로 본다. 탈락으로 고른 것은 받을 일이 없어 목록에서 뺀다. 받은 뒤 없어진 것(사람이 지움)도 뺀다
       const d = dec?.get(base.key) || "";
       if (r["받기"] !== "대기" || !TASK_ID.test(base.task) || d === "탈락") continue;   // 탈락으로 지웠거나 사람이 옮김
-      takes.push({ ...base, abs: path.join(work, folder, ...(d === "보류" ? ["보류"] : []), file), status: d, remote: true });
+      takes.push({ ...base, abs: path.join(work, folder, ...(d === "보류" ? [HOLD] : []), file), status: d, remote: true });
     }
   }
   for (const folder of listFolders()) {
@@ -160,8 +196,14 @@ function scan() {
   return takes;
 }
 
-// 폴더 이름을 사람 말로 — 01_에셋/인물 → 에셋 · 인물, S010/C0010 → S010 · C0010
-const folderLabel = (f) => f.split("/").map((s) => s.replace(/^\d+_/, "").replace(/_/g, " ")).join(" · ");
+// 폴더 이름을 사람 말로 — 02_images/S010/C0010 → 이미지 · S010 · C0010, 01_assets/character → 에셋 · 인물, (예전 틀) 01_에셋/인물 → 에셋 · 인물, S010/C0010 → S010 · C0010
+const LABEL = { assets: "에셋", images: "이미지", video_draft: "초안 영상", video_final: "본편 영상", prompts: "프롬프트", source: "원본",
+  character: "인물", location: "로케이션", prop: "프랍", reference: "참고" };
+const folderLabel = (f) => f.split("/").map((s) => { const b = s.replace(/^\d+_/, ""); return LABEL[b] || b.replace(/_/g, " "); }).join(" · ");
+// 씬 · 컷 결과 폴더인가(에셋이 아니라) — 새 틀 02_images/S010/C0010 · 03_video_draft/S010/C0010 …, 예전 틀 S010/C0010
+const isCutFolder = (f) => /(^|\/)S\d{3}(\/|$)/.test(String(f));
+// 북에서 한 컷으로 묶을 자리 — 새 틀의 본편(04_video_final/S010/C0010)은 초안(03_video_draft/S010/C0010)과 같은 컷 칸에(예전 틀은 같은 컷 폴더라 그대로)
+const unitOf = (f) => (L.old ? f : String(f).replace(/^04_video_final\//, "03_video_draft/"));
 // 00_ 로 시작하는 폴더(원본 · 비교 영상)는 보기만 — 고를 것(OK · 보류 · 탈락)이 아니라 '볼 것'에 세지 않는다(10/22 "검수판이 엉망")
 const viewOnly = (folder) => /^00_/.test(String(folder).split("/")[0]);
 // 테이크 이름 — 씬·컷 배치는 파일 번호(I003 · V001_480), 에셋은 파일 끝 글자(hero_C → C — 묶음마다 A 부터 다시 세는 테이크 대신), 예전 판은 A · B
@@ -176,7 +218,7 @@ const takePrint = (spec, j) => crypto.createHash("sha256").update(JSON.stringify
 ])).digest("hex").slice(0, 12);
 // 11/2 낮 판이 남긴 지문(프롬프트 글만) — 그때 받은 줄도 찾게
 const promptOnly = (p) => crypto.createHash("sha256").update(String(p ?? "").replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
-// 보낸 jobs.json 들(05_프롬프트, 파일 시각 순) — 작업 이름 → 프롬프트·설정(마지막에 보낸 것).
+// 보낸 jobs.json 들(05_prompts · 예전 틀 05_프롬프트, 파일 시각 순) — 작업 이름 → 프롬프트·설정(마지막에 보낸 것).
 // byKey 는 '작업 이름#판 지문' → 그 판 — 같은 이름으로 고쳐 다시 보낸 판마다(11/2 "같은 컷 OK 여러 개면?").
 // 이름 없는 작업은 보내기 스크립트처럼 프롬프트 있는 작업 순번으로 job_N
 function readPrompts() {
@@ -184,7 +226,7 @@ function readPrompts() {
   map.byKey = new Map();
   map.missing = new Map();
   map.ambiguous = new Set();
-  const dir = path.join(work, "05_프롬프트");
+  const dir = L.prompts;
   if (!fs.existsSync(dir)) return map;
   const files = fs.readdirSync(dir).filter((n) => /\.json$/i.test(n)).map((n) => ({ n, t: fs.statSync(path.join(dir, n)).mtimeMs }))
     .sort((a, b) => a.t - b.t || a.n.localeCompare(b.n)).map((x) => x.n);
@@ -211,9 +253,9 @@ function readPrompts() {
   }
   return map;
 }
-// 이 테이크를 만든 판 — 지문이 없는 예전 줄은 그 작업 이름으로 마지막에 보낸 것. 지문은 있는데 그 판 사본이 05_프롬프트 에 없으면
+// 이 테이크를 만든 판 — 지문이 없는 예전 줄은 그 작업 이름으로 마지막에 보낸 것. 지문은 있는데 그 판 사본이 프롬프트 폴더에 없으면
 // '사본 없음'(마지막 것을 말없이 대신 붙이지 않는다 — 11/2 검수)
-const NO_COPY = "이 결과를 만든 프롬프트 사본이 05_프롬프트 에 없다";
+const NO_COPY = `이 결과를 만든 프롬프트 사본이 ${path.basename(L.prompts)} 에 없다`;
 const promptFor = (prompts, t) => {
   if (!t.prompt) return prompts.get(t.cut);
   const key = `${t.cut}#${t.prompt}`;
@@ -265,7 +307,7 @@ function readRounds() {
 }
 
 // 검수 화면을 쓸지 — 사용자가 처음 한 번 고른 것(10/22 "극 초반부에 물어보기 — 검수를 안 하는 사람도 있다")을 기억한다.
-// 작업 폴더의 _작업설정.json 이 먼저, 없으면 이 PC 사용자의 ~/.freewill-studio/settings.json. 둘 다 없으면 아직 안 정한 것 —
+// 작업 폴더의 작업 설정(05_prompts/review/settings.json · 예전 틀 _작업설정.json)이 먼저, 없으면 이 PC 사용자의 ~/.freewill-studio/settings.json. 둘 다 없으면 아직 안 정한 것 —
 // 켬으로 치되 에이전트가 사용자에게 물어 남기게 알린다.
 const ASK_REVIEW = "검수 화면을 쓸지 아직 안 정함 — 사용자에게 한 번 묻는다(\"결과를 검수 화면에서 볼까요? 늘 쓰기 / 안 쓰기\") → " +
   "make-review --review on|off 로 남기면 다음부터 묻지 않는다";
@@ -274,16 +316,16 @@ const ASK_REVIEW = "검수 화면을 쓸지 아직 안 정함 — 사용자에�
 const ASK_BOOK = "프롬프트 북을 아직 안 정함 — 사용자에게 한 번 묻는다(\"프롬프트 북(사내 양식 HTML)을 만들까요? " +
   "OK 한 것만 — OK 를 저장할 때마다 그 컷의 프롬프트·설정·결과를 채움 / 만들지 않음\") → make-review --book on|off 로 남기면 다음부터 묻지 않는다";
 function userChoice(w, key) {
-  const here = w ? readJson(path.join(w, "_작업설정.json"))[key] : undefined;
+  const here = w ? readJson(layoutOf(w).settings)[key] : undefined;
   const mine = readJson(ME_SETTINGS)[key];
-  if (typeof here === "boolean") return { on: here, from: "이 작업 설정(_작업설정.json)" };
+  if (typeof here === "boolean") return { on: here, from: `이 작업 설정(${path.relative(w, layoutOf(w).settings)})` };
   if (typeof mine === "boolean") return { on: mine, from: "이 PC 사용자 설정(~/.freewill-studio/settings.json)" };
   return { on: key === "review", from: "아직 안 정함", unset: true };   // 검수는 켬으로, 북은 끔(만들지 않음)으로 친다
 }
 const reviewSetting = (w) => userChoice(w, "review");
 const bookSetting = (w) => userChoice(w, "book");
 function setChoice(w, key, on) {
-  const file = w ? path.join(w, "_작업설정.json") : ME_SETTINGS;
+  const file = w ? layoutOf(w).settings : ME_SETTINGS;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ ...readJson(file), [key]: on, [`${key}_set_at`]: new Date().toISOString() }, null, 2));
   return file;
@@ -369,7 +411,7 @@ async function apply(saved, savedName) {
       // 받지 않은 영상 — OK · 보류만 이제 받는다. 탈락 · 미정은 받지 않는다. 못 받으면 고른 것은 남기고 다음 저장 때 다시
       t.status = status;
       if (status === "OK" || status === "보류") {
-        const target = path.join(work, t.folder, ...(status === "보류" ? ["보류"] : []), t.file);
+        const target = path.join(work, t.folder, ...(status === "보류" ? [HOLD] : []), t.file);
         try { await fetchTake(t, target); moved.push(`${status}(받음) ← ${key}`); received.push(key); t.abs = target; t.remote = false; }
         catch (e) { failed.push(`${key} — ${e.message}`); }
       }
@@ -378,8 +420,8 @@ async function apply(saved, savedName) {
       if (removeFile(t.abs)) { moved.push(`탈락(지움) ← ${key}`); t.status = "탈락"; }
       else stuck.push(key);
     } else {
-      // 씬·컷 배치: OK · 미정은 컷 폴더 바로 아래, 보류는 보류/ — 예전 판: 상태 이름 폴더
-      const target = flat ? path.join(work, t.folder, ...(status === "보류" ? ["보류"] : []), t.file)
+      // 씬 · 컷 배치(새 틀 · 예전 틀): OK · 미정은 그 컷 폴더 바로 아래, 보류는 hold/(예전 틀 보류/) — 그보다 앞선 판: 상태 이름 폴더
+      const target = flat ? path.join(work, t.folder, ...(status === "보류" ? [HOLD] : []), t.file)
         : status ? path.join(work, t.folder, status, t.file) : path.join(work, t.folder, t.file);
       if (path.resolve(target) !== path.resolve(t.abs)) {
         fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -563,7 +605,7 @@ ${ver.vers.map((v) => {
   // 프롬프트 — 보낸 작업마다(같은 이름으로 고쳐 다시 보낸 판도 따로)
   const promptHtml = prompts.size ? [...new Set(prompts.byKey.values())].map((p) =>
     `<details class="pr"><summary><b>${esc(p.name)}</b> <span class="chip">${esc([p.model, p.mode].filter(Boolean).join(" · "))}</span> <span class="path">${esc(p.file)}</span></summary><pre>${esc(p.prompt)}</pre></details>`).join("")
-    : `<p class="intro">05_프롬프트 에 보낸 jobs.json 이 없다.</p>`;
+    : `<p class="intro">${esc(path.basename(L.prompts))} 에 보낸 jobs.json 이 없다.</p>`;
 
   const server = served ? null : readJson(SERVER_FILE);
   const data = JSON.stringify({ work: path.basename(work), title: pageTitle, round, filter: rounds.length ? "볼 것" : "전체", served: !!served,
@@ -576,10 +618,10 @@ ${ver.vers.map((v) => {
 <span class="filters">${[...(rounds.length ? ["볼 것"] : []), "전체", ...(rounds.length ? ["새로"] : []), "미정", ...STATUSES].map((f) => `<button type="button" data-f="${f}">${f}</button>`).join("")}</span>
 <button type="button" id="play">OK 이어서 보기</button><span id="saved"></span><button type="button" id="save">${served ? "저장" : "저장(파일)"} (Ctrl+S)</button></div></header>
 <main>
-<section id="한눈에"><h2>한눈에</h2><table class="ov"><thead><tr><th>폴더</th><th>OK</th><th>보류</th><th>미정</th><th>새로</th><th>탈락</th><th></th></tr></thead><tbody>${overview || `<tr><td colspan="7">받은 결과가 없다 — 보내기 스크립트 --save-to 로 이 작업 폴더의 종류별 폴더에 받는다.</td></tr>`}</tbody></table>
+<section id="한눈에"><h2>한눈에</h2><table class="ov"><thead><tr><th>폴더</th><th>OK</th><th>보류</th><th>미정</th><th>새로</th><th>탈락</th><th></th></tr></thead><tbody>${overview || `<tr><td colspan="7">받은 결과가 없다 — 보내기 스크립트에 jobs.json 의 "work"(이 작업 폴더)와 작업마다 씬 · 컷(또는 에셋 종류)을 적으면 여기에 놓는다.</td></tr>`}</tbody></table>
 <p class="intro">${round}차 검수 — 테이크마다 <b>OK</b>(쓸 것) · <b>보류</b>(다시 볼 것) · <b>탈락</b>(안 쓸 것)을 고르고 메모를 적은 뒤 저장한다.
 한 묶음에서 OK 를 고르면 나머지는 <b>고르지 않음</b>(탈락)으로 표시되고 저장할 때 정리된다 — 남길 건 보류로.
-${served ? (isFlat() ? "저장하면 그 자리에서 OK 는 컷 폴더에 그대로, 보류는 보류 폴더로 옮겨지고 탈락은 지워진다(앱 원본은 앱에 남는다). 기록에도 남는다." +
+${served ? (isFlat() ? "저장하면 그 자리에서 OK 는 제자리에 그대로, 보류는 보류 폴더로 옮겨지고 탈락은 지워진다(앱 원본은 앱에 남는다). 기록에도 남는다." +
   (scanned.some((t) => t.remote) ? " <b>앱</b> 표시는 아직 받지 않은 영상이다 — 앱에서 바로 재생하고, 저장할 때 OK · 보류만 그 자리로 받는다(탈락은 받지 않는다)." : "")
   : "저장하면 그 자리에서 파일이 폴더 안 OK/ · 보류/ · 탈락/ 으로 옮겨지고 기록에 남는다.") :"이 페이지는 파일로 열려 있어 저장하면 다운로드 폴더에 JSON 이 생긴다 — 에이전트에게 '검수 페이지 열어 줘'라고 하면 바로 저장되는 주소로 열어 준다."}
 ${rounds.length ? ` 지난 ${rounds.length}회차의 메모는 컷 아래 <b>지난 피드백</b>으로 옮겨 두었고 입력칸은 이번 ${round}차 것만 적는다. 처음엔 <b>볼 것</b>(새로 · 미정 · 보류)만 보인다.` : ""}</p></section>
@@ -604,8 +646,8 @@ function writePage() {
   return file;
 }
 
-// 프롬프트 북 데이터 — OK 가 나온 것(컷 · 에셋 · 이미지 · 영상)을 사내 프롬프트 북(make-prompt-book) 형식으로 _검수/북.json 에 쓴다
-// (10/22 "OK 될 때마다 · 사내 양식으로"). HTML 은 make-prompt-book --work 가 05_프롬프트 에 그린다 — 이 스크립트는 다른 프로그램을
+// 프롬프트 북 데이터 — OK 가 나온 것(컷 · 에셋 · 이미지 · 영상)을 사내 프롬프트 북(make-prompt-book) 형식으로 <검수 폴더>/북.json 에 쓴다
+// (10/22 "OK 될 때마다 · 사내 양식으로"). HTML 은 make-prompt-book --work 가 05_prompts(예전 틀 05_프롬프트) 에 그린다 — 이 스크립트는 다른 프로그램을
 // 실행하지 않아서(커넥터 통신 검사) 에이전트가 이어서 돌린다. 검수를 안 쓰면 받은 것 모두가 OK 다. 에셋은 레퍼런스, 씬 · 컷은 컷으로.
 const BOOK_DATA = path.join(REVIEW_DIR, "북.json");
 const BOOK_CMD = () => `node make-prompt-book.mjs --work "${work}"`;
@@ -616,34 +658,34 @@ function writeBook() {
   const prompts = readPrompts();
   const rounds = readRounds();
   const memos = (t) => rounds.map((r) => r.takes?.[t.key]?.memo).filter(Boolean);
-  const CAT = { 인물: "character", 로케이션: "location", 프랍: "prop" };
+  const CAT = { 인물: "character", 로케이션: "location", 프랍: "prop", character: "character", location: "location", prop: "prop" };
   const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v !== undefined && v !== null));
   // 판마다 칸 — 같은 판(프롬프트 · 설정 · 레퍼런스가 같음)의 OK 는 한 칸에, 고쳐 다시 보낸 판은 따로. 결과 옆에는 그 결과를 만든 프롬프트(11/2).
   // 칸 id 는 판 지문으로 고정(OK 상태가 바뀌어도 북의 체크가 그 판에 남게), '프롬프트 n' 은 처음 받은 차례로 제목에만(검수 페이지와 같음).
   // 지문 없는 예전 결과는 예전 id 그대로
-  const cutsOf = [...new Map(ok.map((t) => [`${t.folder}/${t.cut}`, { folder: t.folder, cut: t.cut }])).values()]
+  const cutsOf = [...new Map(ok.map((t) => [`${unitOf(t.folder)}/${t.cut}`, { folder: unitOf(t.folder), cut: t.cut }])).values()]
     .sort((a, b) => a.folder.localeCompare(b.folder) || a.cut.localeCompare(b.cut));
   const refs = [], cuts = [];
   // 에셋 그림 → 그 판의 레퍼런스 id — 컷이 쓴 바로 그 그림의 판으로 잇는다(경로 먼저, 없으면 파일 이름). OK 가 아닌 에셋 그림이면 잇지 않는다
   const refIdByPath = new Map(), refIdByName = new Map();
-  const assetFiles = new Set([...all.filter((t) => !/^S\d/.test(t.folder)).map((t) => t.file),   // 탈락으로 지운 에셋 그림도(목록에 남은 줄)
-    ...(fs.existsSync(WORK_LIST) ? readTsv(WORK_LIST).filter((r) => r["폴더"] && !/^S\d/.test(r["폴더"])).map((r) => r["파일"] || "") : [])]
+  const assetFiles = new Set([...all.filter((t) => !isCutFolder(t.folder)).map((t) => t.file),   // 탈락으로 지운 에셋 그림도(목록에 남은 줄)
+    ...(fs.existsSync(WORK_LIST) ? readTsv(WORK_LIST).filter((r) => r["폴더"] && !isCutFolder(r["폴더"])).map((r) => r["파일"] || "") : [])]
     .filter(Boolean).map((f) => path.basename(f).toLowerCase()));
   const refName = (r) => {
     const b = path.basename(r).toLowerCase(), stem = path.basename(r).replace(/\.[^.]+$/, "");
     return refIdByPath.get(path.resolve(r).toLowerCase()) || refIdByName.get(b) || (assetFiles.has(b) ? stem : stem.replace(/_[A-Z]$/, ""));
   };
   for (const c of cutsOf) {
-    const ver = versionsOf(prompts, all.filter((t) => t.folder === c.folder && t.cut === c.cut));
+    const ver = versionsOf(prompts, all.filter((t) => unitOf(t.folder) === c.folder && t.cut === c.cut));
     for (const v of ver.vers) {
-      const takes = ok.filter((t) => t.folder === c.folder && t.cut === c.cut && ver.verOf(t) === v);
+      const takes = ok.filter((t) => unitOf(t.folder) === c.folder && t.cut === c.cut && ver.verOf(t) === v);
       if (!takes.length) continue;
       const g = ver.promptOf(v);
       const p = g?.missing ? null : g;
       const tag = ver.tag(v);
       const note = g?.missing ? `${g.why} — 프롬프트를 붙이지 않음` : !v && tag ? OLD_NOTE : "";
       const sfx = v ? v.slice(0, 6) : "";
-      if (!/^S\d/.test(c.folder)) {
+      if (!isCutFolder(c.folder)) {
         // 에셋은 이름을 그대로 둔다(칩에 보이는 이름) — 몇 번째 판인지는 역할 칸에
         const id = `${c.folder}/${c.cut}${sfx ? `#${sfx}` : ""}`;
         for (const t of takes) { refIdByPath.set(t.abs.toLowerCase(), id); refIdByName.set(path.basename(t.file).toLowerCase(), id); }
@@ -651,7 +693,8 @@ function writeBook() {
           model: p?.model || takes[0].model, prompt: p?.prompt, note, images: takes.map((t) => t.abs) }));
         continue;
       }
-      cuts.push(clean({ id: `${c.folder.split("/").join("_")}_${c.cut}${sfx ? `_${sfx}` : ""}`, title: tag ? `${c.cut} · ${tag}` : c.cut, group: folderLabel(c.folder),
+      cuts.push(clean({ id: `${c.folder.split("/").join("_")}_${c.cut}${sfx ? `_${sfx}` : ""}`, title: tag ? `${c.cut} · ${tag}` : c.cut,
+        group: folderLabel(c.folder).replace(/^초안 영상/, "영상"),
         settings: p ? clean({ model: p.model, mode: p.mode, ratio: p.ratio, duration: p.duration }) : takes[0].model ? { model: takes[0].model } : undefined,
         refs: p ? [...p.elements, ...p.refs.map(refName)] : undefined,
         prompt: p?.prompt,
@@ -985,7 +1028,7 @@ async function main() {
       if (work && bookArg === "on") console.log(`  ${writeBook()}`);
     }
     const b = bookSetting(work);
-    console.log(b.unset ? `지금: ${ASK_BOOK}` : `지금: 프롬프트 북 ${b.on ? "OK 한 것만(OK 를 저장할 때마다 05_프롬프트 에 다시 씀)" : "만들지 않음(사용자가 직접 만들어 달라고 할 때만 make-prompt-book)"} · ${b.from}`);
+    console.log(b.unset ? `지금: ${ASK_BOOK}` : `지금: 프롬프트 북 ${b.on ? `OK 한 것만(OK 를 저장할 때마다 ${path.basename(L.prompts)} 에 다시 씀)` : "만들지 않음(사용자가 직접 만들어 달라고 할 때만 make-prompt-book)"} · ${b.from}`);
     return;
   }
   if (child) return runServer(childPort);

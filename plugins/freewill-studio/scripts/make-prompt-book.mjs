@@ -3,7 +3,8 @@
 //
 //   node make-prompt-book.mjs <book.json | 전에 만든 북.html> --out <저장할 경로.html> [--link]
 //   node make-prompt-book.mjs --work <작업 폴더>     → 북을 'OK 한 것만'으로 고른 작업(make-review --book on): 검수 도구가 OK 를 저장할 때마다 쓰는
-//                                                    <작업 폴더>/_검수/북.json 으로 <작업 폴더>/05_프롬프트/<작업 이름> 프롬프트 북.html 을 다시 그린다.
+//                                                    <작업 폴더>/05_prompts/review/북.json 으로 <작업 폴더>/05_prompts/<작업 이름> 프롬프트 북.html 을 다시 그린다
+//                                                    (예전 틀 작업은 _검수/북.json → 05_프롬프트).
 //                                                    그림·영상은 복사하지 않고 작업 폴더 안 상대 경로로 건다(폴더째 넘기면 그대로 열림)
 //
 // - 그림·영상은 HTML 옆 "<북 이름>_files" 폴더로 복사하고 상대 경로로 건다. 폴더째 옮기거나 압축해 넘겨도 열린다.
@@ -29,14 +30,47 @@ for (let i = 0; i < argv.length; i++) {
   else if (argv[i] === "-h" || argv[i] === "--help") { console.log(USAGE); process.exit(0); }
   else if (!input) input = argv[i];
 }
-// 작업 폴더의 북 — 검수 도구(make-review)가 쓴 _검수/북.json 을 05_프롬프트 에. 제목은 작업 페이지와 같은 이름
+// ---------- 작업 폴더 틀 (사용자 11/9 "폴더는 웬만하면 영어로 — 01 에셋 · 02 이미지 · 03 초안 비디오 · 04 본편 비디오 ·
+// 05 프롬프트 북 및 검수 서버 파일, 이미지 · 영상은 씬별 폴더로 나눠 필요 없는 걸 지우기 쉽게, 씬 · 컷 번호는 잘 붙이고" ·
+// "씬 안엔 컷 폴더도 있어야지") ----------
+// 새 틀: 01_assets/<character|location|prop|reference> · 02_images/S010/C0010 · 03_video_draft/S010/C0010(480) · 04_video_final/S010/C0010(그 밖의 해상도 ·
+//        본편) · 05_prompts(보낸 jobs.json · 프롬프트 북) · 05_prompts/review(목록 · 회차 · 작업 설정 — 사람이 열 일 없음). 보류는 그 폴더 안 hold/.
+//        파일 이름은 그대로 <코드>_S010_C0010_I001.
+// 예전 틀(11/8 까지 만든 작업 — _검수 · _작업설정.json · 01_에셋 · 05_프롬프트 · _컷목록.tsv 중 하나라도 있으면): S010/C0010 · 01_에셋/인물 ·
+//        05_프롬프트 · _검수 · 보류/ — 하던 작업은 그 틀 그대로 이어 간다(폴더를 옮기지 않는다). 세 스크립트(보내기 둘 · make-review)와
+//        make-prompt-book 이 같은 표를 쓴다.
+const ASSET_EN = { 인물: "character", 로케이션: "location", 프랍: "prop", 참고: "reference" };
+const ASSET_KO = Object.fromEntries(Object.entries(ASSET_EN).map(([k, v]) => [v, k]));
+const OLD_MARKS = ["_검수", "_작업설정.json", "01_에셋", "05_프롬프트", "_컷목록.tsv"];
+const KIND_DIR = { I: "02_images", draft: "03_video_draft", final: "04_video_final" };
+function layoutOf(work) {
+  const old = OLD_MARKS.some((m) => fs.existsSync(path.join(work, m)));
+  return old
+    ? { old, review: path.join(work, "_검수"), settings: path.join(work, "_작업설정.json"), prompts: path.join(work, "05_프롬프트"), hold: "보류",
+        asset: (k) => `01_에셋/${ASSET_KO[k] || k}`, scene: (kind, s, c) => `${s}/${c}` }
+    : { old, review: path.join(work, "05_prompts", "review"), settings: path.join(work, "05_prompts", "review", "settings.json"),
+        prompts: path.join(work, "05_prompts"), hold: "hold", asset: (k) => `01_assets/${ASSET_EN[k] || k}`, scene: (kind, s, c) => `${KIND_DIR[kind]}/${s}/${c}` };
+}
+// 파일 자리에서 위로 올라가며 작업 폴더를 찾는다(새 틀은 05_prompts/review, 예전 틀은 _검수 가 있는 폴더)
+function findWork(start) {
+  let w = path.resolve(start);
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(w, "_검수")) || fs.existsSync(path.join(w, "05_prompts", "review"))) return w;
+    const up = path.dirname(w);
+    if (up === w) break;
+    w = up;
+  }
+  return "";
+}
+// 작업 폴더의 북 — 검수 도구(make-review)가 쓴 <검수 폴더>/북.json 을 프롬프트 폴더(05_prompts · 예전 틀 05_프롬프트)에. 제목은 작업 페이지와 같은 이름
 const relLink = Boolean(workDir);
 if (workDir) {
   let set = {};
-  try { set = JSON.parse(fs.readFileSync(path.join(workDir, "_작업설정.json"), "utf8").replace(/^[^{]*/, "")); } catch {}
+  const L = layoutOf(path.resolve(workDir));
+  try { set = JSON.parse(fs.readFileSync(L.settings, "utf8").replace(/^[^{]*/, "")); } catch {}
   const name = (set.title || path.basename(path.resolve(workDir))).replace(/[\\/:*?"<>|]/g, " ").trim() || "작업";
-  input = path.join(workDir, "_검수", "북.json");
-  out = path.join(workDir, "05_프롬프트", `${name} 프롬프트 북.html`);
+  input = path.join(L.review, "북.json");
+  out = path.join(L.prompts, `${name} 프롬프트 북.html`);
   if (!fs.existsSync(input)) { console.error(`북 데이터가 없다(${input}) — 그 작업에서 make-review --book on 을 켜고 검수 페이지를 한 번 만들 것`); process.exit(1); }
 }
 if (!input || !out) { console.error(USAGE); process.exit(2); }

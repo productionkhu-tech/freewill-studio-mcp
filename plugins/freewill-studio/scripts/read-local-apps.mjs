@@ -393,7 +393,7 @@ if (which === "all" || which === "seedance") sections.push(await seedance());
       : "- 검수 화면: 아직 안 정함 → 처음 질문에 같이 묻는다: \"결과를 검수 화면(서버로 띄우는 검수 페이지)에서 볼까요? 늘 쓰기 / 안 쓰기\" — " +
         "답을 make-review --review on|off 로 남기면 다음부터 묻지 않는다",
     typeof set.book === "boolean"
-      ? `- 프롬프트 북: ${set.book ? "OK 한 것만(OK 를 저장할 때마다 05_프롬프트 에 사내 양식으로)" : "만들지 않음(권하지도 않음 — 사용자가 직접 만들어 달라고 할 때만)"}(이 PC 사용자 설정) — 바꾸라고 할 때만 make-review --book ${set.book ? "off" : "on"}`
+      ? `- 프롬프트 북: ${set.book ? "OK 한 것만(OK 를 저장할 때마다 05_prompts 에 사내 양식으로)" : "만들지 않음(권하지도 않음 — 사용자가 직접 만들어 달라고 할 때만)"}(이 PC 사용자 설정) — 바꾸라고 할 때만 make-review --book ${set.book ? "off" : "on"}`
       : "- 프롬프트 북: 아직 안 정함 → 처음 질문에 같이 묻는다: \"프롬프트 북(사내 양식 HTML)을 만들까요? " +
         "OK 한 것만 — OK 를 저장할 때마다 그 컷의 프롬프트·설정·결과를 채움 / 만들지 않음\" — " +
         "답을 make-review --book on|off 로 남기면 다음부터 묻지 않는다",
