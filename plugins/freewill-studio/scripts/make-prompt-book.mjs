@@ -191,10 +191,12 @@ function pngText(file) {
 const MODEL_NAME = [
   [/gpt-image-(\d+(?:\.\d+)?)-sunburst/i, "GPT Image $1 선버스트"], [/gpt-image-(\d+(?:\.\d+)?)-flare/i, "GPT Image $1 플레어"], [/gpt-image/i, "GPT Image"],
   [/gemini-3-pro-image/i, "Nano Banana Pro"], [/nano-banana-2\.1/i, "Nano Banana 2.1"], [/nano-banana|gemini.*image/i, "Nano Banana"],
-  [/seedream-?5/i, "Seedream 5.0"], [/seedream/i, "Seedream"],
+  // 시드림은 버전 · 등급을 이름에서 그대로(5.0 Pro · 5.0 Flash · 4.5 · 새로 들어올 5.5 도 고치지 않고)
+  [/seedream-(\d+)[-.](\d+)(?:-(pro|flash|lite))?/i, (h) => `Seedream ${h[1]}.${h[2]}${h[3] ? ` ${h[3][0].toUpperCase()}${h[3].slice(1).toLowerCase()}` : ""}`],
+  [/seedream/i, "Seedream"],
   [/seedance-2-5|seedance-2\.5/i, "Seedance 2.5"], [/seedance-2-0|seedance-2\.0/i, "Seedance 2.0"],
 ];
-const prettyModel = (m) => { for (const [re, n] of MODEL_NAME) { const hit = String(m).match(re); if (hit) return n.replace("$1", hit[1] ?? ""); } return m; };
+const prettyModel = (m) => { for (const [re, n] of MODEL_NAME) { const hit = String(m).match(re); if (hit) return typeof n === "function" ? n(hit) : n.replace("$1", hit[1] ?? ""); } return m; };
 
 function normStyle(s) {
   if (!s) return null;

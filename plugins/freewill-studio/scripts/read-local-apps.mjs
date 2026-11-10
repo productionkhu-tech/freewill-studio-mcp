@@ -232,11 +232,14 @@ function asarVersion(file) {
 
 // 계열 SOTA — 그 계열에서 가장 좋은 모델을 추천한다(사용자 11/5 "계열 최신이 아니라 계열 SOTA"). 모델이 늘어도 문서를 안 고치게 이름으로 고른다:
 // 등급이 먼저, 같은 등급이면 높은 버전. 날짜로 고르면 안 된다 — Seedream 은 9월에 나온 Flash 가 6월에 나온 Pro 보다 새것이다.
-const FAMILIES = [["GPT Image", /^gpt-image/], ["Seedream", /^seedream/], ["Seedance", /seedance/], ["Gemini Omni", /omni/], ["Nano Banana", /^gemini-.*image|nano-banana/]];
+const FAMILIES = [["GPT Image", /^gpt-image/], ["Seedream", /seedream/], ["Seedance", /seedance/], ["Gemini Omni", /omni/], ["Nano Banana", /^gemini-.*image|nano-banana/]];
 const familyOf = (id) => FAMILIES.find(([, re]) => re.test(id))?.[0] || id.split("-")[0];
 const tierOf = (id) => (/(^|-)(lite|mini)(-|$)/.test(id) ? 0 : /(^|-)(flare|flash|fast|turbo)(-|$)/.test(id) ? 1 : /(^|-)(sunburst|pro|ultra)(-|$)/.test(id) ? 3 : 2);
 const versionOf = (id) => { const m = id.match(/(?<!\d)(\d{1,2})(?:[.-](\d{1,2})(?!\d))?(?!\d)/); return m ? Number(m[1]) + Number(m[2] || 0) / 100 : 0; };
-const bestOf = (ids) => [...ids].sort((a, b) => tierOf(b) - tierOf(a) || versionOf(b) - versionOf(a))[0];
+// 단, 등급 표시가 없거나 Pro 급인 모델끼리는 버전이 먼저 — 새 세대가 옛 세대 Pro 를 이긴다(사용자 11/10 "시드림 5.5 가 시드림의 새 SOTA",
+// 이름에 Pro 가 안 붙어 나와도). 빠른 것 · 가벼운 것은 그대로 등급이 먼저.
+const rankOf = (id) => (tierOf(id) >= 2 ? [1, versionOf(id), tierOf(id)] : [0, tierOf(id), versionOf(id)]);
+const bestOf = (ids) => [...ids].sort((a, b) => { const x = rankOf(a), y = rankOf(b); return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]; })[0];
 function sotaLines(ids, pinned = []) {
   const fams = new Map();
   for (const id of ids) fams.set(familyOf(id), [...(fams.get(familyOf(id)) || []), id]);
