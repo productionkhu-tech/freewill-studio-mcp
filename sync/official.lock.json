@@ -176,10 +176,10 @@
         "gpt-image"
       ],
       "version": null,
-      "hash": "f2359f661f17945095bd36465b189af2d43f9e7ef23bd7e25a0f9aa88fe475de",
+      "hash": "0901584b56ee3070d70c4173bb67fa55ecb719cfae835979497f4ebb3cb243a2",
       "digest": null,
-      "appliedAt": "2026-11-07",
-      "chars": 76411,
+      "appliedAt": "2026-11-11",
+      "chars": 76431,
       "files": []
     },
     "higgsfield-seedance-2-5": {
@@ -675,6 +675,7 @@
         "dreamina-seedance-2-0-260128",
         "dreamina-seedance-2-0-fast-260128",
         "dreamina-seedance-2-0-mini-260615",
+        "gemini-omni-1.2-flash",
         "gemini-omni-flash-preview",
         "gemini-omni-1.1-flash"
       ],
