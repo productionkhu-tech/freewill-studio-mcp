@@ -11,7 +11,7 @@
 | `seedance-2-5` | `official:sd25-pe/<앱 mode>` — `text_to_video` · `image_to_video_first` · `image_to_video_first_last` · `multimodal_reference` · `edit_video` · `extend_video` (그 모드에 필요한 절만) · 전체 `official:sd25-pe` | BytePlus 공식 스킬 | 모드별 topic(공통 원칙 + 그 모드 템플릿만). 모드가 정해지지 않았으면 전체 | "Self-update before triggering" | 0.1.1 · 2026-10-02 |
 | `seedance-2-0` | `official:sd2-pe` | BytePlus 공식 스킬 | 전체 | — | #301a03be · 2026-10-02 |
 | `gemini-omni` | `official:gemini-omni-flash-api` | Google 공식 스킬 | "Prompting Gemini Omni Flash" 이하 | SDK·스크립트·업로드·의존성 | #a2991071 · 2026-11-06 |
-| `gpt-image` | `official:gpt-image` | OpenAI 공식 문서(원문에서 바로) | 맨 앞 2.6 절 — 모델 고르기 · complexity · 프롬프트 기본 · 만들기·편집·여러 턴 예시. 뒤의 2.5 · 2 절은 그 모델일 때만 | 코드 예시(SDK) | #0901584b · 2026-11-11 |
+| `gpt-image` | `official:gpt-image` | OpenAI 공식 문서(원문에서 바로) | 맨 앞 2.6 절 — 모델 고르기 · complexity · 프롬프트 기본 · 만들기·편집·여러 턴 예시. 뒤의 2.5 · 2 절은 그 모델일 때만 | 코드 예시(SDK) | #06f0a979 · 2026-11-13 |
 | `seedream` | `official:seedream` | BytePlus 공식 문서(원문에서 바로) | 전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다) | — | #62bb2d0c · 2026-10-12 |
 | `gemini-.*image` · `nano-banana` | `official:nano-banana` | Google 공식 문서 | 전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations | — | #99b20e9a · 2026-10-12 |
 | `veo` | `official:veo` | Google 공식 문서 | 전체 | — | #71e99f0b · 2026-11-04 |
