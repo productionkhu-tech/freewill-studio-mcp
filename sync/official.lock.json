@@ -557,6 +557,23 @@
       "files": [
         "SKILL.md"
       ]
+    },
+    "seedream-5-5": {
+      "kind": "doc",
+      "live": true,
+      "vendor": "BytePlus",
+      "source": "https://docs.byteplus.com/en/docs/modelark/seedream-5-5",
+      "mode": "auto",
+      "models": [],
+      "families": [
+        "seedream-5-5"
+      ],
+      "version": null,
+      "hash": "885e222f7c3610ae2a562889c096ff3309d3786091ab56f302d384bf0a76f368",
+      "digest": null,
+      "appliedAt": "2026-11-17",
+      "chars": 11343,
+      "files": []
     }
   },
   "held": {
@@ -682,5 +699,22 @@
       ],
       "fields": []
     }
-  }
+  },
+  "byteplusDocs": [
+    "ocr-supported-fonts",
+    "recommended-models-seedance-1-0-pro",
+    "recommended-models-seedance-1-0-pro-fast",
+    "recommended-models-seedream-4-0",
+    "seedance-1-0-pro-pro-fast",
+    "seedance-1-5-pro",
+    "seedance-2-0",
+    "seedance-2-0-prompt-guide",
+    "seedance-2-5",
+    "seedance-2-5-prompt-guide",
+    "seedance-portrait-asset-guide",
+    "seedream-4-0-5-0-prompt-guide",
+    "seedream-5-0-pro",
+    "seedream-5-0-pro-editing-guide",
+    "seedream-5-5"
+  ]
 }
