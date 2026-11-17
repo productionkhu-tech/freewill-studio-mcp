@@ -62,6 +62,7 @@ jobs:
       # 검토 대기·새 스킬·오류가 있으면 이슈로 알린다 (같은 건은 다음 날 다시 알리지 않음).
       - name: 사람이 볼 것 알리기
         if: hashFiles('sync/attention.md') != ''
-        run: gh issue create --title "공식 스킬 확인 필요 ($(date -u +%F))" --body-file sync/attention.md
+        # 저장소 주인에게 배정해 GitHub 알림 메일이 가게 한다 — 배정 없이 열어 둔 이슈는 아무도 안 봤다(11/10 시드림 5.5 알림, 사용자 11/17).
+        run: gh issue create --title "공식 스킬 확인 필요 ($(date -u +%F))" --body-file sync/attention.md --assignee "${{ github.repository_owner }}"
         env:
           GH_TOKEN: ${{ github.token }}

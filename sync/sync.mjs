@@ -30,6 +30,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pickSections } from "../connector/sections.js";
 import { extractDoc } from "../connector/docs.js";
+import { renderAppRules } from "./app-tables.js";
 
 const SYNC_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SYNC_DIR, "..");
@@ -41,6 +42,7 @@ const CHANGELOG_PATH = path.join(SYNC_DIR, "CHANGELOG.md");
 const ATTENTION_PATH = path.join(SYNC_DIR, "attention.md");
 const PLUGIN_JSON = path.join(PLUGIN_DIR, ".claude-plugin", "plugin.json");
 const MARKETPLACE_JSON = path.join(ROOT, ".claude-plugin", "marketplace.json");
+const APP_RULES = path.join(PLUGIN_DIR, "skills", "freewill-generate", "references", "app-rules.md");
 
 const args = process.argv.slice(2);
 const DRY = args.includes("--dry-run");
@@ -329,6 +331,7 @@ const APP_WATCH = [
   { key: "seedance", name: "시댄스", url: "https://raw.githubusercontent.com/productionkhu-tech/freewill-seedance/main/src/store.ts",
     read: (s) => ({ models: [...new Set([...s.matchAll(/id:\s*['"`]((?:dreamina-seedance|gemini-omni)[^'"`]+)/g)].map((m) => m[1]))], fields: [] }) },
 ];
+const appSource = {};   // 받은 앱 코드 — 사내 고정 문서의 모델 표를 다시 쓸 때 쓴다(writeAppRules)
 async function watchApps() {
   lock.apps ??= {};
   for (const app of APP_WATCH) {
@@ -337,7 +340,9 @@ async function watchApps() {
     try {
       const r = await fetch(app.url, { signal: AbortSignal.timeout(30000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      now = app.read(await r.text());
+      const text = await r.text();
+      now = app.read(text);
+      appSource[app.key] = text;
       if (!now.models.length) throw new Error("모델 목록을 못 찾음 — 앱 코드 모양이 바뀌었는지 확인");
       clearFailure(key);
     } catch (e) {
@@ -349,11 +354,66 @@ async function watchApps() {
     const fields = prev ? now.fields.filter((f) => !prev.fields.includes(f) && !(app.known || []).includes(f)) : [];
     if (models.length || fields.length) {
       attention.push(`- 🆕 **${app.name} 앱**에 새로 들어옴${models.length ? ` — 모델 ${models.join(", ")}` : ""}${fields.length ? ` — 옵션 칸 ${fields.join(", ")}` : ""}\n` +
-        "  → 추천(계열 SOTA)과 옵션 전달은 자동으로 따라간다. 사용 요령 · 비용 차이가 있으면 `references/image-prompting.md` 에 적고, SOTA 표가 맞게 골랐는지 · `read-local-apps.mjs` 의 `KNOWN_SPEC_FIELDS` 를 볼 것");
+        "  → 추천(계열 SOTA) · 옵션 전달 · `app-rules.md` 의 모델 표는 자동으로 따라간다. 사용 요령이 있으면 `references/image-prompting.md` 에 적고, SOTA 가 맞게 골랐는지 · `read-local-apps.mjs` 의 `KNOWN_SPEC_FIELDS` 를 볼 것");
     }
     lock.apps[app.key] = now;
     log(`  앱     ${app.name} 모델 ${now.models.length}개${models.length + fields.length ? ` · 새로 ${models.length + fields.length}건` : ""}`);
   }
+}
+
+// 사내 고정 문서(app-rules.md)의 모델 표 · 계열 SOTA 줄을 앱 코드에서 다시 쓴다(사용자 11/17 "이게 왜 자동으로 안 됐던 거임?" —
+// 전엔 손으로 옮긴 사본이라 시드림 5.5 가 들어온 뒤에도 5.0 Pro 를 SOTA 로 적고 있었다). 앱을 못 받은 날은 그 앱 칸을 그대로 둔다.
+function writeAppRules() {
+  if (!Object.keys(appSource).length) return;
+  const before = fs.readFileSync(APP_RULES, "utf8");
+  let after;
+  try {
+    after = renderAppRules(before, appSource);
+    clearFailure("앱 표");
+  } catch (e) {
+    noteFailure("앱 표", `**앱 표**(references/app-rules.md)를 앱 코드에서 못 다시 씀: ${e.message}`);
+    return;
+  }
+  if (after === before) { log("  앱 표  같음"); return; }
+  if (DRY) {
+    fs.writeFileSync(path.join(STAGING, "app-rules.md"), after);
+    log(`  앱 표  바뀜 — 미리보기 ${path.relative(ROOT, path.join(STAGING, "app-rules.md"))}`);
+    return;
+  }
+  fs.writeFileSync(APP_RULES, after);
+  changelog.push("- **앱 표** — `references/app-rules.md` 의 모델 표 · 계열 SOTA 를 앱 코드에서 다시 씀");
+  log("  앱 표  다시 씀");
+}
+
+// BytePlus 문서 목록에 시드림 · 시댄스 새 페이지가 생기면 알린다. 동기화가 받는 공식 문서는 sources.json 에 주소를 적은 것뿐이라
+// 새 모델 튜토리얼(11/13 「Dola Seedream 5.5 tutorial」)은 사람이 붙이기 전엔 아무도 몰랐다(사용자 11/17). 처음 돌 때는 목록만 적는다.
+const BYTEPLUS_NAV = "https://docs.byteplus.com/en/docs/modelark/image-generation-tutorial";
+const BYTEPLUS_WATCH = /seedream|seedance|dreamina/i;
+const BYTEPLUS_SKIP = /purchase|discount|refund|resource pack|activat|diagnostic|\bAPI\b/i;   // 결제 · 이벤트 · API 참조는 알리지 않는다
+async function watchByteplusDocs() {
+  const key = "BytePlus 문서 목록";
+  let pages;
+  try {
+    const r = await fetch(BYTEPLUS_NAV, { headers: { "User-Agent": "freewill-sync" }, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+    pages = new Map([...html.matchAll(/"DocumentCode":"([^"]+)"[^{}]*?"Title":"((?:[^"\\]|\\.)*)"/g)].map((m) => [m[1], JSON.parse(`"${m[2]}"`)]));
+    if (pages.size < 50) throw new Error(`문서가 ${pages.size}개만 보임 — 페이지 모양이 바뀌었는지 확인`);
+    clearFailure(key);
+  } catch (e) {
+    noteFailure(key, `**${key}**을 못 읽음: ${e.message}`);
+    return;
+  }
+  const watched = [...pages].filter(([, t]) => BYTEPLUS_WATCH.test(t) && !BYTEPLUS_SKIP.test(t));
+  const linked = new Set((sources.docs || []).map((d) => d.url.split("/").pop().toLowerCase()));
+  const prev = lock.byteplusDocs;
+  const fresh = prev ? watched.filter(([code]) => !prev.includes(code) && !linked.has(code.toLowerCase())) : [];
+  for (const [code, title] of fresh) {
+    attention.push(`- 🆕 **BytePlus 문서**에 새 페이지: ${title} — https://docs.byteplus.com/en/docs/modelark/${code}\n` +
+      "  → 모델 쓰는 법 · 프롬프트 예시가 있으면 `sync/sources.json` 의 docs 에 붙인다(official:<이름>, sections 로 필요한 절만)");
+  }
+  lock.byteplusDocs = watched.map(([code]) => code).sort();
+  log(`  문서   BytePlus 목록 ${pages.size}개 · 시드림 · 시댄스 ${watched.length}개${prev ? (fresh.length ? ` · 새로 ${fresh.length}개` : "") : " (처음 — 목록만 적음)"}`);
 }
 
 async function main() {
@@ -428,6 +488,8 @@ async function main() {
   }
 
   await watchApps();
+  writeAppRules();
+  await watchByteplusDocs();
 
   if (DRY) {
     log(`\n[dry-run] 반영 예정 ${changelog.length}건, 알림 ${attention.length}건 — 파일은 그대로 둠`);

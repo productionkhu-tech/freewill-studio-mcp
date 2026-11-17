@@ -66,7 +66,7 @@
 //     그 밖의 설정도 앱에 있는 이름이면 그대로 넘어간다 — 앱에 새 옵션이 생겨도 이 스크립트를 안 고친다. 모델은 read-local-apps 의 "계열 SOTA" 표에서
 //     "jobs": [
 //       { "name": "char_01", "prompt": "...", "refs": [{ "path": "C:/path/a.png", "why": "her face and hair only — the outfit comes from the text" }] },
-//       { "name": "loc_01", "prompt": "...", "model": "seedream-5-0-pro-260628", "resolution": "2K" }
+//       { "name": "loc_01", "prompt": "...", "model": "seedream-5-5-261028", "resolution": "2K" }
 //     ]
 //   }
 // 프롬프트 본문은 영어(그림에 넣을 글자만 따옴표 안에 그 언어로) — 한국어 본문이면 보내지 않는다. 일부러면 "prompt_language": "ko".

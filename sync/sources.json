@@ -435,8 +435,32 @@
       "families": [
         "seedream"
       ],
-      "use": "전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~4.5 기준 문서 — 5.0 전용이 나오면 바꾼다)",
+      "use": "전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~5.0 공통 프롬프트 가이드 — 5.5 는 official:seedream-5-5 도 함께)",
       "skip": "—",
+      "store": false
+    },
+    {
+      "name": "seedream-5-5",
+      "vendor": "BytePlus",
+      "url": "https://docs.byteplus.com/en/docs/modelark/seedream-5-5",
+      "format": "byteplus-doc",
+      "license": "게시처(BytePlus)가 라이선스를 밝히지 않음 — 저장소에 복사하지 않고 커넥터가 원문에서 바로",
+      "mode": "auto",
+      "families": [
+        "seedream-5-5"
+      ],
+      "sections": [
+        "Featured capabilities",
+        "Capability overview",
+        "Basic usage",
+        "Multi-turn editing consistency",
+        "Native RGBA images",
+        "Customize image output"
+      ],
+      "drop": "Response format|Watermark",
+      "dropFences": "python|java|go|bash|sh|shell|curl|json",
+      "use": "5.5 에서 달라진 것 — 여러 번 이어 고치기(바꿀 것 · 지킬 것을 분명히), 투명 배경(RGBA) 만들기 · 레퍼런스에서 오려 내기 예시 프롬프트, 크기 · 배경 설정. 일반 원칙은 official:seedream",
+      "skip": "레이어 분해 · OCR(앱에 없음), 코드 예시(SDK)",
       "store": false
     },
     {

@@ -1,11 +1,12 @@
 # 앱 규칙 스냅샷
 
 > **마지막 수단.** 규칙은 이 PC 의 앱에서 읽는 게 원칙이다 — `scripts/read-local-apps.mjs` (또는 앱 MCP 도구).
-> 그걸 못 돌리는 환경(Cowork·웹)에서만 이 표를 쓴다. 앱이 업데이트되면 낡을 수 있다 — 사용자가 말한 모델이나
-> 값이 여기 없으면 지어내지 말고 앱 화면을 확인해 달라고 할 것.
+> 그걸 못 돌리는 환경(Cowork·웹)에서만 이 표를 쓴다. 사용자가 말한 모델이나 값이 여기 없으면 지어내지 말고
+> 앱 화면을 확인해 달라고 할 것.
 >
-> 기준: 나노바나나 소스 `v2026-10-0701` (`static/app.js` 의 `MODEL_SPECS`, 2026-10-07 옮겨 적음, GPT Image 2.6 은 `v2026-11-0501`) · 시댄스 소스 `26.10.304`
-> (`src/store.ts` 의 `MODELS`, 첨부 규칙은 `ChatArea.tsx` 의 `attachFiles`, 2026-10-03 옮겨 적음).
+> **모델 표 · 계열 SOTA 줄은 자동** — `sync/sync.mjs` 가 매일 두 앱의 GitHub 코드(나노바나나 `static/app.js` 의 `MODEL_SPECS` ·
+> `SOTA_MODELS`, 시댄스 `src/store.ts` 의 `MODELS`)에서 다시 쓴다(사용자 11/17). 그 밖의 글(주의 · 키 · 모드별 규칙)은 사람이 쓴 것 —
+> 나노바나나 `v2026-11-1702`, 시댄스 `26.11.601` 기준.
 
 ## 나노바나나 (이미지)
 
@@ -14,30 +15,40 @@
 부르는 이름 (구글 이름 → 앱 모델 ID): Nano Banana Pro = `gemini-3-pro-image` · Nano Banana 2.1 = `gemini-nano-banana-2.1` ·
 Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-flash-lite-image` · Nano Banana = `gemini-2.5-flash-image`.
 
-| 모델 ID | 앱 설명 | 해상도 (기본) | 품질 (기본) | 레퍼런스 |
-|---|---|---|---|---|
-| `gemini-3-pro-image` | 앱 첫 선택 모델 | 1K / 2K / 4K (2K) | 없음 | 최대 14장 |
-| `gemini-nano-banana-2.1` | Nano Banana 2 의 후속 — 구글이 새 작업에 권장. 생각 단계 high 고정 | 1K / 2K / 4K (2K) — 512px 없음 | 없음 | 최대 14장 |
-| `gemini-3.1-flash-image` | | 512px / 1K / 2K / 4K (2K) | 없음 | 최대 14장 |
-| `gemini-3.1-flash-lite-image` | 초고속·저가 — 테스트·룩 확인용 | 1K 만 | 없음 | 최대 14장 |
-| `gemini-2.5-flash-image` | | 1K 만 | 없음 | 최대 3장 |
-| `seedream-5-0-pro-260628` | 고정밀, png | 1K / 1.5K / 2K (2K) | 없음 | 최대 10장 |
-| `seedream-5-0-flash-260915` | Pro 보다 빠르고 저렴, png | 1K / 1.5K / 2K (2K) | 없음 | 최대 10장 |
-| `seedream-4-5-251128` | jpeg | 2K / 4K (2K) | 없음 | 최대 14장 |
-| `gpt-image-2` | OpenAI, 장당 최대 ~2분 | 1K / 2K / 4K (1K) | low / medium / high / auto (high) | 있음 |
-| `gpt-image-2.6-flare` | **GPT 최신** — 빠른 반복 | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 16장, 배경(투명) 옵션, complexity |
-| `gpt-image-2.6-sunburst` | **GPT 최신** — 세밀한 작업 · 정밀 편집 | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 16장, 배경(투명) 옵션, complexity |
-| `gpt-image-2.5-flare` | 2.5 빠른 일상용 | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 있음, 배경(투명) 옵션 |
-| `gpt-image-2.5-sunburst` | 2.5 무거운 편집 정밀도용 | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 있음, 배경(투명) 옵션 |
+Nano Banana 2.1 은 Nano Banana 2 의 후속 — 구글이 새 작업에 권장. Lite 는 테스트 · 룩 확인용.
 
-**계열 SOTA(모델 추천은 이것부터 — 이 표를 옮겨 적은 날 기준, 앱이 켜져 있으면 `read-local-apps` 표가 우선)**: GPT Image `gpt-image-2.6-sunburst`(빠른 것 `gpt-image-2.6-flare`) · Nano Banana `gemini-3-pro-image`(가장 가벼운 것 `gemini-3.1-flash-lite-image`) · Seedream `seedream-5-0-pro-260628` · 시댄스 `dreamina-seedance-2-5-260628`.
+**계열 SOTA(모델 추천은 이것부터 — 앱이 켜져 있으면 `read-local-apps` 표가 우선)**:
+<!-- AUTO:sota — sync/sync.mjs 가 매일 앱 코드(SOTA_MODELS 별표 · 모델 이름)에서 다시 쓴다. 손으로 고치지 말 것 -->
+Nano Banana `gemini-3-pro-image`(빠른 것 `gemini-3.1-flash-image` · 가장 가벼운 것 `gemini-3.1-flash-lite-image`) · Seedream `seedream-5-5-261028`(빠른 것 `seedream-5-0-flash-260915`) · GPT Image `gpt-image-2.6-sunburst`(빠른 것 `gpt-image-2.6-flare`) · Seedance `dreamina-seedance-2-5-260628`(빠른 것 `dreamina-seedance-2-5-flash-261115` · 가장 가벼운 것 `dreamina-seedance-2-0-mini-260615`) · Gemini Omni `gemini-omni-1.2-flash`
+<!-- /AUTO:sota -->
+
+<!-- AUTO:nanobanana-models — sync/sync.mjs 가 매일 나노바나나 앱 코드(static/app.js 의 MODEL_SPECS)에서 다시 쓴다. 손으로 고치지 말 것 -->
+★ = 앱이 고른 계열 SOTA(모델 메뉴 별표). 괄호 = 앱 화면의 시작값. 앱 설명은 앱 코드의 글 그대로.
+
+| 모델 ID | 해상도 (기본) | 품질 (기본) | 레퍼런스 | 그 밖 | 앱 설명 |
+|---|---|---|---|---|---|
+| `gemini-2.5-flash-image` | 1K (1K) | — | 최대 3장 | — | 10 RPM limit — auto-throttled to ~8 RPM |
+| `gemini-3-pro-image` ★ | 1K / 2K / 4K (2K) | — | 최대 14장 | — | 10 RPM limit — auto-throttled to ~8 RPM |
+| `gemini-3.1-flash-image` | 512px / 1K / 2K / 4K (2K) | — | 최대 14장 | — | 10 RPM limit — auto-throttled to ~8 RPM |
+| `gemini-nano-banana-2.1` | 1K / 2K / 4K (2K) | — | 최대 14장 | — | Nano Banana 2.1 — thinking high. 10 RPM limit — auto-throttled to ~8 RPM |
+| `gemini-3.1-flash-lite-image` | 1K (1K) | — | 최대 14장 | — | Lite: ultra-fast & low-cost. 1K only (2K/4K unsupported). |
+| `seedream-5-5-261028` ★ | 1K / 1.5K / 2K (2K) | — | 최대 10장 | 배경(투명) | BytePlus Seedream 5.5 - more realistic, steadier edits. 1K/1.5K/2K, png. Can return a transparent background. |
+| `seedream-5-0-pro-260628` | 1K / 1.5K / 2K (2K) | — | 최대 10장 | — | BytePlus Seedream 5.0 Pro - high precision. 1K/1.5K/2K, png. 1.5K costs the same as 1K. |
+| `seedream-5-0-flash-260915` | 1K / 1.5K / 2K (2K) | — | 최대 10장 | — | BytePlus Seedream 5.0 Flash - faster and cheaper than Pro. 1K/1.5K/2K, png. |
+| `seedream-4-5-251128` | 2K / 4K (2K) | — | 최대 14장 | — | BytePlus Seedream 4.5 - jpeg. 2K/4K. |
+| `gpt-image-2` | 1K / 2K / 4K (1K) | low / medium / high / auto (high) | 최대 16장 | — | OpenAI Image API — generation may take up to ~2 min. |
+| `gpt-image-2.5-flare` | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 최대 16장 | 배경(투명) | GPT Image 2.5 Fast — quick everyday generation. Starts at max quality. |
+| `gpt-image-2.5-sunburst` | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 최대 16장 | 배경(투명) | GPT Image 2.5 Heavy — editing precision. Starts at max quality. |
+| `gpt-image-2.6-flare` | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 최대 16장 | 배경(투명), complexity low / medium / high, GIF · SVG | GPT Image 2.6 Fast — quick iteration. Starts at max quality. |
+| `gpt-image-2.6-sunburst` ★ | 1K / 2K / 4K (1K) | low / medium / high / xhigh / max / auto (max) | 최대 16장 | 배경(투명), complexity low / medium / high, GIF · SVG | GPT Image 2.6 Heavy — detailed visual work. Starts at max quality. |
 
 비율:
 
-- Gemini 3 Pro · 2.5 Flash: auto, 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
-- Nano Banana 2.1 · Gemini 3.1 Flash · Lite: 위 + 1:4, 4:1, 1:8, 8:1
-- Seedream: auto, 1:1, 4:3, 3:4, 16:9, 9:16, 3:2, 2:3, 21:9, custom
-- GPT 2 · 2.5 · 2.6: auto, 1:1, 3:2, 2:3, 4:3, 3:4, 4:5, 5:4, 16:9, 9:16, 21:9, 9:21, 3:1, 1:3, custom
+- `gemini-2.5-flash-image` · `gemini-3-pro-image`: auto, 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
+- `gemini-3.1-flash-image` · `gemini-nano-banana-2.1` · `gemini-3.1-flash-lite-image`: auto, 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9, 1:4, 4:1, 1:8, 8:1
+- `seedream-5-5-261028` · `seedream-5-0-pro-260628` · `seedream-5-0-flash-260915` · `seedream-4-5-251128`: auto, 1:1, 4:3, 3:4, 16:9, 9:16, 3:2, 2:3, 21:9, custom
+- `gpt-image-2` · `gpt-image-2.5-flare` · `gpt-image-2.5-sunburst` · `gpt-image-2.6-flare` · `gpt-image-2.6-sunburst`: auto, 1:1, 3:2, 2:3, 4:3, 3:4, 4:5, 5:4, 16:9, 9:16, 21:9, 9:21, 3:1, 1:3, custom
+<!-- /AUTO:nanobanana-models -->
 
 모델별 주의:
 
@@ -51,10 +62,13 @@ Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-fla
   한 곳만 고치는 편집은 low 부터(high 는 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high(`image-prompting.md` 1절).
   GIF · SVG(`output_format`, 앱 `v2026-11-0502`~)도 2.6 전용 — 시켰을 때만, `image-prompting.md` 9절. SVG 는 레퍼런스 불가.
 - **Seedream**: 레퍼런스는 프롬프트에서 `image 1`, `image 2` 처럼 부른다.
+- **Seedream 5.5** (앱 `v2026-11-1702`~, BytePlus 얼리 액세스): 크기 · 레퍼런스는 5.0 Pro 와 같다. 소개 글의 4K 는 API 가 거절한다(앱 주석) — 2K 까지.
+  투명 배경은 GPT 2.5 · 2.6 과 같은 설정 `openai_bg_transparent`(앱 이름 그대로) — 시켰을 때만. 글로만도, 레퍼런스 10장에서 오려 내기도 된다(5.0 은 알파 있는 PNG 1장만).
+  공식대로 프롬프트에도 떨어진 대상 + 투명 배경을 적는다. 여러 번 이어 고칠 때는 투명을 끄고 넣는 그림도 알파 없는 것으로(공식 권장). 쓰는 법은 `official:seedream-5-5`.
 - **Gemini**: 분당 10회 제한 — 앱이 알아서 8회 정도로 늦춘다. 많이 뽑으면 오래 걸린다고 미리 말해 줄 것.
   레퍼런스 14장 안에서 2.1 · 3.1 Flash 는 인물 일관성 4명 · 물체 10개까지, 3 Pro 는 인물 5명 · 물체 6개 · 스타일 3장까지(구글 문서).
 - **custom 픽셀**: GPT 는 16의 배수 · 긴 변 3840 이하 · 비율 3:1 이내 · 655,360~8,294,400 픽셀.
-  Seedream 은 16의 배수 · 비율 16 이내 · 5.0 Pro · Flash 921,600~4,624,220 / 4.5 3,686,400~16,777,216 픽셀.
+  Seedream 은 16의 배수 · 비율 16 이내 · 5.5 · 5.0 Pro · Flash 921,600~4,624,220 / 4.5 3,686,400~16,777,216 픽셀.
   벗어나면 앱이 말없이 크기를 고친다(GPT 640x480 → 816x816 처럼 모양까지 바뀐다). `"aspect": "custom"` 없이 적은 크기는 안 쓰이므로 스크립트가 멈춘다.
 
 ## 시댄스 (영상)
@@ -66,23 +80,33 @@ Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-fla
 공통: 한 번에 **1~3개** (기본 1). 비율: adaptive, 21:9, 16:9, 4:3, 1:1, 3:4, 9:16.
 **프로젝트마다 쓸 수 있는 모델이 다르다** (크레딧 시트 권한 — 권한 없는 모델은 앱이 막는다).
 
-| 모델 ID | 이름 | 길이 | 해상도 | 레퍼런스 상한 (이미지/영상/오디오) |
-|---|---|---|---|---|
-| `dreamina-seedance-2-5-260628` | Seedance 2.5 | 4~30초 | 480p / 720p / 1080p, **초안(Draft)** | 30 / 10 / 10 |
-| `dreamina-seedance-2-0-260128` | Seedance 2.0 | 4~15초 | 480p / 720p / 1080p / 4K (4K 는 프로젝트 권한) | 9 / 3 / 3 |
-| `dreamina-seedance-2-0-fast-260128` | Seedance 2.0 Fast | 4~15초 | 480p / 720p | 9 / 3 / 3 |
-| `dreamina-seedance-2-0-mini-260615` | Seedance 2.0 Mini | 4~15초 | 480p / 720p | 9 / 3 / 3 |
-| `gemini-omni-1.1-flash` | Gemini Omni 1.1 Flash | 3~10초 | 360p / 720p / 1080p / 4K | 10 / 3 / 0 |
-| `gemini-omni-flash-preview` | Gemini Omni Flash | 3~10초 | 720p | 10 / 3 / 0 |
+<!-- AUTO:seedance-models — sync/sync.mjs 가 매일 시댄스 앱 코드(src/store.ts 의 MODELS, 고를 수 있는 모델만)에서 다시 쓴다. 손으로 고치지 말 것 -->
+| 모델 ID | 이름 | 길이 | 해상도 | 초안 | 레퍼런스 상한 (이미지/영상/오디오) | 공식 가이드 |
+|---|---|---|---|---|---|---|
+| `dreamina-seedance-2-5-260628` | Seedance 2.5 | 4~30초 | 480p / 720p / 1080p | 있음(480p → 본편) | 30 / 10 / 10 | `official:sd25-pe` |
+| `dreamina-seedance-2-5-flash-261115` | Seedance 2.5 Flash | 4~30초 | 480p / 720p | — | 10 / 5 / 5 | `official:sd25-pe` |
+| `dreamina-seedance-2-0-260128` | Seedance 2.0 | 4~15초 | 480p / 720p / 1080p / 4k | — | 9 / 3 / 3 | `official:sd2-pe` |
+| `dreamina-seedance-2-0-fast-260128` | Seedance 2.0 Fast | 4~15초 | 480p / 720p | — | 9 / 3 / 3 | `official:sd2-pe` |
+| `dreamina-seedance-2-0-mini-260615` | Seedance 2.0 Mini | 4~15초 | 480p / 720p | — | 9 / 3 / 3 | `official:sd2-pe` |
+| `gemini-omni-1.2-flash` | Gemini Omni 1.2 Flash | 3~15초 | 360p / 720p / 1080p / 4k | — | 10 / 3 / 0 | `official:gemini-omni-flash-api` |
 
-모드: 텍스트→영상, 이미지→영상 (첫 프레임 / 첫·끝 프레임), 레퍼런스→영상, 영상 편집. Gemini Omni 1.1 은 **영상 연장**도 있다.
+앱이 모델마다 적어 둔 사용법(앱 코드 `notes` 그대로):
+
+- `dreamina-seedance-2-5-260628` — 초안(draft)이 기본 — 480p 로 먼저 보고, 고른 것만 앱 카드의 '본편' 으로 1080p 를 만든다(같은 시드·구도를 키운 것). 바로 최종이면 draft:false 와 해상도를 정한다. 1080p 는 HEVC 10-bit — mov(기본)는 4:4:4 라 일부 편집기·플레이어가 못 열고, mp4 는 4:2:0 이라 더 잘 열린다.
+- `dreamina-seedance-2-5-flash-261115` — 2.5 와 같은 기능(30초 · 편집 · 연장 · 오디오만 레퍼런스)을 더 싸게 — 같은 해상도면 2.5 단가의 약 65%. 해상도는 480p · 720p 뿐(1080p 없음). 초안(draft)이 없다 — 바로 최종이다. 레퍼런스는 이미지 10 · 영상 5 · 오디오 5 까지(2.5 는 30 · 10 · 10). 2.5 보다 약 2배 빠르다(720p 5초 실측 68초 vs 142초). 카메라 연출 · 장면 짜임은 2.5 가 낫다 — 시안 · 많이 뽑기는 Flash, 1080p 최종은 2.5 초안 → 본편.
+- `dreamina-seedance-2-0-260128` — 4K 는 과금 프로젝트에 4K 권한이 있을 때만 — 없으면 낮추지 않고 거절한다. 4K 는 HEVC 10-bit 라 코덱이 없는 PC 에서는 미리보기가 안 될 수 있다.
+- `dreamina-seedance-2-0-fast-260128` — 빠른 시안용 — 1080p·4K 가 없다.
+- `gemini-omni-1.2-flash` — 길이 3~15초. 첫·끝 프레임을 공식 지원한다(image_to_video 에 두 장) — 두 장이면 10초까지. 결과가 10초를 넘으면 참조 영상은 1개까지(10초 이하면 3개). 이미지는 10장까지. edit 원본은 15초까지. extend 는 한 번에 3~10초를 붙이고, 원본 + 붙일 길이가 30초까지. 360p 15초가 1분 안팎, 연장은 2분 안팎. 1080p · 4K 는 업스케일이라 더 걸린다.
+<!-- /AUTO:seedance-models -->
+
+모드: 텍스트→영상, 이미지→영상 (첫 프레임 / 첫·끝 프레임), 레퍼런스→영상, 영상 편집 · 연장. Omni 의 연장 · 첫·끝 프레임 길이는 위 모델 메모.
 
 꼭 지킬 것:
 
 - **오디오 생성과 마지막 프레임 받기는 같이 못 켠다.** 마지막 프레임을 켜면 오디오가 꺼진다.
 - **Seedance 2.5 는 앱 기본이 초안(Draft) 모드**다 — 초안은 **480p** 로 나간다(저장된 해상도는 그대로 둔다).
   마음에 드는 초안은 앱 카드의 '본편' 으로 1080p 를 만든다(같은 시드·구도를 키운 것). 바로 최종본이면
-  `draft:false` 와 해상도를 물어서 보낸다. 초안은 2.5 만 있다.
+  `draft:false` 와 해상도를 물어서 보낸다. 초안은 2.5 만 있다(2.5 Flash 는 없음 — 바로 최종).
 - **Seedance 2.5 에서 입력이 값을 잠그는 작업**: 영상 편집 · 연장 · 첫 프레임 · 첫·끝 프레임은 비율이 입력 기준(adaptive)으로
   고정, 영상 편집은 길이도 입력 기준. 이 값들은 묻지 말고 자동이라고 알린다. 2.5 출력 형식은 mov(기본) / mp4.
 - 레퍼런스 영상·오디오는 공개 주소로 올라간다 — 앱이 처리한다. 사용자는 파일만 주면 된다.
@@ -99,14 +123,14 @@ Nano Banana 2 = `gemini-3.1-flash-image` · Nano Banana 2 Lite = `gemini-3.1-fla
 |---|---|
 | `model` | 위 표의 모델 ID |
 | `mode` | `text_to_video` · `image_to_video_first` · `image_to_video_first_last` · `multimodal_reference` · `edit_video` · `extend_video` (시댄스) |
-| `omniTask` | Gemini Omni 는 `mode` 대신 이것: `text_to_video` · `image_to_video` · `reference_to_video` · `edit` (+ 1.1 은 `extend`) |
+| `omniTask` | Gemini Omni 는 `mode` 대신 이것: `text_to_video` · `image_to_video` · `reference_to_video` · `edit` · `extend` |
 | `ratio` | 시댄스 `adaptive` `21:9` `16:9` `4:3` `1:1` `3:4` `9:16` · Omni `16:9` `9:16` |
 | `duration` | 모델 범위 안의 정수 초, 시댄스는 `-1`(자동)도 |
 | `resolution` | 모델 표의 값(4K 는 프로젝트 권한이 없으면 앱이 낮춰서 보낸다) |
 | `output_count` | 1~3 |
 | `generate_audio` · `return_last_frame` | true / false (Omni 는 오디오 없음, 첫·끝 프레임 모드는 마지막 프레임 없음) |
 | `draft` | true / false — 2.5 만 |
-| `output_format` | `mov` / `mp4` — 2.5 만 |
+| `output_format` | `mov` / `mp4` — 2.5 · 2.5 Flash 만 |
 
 모드별 레퍼런스 (드래그와 같은 규칙으로 앱이 검사한다 — 어긋나면 이유와 함께 실패):
 
