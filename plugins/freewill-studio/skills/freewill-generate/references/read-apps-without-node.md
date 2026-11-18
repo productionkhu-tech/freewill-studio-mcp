@@ -106,6 +106,30 @@ if (-not $u.ok) { $u.error }   # 하루 한도 초과·표 만료 — 이 작업
 - `ok` 가 아니면 보내지 않는다. 앱이 받지 않았으면 `Use-FW "/usage/settle" @{ id = $u.id; n = 0 }` 로 무른다.
 - 시댄스는 `app = "seedance"`, `n` 은 그 요청의 `output_count`(모르면 3). 본편·재생성 명령도 같은 식으로 남긴다.
 
+## 글은 `[string]` 으로 읽는다 — `Get-Content` 결과를 그대로 보내지 않는다
+
+프롬프트 · 이름 · 설명처럼 파일에서 읽은 글을 아래 `Send-NB` · `Send-SD` 에 넣을 때 **`Get-Content` 결과를 그대로 넣지 않는다.**
+Windows PowerShell 5.1 의 `Get-Content` 는 글에 PSPath · PSProvider 같은 꼬리표를 붙여 돌려주고, `ConvertTo-Json -Depth 6/8` 은 그걸
+글이 아니라 `{"value": "…", "PSPath": …, "PSProvider": {…}}` 객체로 보낸다 — 이 PC 시험에서 40자 파일 하나가 4,700만 자가 됐다.
+나노바나나 26.11.1801 전에는 그게 그대로 프롬프트로 들어가 그림마다 수천만 자씩 저장돼 프로젝트 파일이 2GB 가 됐다(11/18 제보).
+이때도 `$x -is [string]` 은 True 라 그것으로는 못 가린다.
+
+```powershell
+$prompt = [IO.File]::ReadAllText("C:\경로\cut_01.txt")                       # 권장 — UTF-8 그대로, 꼬리표 없음
+$prompt = [string](Get-Content "C:\경로\cut_01.txt" -Raw -Encoding UTF8)      # Get-Content 를 쓰면 [string] 과 -Encoding UTF8 둘 다
+# 보낼 묶음의 모든 글 칸(중첩 · 배열 안까지)이 [string] 인지 — JSON 으로 바꿨을 때 따옴표로 시작해야 글이다. 아니면 멈춘다(보내지 않음)
+function Assert-Text($obj, $where = "") {
+  if ($obj -is [System.Collections.IDictionary]) { foreach ($k in @($obj.Keys)) { Assert-Text $obj[$k] "$where$k." }; return }
+  if ($obj -is [array]) { $i = 0; foreach ($x in $obj) { Assert-Text $x "$where[$i]."; $i++ }; return }
+  if ($obj -is [string] -and -not (ConvertTo-Json -InputObject $obj -Compress).StartsWith('"')) {
+    throw "글 칸 '$($where.TrimEnd('.'))' 이 [string] 이 아니다(Get-Content 결과) — [IO.File]::ReadAllText(파일) 로 다시 읽을 것. 보내지 않았다"
+  }
+}
+```
+- `-Encoding UTF8` 을 빼면 BOM 없는 UTF-8 파일의 한글도 깨진다(5.1 은 ANSI 로 읽는다). 그래서 `[IO.File]::ReadAllText` 가 먼저다.
+- `Assert-Text` 는 아래 `Send-NB` · `Send-SD` 가 보내기 전에 부른다 — 이 블록을 먼저 붙여 넣는다(없으면 함수가 없다며 멈춘다 — 그대로 둔다).
+- 나노바나나 26.11.1801~ 는 이런 요청을 `error = bad_prompt` 로 거절한다(`hint` 에 이유) — 위처럼 다시 읽은 뒤 보내고, 같은 요청을 되풀이하지 않는다.
+
 ## Node 없이 보내기 — 나노바나나
 
 `scripts/send-to-nanobanana.mjs` 와 같은 순서를 PowerShell 로 한다. **한글이 깨지지 않게 보낼 때도 읽을 때도 UTF-8 로 직접 다룬다** —
@@ -118,6 +142,7 @@ $nb = "http://127.0.0.1:5656"
 $html = (Invoke-WebRequest "$nb/" -UseBasicParsing).Content
 $h = @{ "X-NB-Token" = [regex]::Match($html, 'name="nb-csrf" content="([^"]+)"').Groups[1].Value }
 function Send-NB($path, $obj) {
+  Assert-Text $obj      # 글 칸이 [string] 인지(위 절) — Get-Content 결과가 섞였으면 보내지 않고 멈춘다
   $bytes = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 6 -Compress))
   Invoke-RestMethod -Method Post -Uri "$nb$path" -Headers $h -ContentType "application/json; charset=utf-8" -Body $bytes
 }
@@ -139,9 +164,10 @@ $bill = Get-NB "/api/billing/state?pid=$tabPid"                  # confirmed 가
 # 이미 다른 과금이 골라진 탭은 사용자가 바꾸라고 했을 때만. pid 를 빼면 화면 탭에 들어가니 꼭 넣는다.
 $cat = Get-NB "/api/billing/catalog"
 Send-NB "/api/billing/set" @{ pid = $tabPid; team_id = "고른 팀의 id"; project_id = "고른 프로젝트의 id" }
-$r = Send-NB "/api/generate" @{ pid = $tabPid; prompt = "프롬프트"
+$prompt = [IO.File]::ReadAllText("C:\경로\cut_01.txt")          # 파일에서 읽을 때는 이렇게(위 '글은 [string]'), 짧으면 "…" 로 바로
+$r = Send-NB "/api/generate" @{ pid = $tabPid; prompt = $prompt
        settings = @{ model = "gpt-image-2.6-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
-       ref_paths = @("C:\경로\ref1.png") }                        # 거절이면 error(needs_billing · bad_aspect+allowed · ref_*)
+       ref_paths = @("C:\경로\ref1.png") }                        # 거절이면 error(needs_billing · bad_aspect+allowed · ref_* · bad_prompt+hint)
 Get-NB "/api/batch?pid=$tabPid&batch_id=$($r.batch_id)"         # finished 가 true 면 images 에 파일 경로
 ```
 사내 규칙 2 의 한도(동시 10장 · 사용 기록 먼저)는 그대로 지킨다.
@@ -155,7 +181,7 @@ Get-NB "/api/batch?pid=$tabPid&batch_id=$($r.batch_id)"         # finished 가 t
    ```powershell
    Send-NB "/api/refs/clear" @{ preserve_pinned = $false }
    Send-NB "/api/refs/add-path" @{ filepath = "C:\경로\ref1.png" }     # 레퍼런스마다
-   Send-NB "/api/settings" @{ pid = $tabPid; fixed_prompt = ""; prompt_sections = @("프롬프트")
+   Send-NB "/api/settings" @{ pid = $tabPid; fixed_prompt = ""; prompt_sections = @($prompt)   # $prompt 는 [string](위 절)
                               model = "gpt-image-2.6-sunburst"; resolution = "4K"; aspect = "16:9"; quality = "max"; count = 1 }
    Send-NB "/api/generate" @{}       # ok 가 아니고 "Queue full" 이면 잠깐 기다렸다 다시
    ```
@@ -176,6 +202,7 @@ function Get-SD($path) {
   [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) | ConvertFrom-Json
 }
 function Send-SD($path, $obj) {
+  Assert-Text $obj      # 글 칸이 [string] 인지(위 '글은 [string]' 절) — Get-Content 결과가 섞였으면 보내지 않고 멈춘다
   $bytes = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 8 -Compress))
   try {
     $r = Invoke-WebRequest -Method Post -Uri "$sd$path" -ContentType "application/json; charset=utf-8" -Body $bytes -UseBasicParsing
@@ -199,7 +226,8 @@ $m = Get-SD "/api/agent/manual"      # 앱이 낸 사용 설명서 — $m.text �
    확인 카드를 다시 맞춘다.
 3. 확인 카드에 `$s.project` · `$s.billing` 을 보여주고 답을 받은 뒤, 작업마다 넣고 앱이 받을 때까지 기다린다:
    ```powershell
-   $job = Send-SD "/api/agent/jobs" @{ manual = $m.version; name = "cut_01"; prompt = "프롬프트 전문"; project = $s.project; billing = $s.billing
+   $prompt = [IO.File]::ReadAllText("C:\경로\cut_01.txt")       # 프롬프트 전문 — Get-Content 그대로 넣지 않는다(위 '글은 [string]')
+   $job = Send-SD "/api/agent/jobs" @{ manual = $m.version; name = "cut_01"; prompt = $prompt; project = $s.project; billing = $s.billing
      settings = @{ model = "dreamina-seedance-2-5-260628"; mode = "multimodal_reference"; ratio = "16:9"; duration = 10
                    resolution = "720p"; draft = $true; output_count = 1; generate_audio = $true }
      refs = @("C:\경로\a.png", @{ path = "C:\경로\b.png"; role = "reference_image" }) }
