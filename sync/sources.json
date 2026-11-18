@@ -408,6 +408,17 @@
       "use": "전체",
       "skip": "—",
       "adoptedAt": "2026-11-03"
+    },
+    {
+      "skill": "seed-audio-1-5-pe",
+      "vendor": "BytePlus",
+      "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
+      "mode": "auto",
+      "families": [],
+      "models": [],
+      "use": "전체",
+      "skip": "—",
+      "adoptedAt": "2026-11-18"
     }
   ],
   "docs": [

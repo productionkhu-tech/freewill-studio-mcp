@@ -574,6 +574,24 @@
       "appliedAt": "2026-11-17",
       "chars": 11343,
       "files": []
+    },
+    "seed-audio-1-5-pe": {
+      "kind": "skill",
+      "vendor": "BytePlus",
+      "source": "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/",
+      "mode": "auto",
+      "models": [],
+      "families": [],
+      "version": "0.0.1",
+      "hash": "8614b95d92465d7f02adb4d2591daa8be86de2d760122f9888f1ad4c53e78c37",
+      "digest": "sha256:3e5d6724fd3bece7a48758911e3d0ab1beefcfc166a4949544a601890d0e3817",
+      "appliedAt": "2026-11-18",
+      "files": [
+        "SKILL.md",
+        "references/api-rules.md",
+        "references/sound-writing-guide.md",
+        "references/troubleshooting.md"
+      ]
     }
   },
   "held": {
@@ -584,7 +602,8 @@
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [
       "ark-docs-reader",
       "sd2-pe",
-      "sd25-pe"
+      "sd25-pe",
+      "seed-audio-1-5-pe"
     ],
     "google-gemini/gemini-skills": [
       "gemini-api-cli",
