@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { pickSections } from "../connector/sections.js";
 import { extractDoc } from "../connector/docs.js";
 import { renderAppRules } from "./app-tables.js";
+import { startGuideLength } from "./start-len.mjs";
 
 const SYNC_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SYNC_DIR, "..");
@@ -492,6 +493,8 @@ async function main() {
   await watchByteplusDocs();
 
   if (DRY) {
+    try { const { length, limit } = await startGuideLength(); log(`\n[dry-run] 지금 파일 기준 시작 지침 ${length}자 / 한도 ${limit}자${length > limit ? " — ★ 넘음" : ""}`); }
+    catch (e) { log(`\n[dry-run] 시작 지침 길이를 못 잼 — ${e.message}`); }
     log(`\n[dry-run] 반영 예정 ${changelog.length}건, 알림 ${attention.length}건 — 파일은 그대로 둠`);
     [...changelog, ...attention].forEach((l) => log(l));
     return;
@@ -508,6 +511,8 @@ async function main() {
   writeJson(LOCK_PATH, lock);
   if (sourcesChanged) writeJson(path.join(SYNC_DIR, "sources.json"), sources);
   writeVersions();
+  await checkStartLength();   // 새로 쓴 표까지 넣어 잰다 — 알림 상태(lock.failing)도 다시 남긴다
+  writeJson(LOCK_PATH, lock);
   if (attention.length) {
     fs.writeFileSync(ATTENTION_PATH, `공식 프롬프팅 스킬 동기화(${today})에서 사람이 볼 것:\n\n${attention.join("\n")}\n`);
   } else {
@@ -525,6 +530,21 @@ function noteFailure(key, msg) {
   lock.failing[key] = msg;
 }
 function clearFailure(key) { delete lock.failing[key]; }
+
+// 시작 지침 길이 — 공식 문서 표(VERSIONS.md)는 start 에 그대로 들어가서, 줄이 늘면 커넥터 한도를 넘어 두 부분으로 나간다
+// (11/18 시드림 5.5 줄로 36,263자가 됐는데 아무도 몰랐다 — 사용자 "자동 검사에 넣어"). 넘으면 알림 이슈(저장소 주인 배정), 돌아오면 지운다.
+async function checkStartLength() {
+  try {
+    const { length, limit } = await startGuideLength();
+    clearFailure("시작 지침 길이 재기");
+    log(`  시작 지침 ${length}자 / 한도 ${limit}자`);
+    if (length <= limit) return clearFailure("시작 지침 길이");
+    noteFailure("시작 지침 길이", `**시작 지침(start)이 ${length.toLocaleString("en-US")}자 — 커넥터 한도 ${limit.toLocaleString("en-US")}자를 ${length - limit}자 넘었다.** ` +
+      "두 부분으로 나가 에이전트가 뒷부분(보내기 · 프롬프트 북 등)을 놓칠 수 있다 → GUIDE.md(옛 앱 호환 문구 · 날짜 인용)나 `sync/sources.json` 의 use 설명을 줄이고 `node sync/start-len.mjs` 로 확인");
+  } catch (e) {
+    noteFailure("시작 지침 길이 재기", `시작 지침 길이를 못 잼 — ${e.message}`);
+  }
+}
 
 function writeVersions() {
   // '앱 모델 → 가이드' 표. 커넥터가 start 지침 4단계에 그대로 넣는다(플러그인 사본에는 이 파일이 같이 들어간다).

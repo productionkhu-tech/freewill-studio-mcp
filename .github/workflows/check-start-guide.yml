@@ -1,0 +1,35 @@
+name: 시작 지침 길이 검사
+
+# 커넥터가 시작 지침(freewill_guide "start")을 한 번에 내주는지(PART_CHARS 안) 푸시마다 본다. 넘으면 두 부분으로 나가
+# 에이전트가 뒷부분을 놓칠 수 있다 — 실패 메일이 간다. 봇이 올리는 동기화 커밋은 워크플로를 깨우지 않으므로
+# 그쪽은 sync/sync.mjs 가 같은 검사로 재고 알림 이슈를 연다(11/18 시드림 5.5 표 줄로 36,263자가 됐던 것).
+
+on:
+  push:
+    paths:
+      - "plugins/freewill-studio/skills/freewill-generate/**"
+      - "connector/mcp.js"
+      - "sync/start-len.mjs"
+      - "sync/sources.json"
+      - ".github/workflows/check-start-guide.yml"
+  pull_request:
+    paths:
+      - "plugins/freewill-studio/skills/freewill-generate/**"
+      - "connector/mcp.js"
+      - "sync/start-len.mjs"
+      - "sync/sources.json"
+      - ".github/workflows/check-start-guide.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node sync/start-len.mjs
