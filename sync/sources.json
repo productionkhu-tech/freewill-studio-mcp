@@ -435,7 +435,7 @@
       "families": [
         "seedream"
       ],
-      "use": "전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~5.0 공통 프롬프트 가이드 — 5.5 는 official:seedream-5-5 도 함께)",
+      "use": "전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~5.0 공통 — 5.5 는 official:seedream-5-5 도)",
       "skip": "—",
       "store": false
     },
@@ -459,8 +459,8 @@
       ],
       "drop": "Response format|Watermark",
       "dropFences": "python|java|go|bash|sh|shell|curl|json",
-      "use": "5.5 에서 달라진 것 — 여러 번 이어 고치기(바꿀 것 · 지킬 것을 분명히), 투명 배경(RGBA) 만들기 · 레퍼런스에서 오려 내기 예시 프롬프트, 크기 · 배경 설정. 일반 원칙은 official:seedream",
-      "skip": "레이어 분해 · OCR(앱에 없음), 코드 예시(SDK)",
+      "use": "5.5 에서 달라진 것 — 이어 고치기(바꿀 것 · 지킬 것), 투명 배경(RGBA) · 오려 내기 예시. 일반 원칙은 official:seedream",
+      "skip": "레이어 분해 · OCR(앱에 없음), SDK 예시",
       "store": false
     },
     {

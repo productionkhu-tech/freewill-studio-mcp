@@ -38,7 +38,7 @@
 //                                                   모르는 작업은 보내지 않는다 — 끊긴 뒤 같은 명령을 다시 실행해도 두 번 과금되지 않게(아래 '보낸 기록')
 //   node send-to-seedance.mjs --status <id> [<id>]  보낸 요청의 지금 상태
 //   node send-to-seedance.mjs --save-final <초안 파일> <본편 카드 id>
-//                                                   본편(card.final 1080p)을 받아 초안 옆에 같은 번호로(_480 → _1080)
+//                                                   본편(card.final)을 받아 초안과 같은 번호로 — 꼬리는 본편 해상도(_480 → _1080 · _4k)
 //   node send-to-seedance.mjs --do <명령> [JSON 인자 | @인자파일.json]
 //                                                   앱 기능 명령(26.10.305~) — 프로젝트 · 어셋 라이브러리 · 카드 ·
 //                                                   과금 목록. 명령 목록은 설명서에. 결과는 JSON 으로 출력한다.
@@ -55,6 +55,8 @@
 //              '보낼 것'에 그림으로 뜨고, 끝나면 씬·컷 폴더 이름으로 목록에 적는다(지켜보기를 켜지 않아도 기다린다). 검수를 쓰면 받지 않고
 //              앱 주소로 검수 — 저장할 때 OK·보류만 받는다. 검수를 안 쓰거나 회사 보관소가 없는 앱이면 받아서 놓는다",
 //     "code": "프로젝트 코드(예: ABC) — 파일 이름 맨 앞. 한 번 적으면 작업 설정(05_prompts/review/settings.json)에 남는다",
+//     "final": "4k" — 초안(draft: true)으로 보내고 고른 것을 4K 본편으로 올릴 때(사용자가 4K 를 말했을 때만, 안 적으면 1080p 본편). 앱엔 안 보내고
+//              보내기 전에 그 과금 코드의 4K 권한을 본다(없으면 멈춤 — 초안부터 안 나간다). defaults 나 작업마다
 //     작업마다 "scene": "S010", "cut": "C0010" → <작업>\03_video_draft\S010\C0010\ABC_S010_C0010_V001_480.mov (480 은 03 초안, 그 밖의 해상도는
 //              04_video_final — 번호는 그 컷에서 이어서, 꼬리는 해상도) · 에셋은 "asset": "character|location|prop|reference"(인물 · 로케이션 · 프랍 · 참고도 됨)
 //              여러 컷을 한 번에 뽑은 영상은 첫 컷에 두고 "covers": "C0010~C0040", A/B안은 "version": "A" (목록에 남김)
@@ -741,6 +743,29 @@ async function readManual() {
   return m;
 }
 
+// ---------- 4K 권한 (사용자 11/18 "스프레드시트에서 4k 한 프로젝트만 쓸 수 있어서 mcp 에서 그걸 관리 잘 해줘야 해 · 4k 파라미터 동의 안 된
+// 프로젝트인데 만들어 주면 안 되고 · 4k 되는 프로젝트 설정했다가 바꾸면 그것도 막혀야") ----------
+// 어느 모델의 4K 가 권한을 묻는지는 앱 설명서의 fourKNeedsGrant(26.11.1801~ 2.5 만 — 2.0 · Omni 4K 는 누구나). 권한은 과금 코드마다 크레딧 시트의 칸
+// (지금 F열 '2.5 4K 허용', 기본 꺼짐)이고 앱이 1분마다 읽는다. 26.11.1801~ 앱은 fourK25(상태 · projects.list) · allow4k25(billing.list), 그 전 앱은 fourK · allow4k
+// (그때 fourK 는 2.0 4K 권한). 기억해 두지 않는다 — 보낼 때마다(작업마다 · 본편마다) 앱에 다시 묻고, 못 읽으면 막는다. 낮춰 보내지 않는다(값이 다르다).
+const grant4k = (o) => (!o ? undefined : "fourK25" in o ? o.fourK25 : "allow4k25" in o ? o.allow4k25 : "fourK" in o ? o.fourK : o.allow4k);
+const NO_4K = (code) => `과금 코드 "${code}" 에 4K 권한이 없다(크레딧 시트의 4K 허용 칸 — 지금은 F열 '2.5 4K 허용', 기본 꺼짐) — 보내지 않았다. ` +
+  "낮춰 보내지 않는다 — 1080p 로 할지, 시트에서 권한을 켤지 사용자에게 물을 것(켜면 앱이 1분 안에 읽는다). 과금 코드를 고르는 것도 사람이 앱에서";
+// 본편 · 재생성(💰 --do) — card 는 card.get 결과, code 는 실제 과금 코드(본편은 초안을 만든 코드)
+async function check4k(manual, card, code, name) {
+  if (!card?.settings?.model) fail(`${name}: 카드를 못 읽어 4K 권한을 확인하지 못했다 — 보내지 않았다(카드 id 를 cards.list 로 다시 찾을 것)`);
+  const man = await readManual();
+  const m = (man.manual?.models || []).find((x) => x.id === card.settings.model);
+  if (name === "card.final" && !(m?.draft?.finals || []).includes("4k")) {
+    fail(`이 앱의 ${m?.name || card.settings.model} 은 4K 본편이 없다(설명서 ${man.version}) — 1080p 본편만. 시댄스가 26.11.1801 전이면 업데이트 뒤에`);
+  }
+  if (!m?.fourKNeedsGrant) return;
+  let rows = [];
+  try { rows = (await sendCommand(manual, "billing.list", {}))?.projects || []; }
+  catch (e) { if (e instanceof Stop && e.quiet) throw e; fail(`과금 코드 목록을 못 읽어 4K 권한을 확인하지 못했다 — 보내지 않았다 (${e.message})`); }
+  if (grant4k(rows.find((p) => p.name === code)) !== true) fail(NO_4K(code));
+}
+
 // 앱이 업데이트됐다 — 새 설명서를 통째로 보여 주고 멈춘다. 에이전트는 이걸 기준으로 확인 카드를 다시 보여 준 뒤
 // jobs.json 의 manual 을 새 버전으로 바꿔 다시 보낸다.
 async function staleStop(notice) {
@@ -955,6 +980,14 @@ async function main() {
     // "billing" 은 확인 카드에 보여 준 코드 — 앱에 보내지 않고 대조만 한다(키에도 안 넣는다 — 전에 보낸 기록과 맞아야 또 안 나간다)
     const askedBilling = cargs?.billing;
     if (cargs && typeof cargs === "object") delete cargs.billing;
+    // 본편 해상도(26.11.1801~ card.final { resolution: "1080p" | "4k" }) — 1080p 는 기본이라 빼고 보낸다(예전 기록과 같은 키 · 옛 앱도 같은 뜻).
+    // 1080p 본편을 본 뒤 같은 초안으로 4K 본편을 또 만들 수 있다(키가 다르다 · 앱도 해상도마다 하나씩만 받는다)
+    if (name === "card.final" && cargs && typeof cargs === "object" && cargs.resolution !== undefined && cargs.resolution !== null && cargs.resolution !== "") {
+      const r = String(cargs.resolution).trim().toLowerCase();
+      const norm = /^(1080p?|fhd)$/.test(r) ? "1080p" : /^(4k|2160p?|uhd)$/.test(r) ? "4k" : r;
+      if (!["1080p", "4k"].includes(norm)) fail(`card.final 의 resolution 은 "1080p"(기본) 또는 "4k" 다(지금 ${cargs.resolution})`);
+      if (norm === "1080p") delete cargs.resolution; else cargs.resolution = norm;
+    }
     // 과금되는 명령도 하루 한도를 지킨다(card.final · card.regenerate 는 한 번에 1편). 앞에 돌고 있는 영상 수는 세지 않으니,
     // 여러 카드를 본편으로 올릴 때는 3개씩 보내고 끝나는 걸 본 뒤 다음 3개(지침 7단계).
     // card.final 의 실제 과금은 초안을 만든 코드다(card.regenerate 는 앱의 지금 코드, 실패한 본편을 다시 만들면 초안의 코드)
@@ -983,8 +1016,12 @@ async function main() {
         if (!askedBilling) fail(`${name} 은 과금 코드 "${code}" 로 나간다${other}. 보내지 않았다 — 확인 카드에 이 코드를 보여 주고 인자에 "billing": "${code}" 를 적어 다시 실행할 것`);
         if (askedBilling !== code) fail(`${name} 의 과금 코드는 "${code}"${other} — 확인 카드의 "${askedBilling}" 와 다르다. 보내지 않았다 — 사용자에게 어느 쪽이 맞는지 묻고 카드를 다시`);
       }
+      // 4K — 본편이면 인자의 resolution, 재생성이면 그 카드의 해상도. 권한은 실제 과금 코드(본편은 초안의 코드)로 지금 다시 묻는다(시트에서 꺼졌으면 여기서 멈춘다)
+      const res = name === "card.final" ? cargs?.resolution || "1080p" : card?.settings?.resolution;
+      if (String(res) === "4k") await check4k(manual, card, code, name);
       const where = card?.project ?? s.project;
-      rsv = await reserve(need, { kind: name, project: where, billing: code, job: String(cargs?.id || "") });
+      rsv = await reserve(need, { kind: name, project: where, billing: code, job: String(cargs?.id || ""),
+        ...(card?.settings?.model ? { model: card.settings.model } : {}), ...(res ? { resolution: String(res) } : {}) });
       try { rid = ledgerAdd({ key, name, project: where, state: "보내는 중" }); } catch (err) { await rsv.settle(0); throw err; }
     }
     let result;
@@ -1000,6 +1037,10 @@ async function main() {
     if (rid) ledgerSet(rid, { state: "보냄" });
     if (rsv) await rsv.settle(Array.isArray(result?.cards) ? result.cards.length : 1);
     if (rsv && result?.billing?.name && result.billing.name !== code) log(`  확인할 것: 실제 과금 코드가 "${result.billing.name}" 다 — 사용 기록은 "${code}" 로 남았다`);
+    if (rsv && name === "card.final" && cargs?.resolution === "4k") {
+      log("  4K 본편은 BytePlus 계정 전체에서 한 번에 1편씩 돈다(앱 실측 11/18) — 앞의 4K 가 끝날 때까지 대기열(queued)에 있는 건 실패가 아니다. " +
+        "같은 길이 1080p 의 약 1.6배 값 · HEVC 10-bit 라 일부 플레이어에서 안 열릴 수 있다. 받을 때 --save-final 이 이름 꼬리를 _4k 로 붙인다");
+    }
     log(JSON.stringify(result, null, 2));
     return;
   }
@@ -1117,10 +1158,11 @@ async function main() {
   if (!DRY && !spec.billing) fail(`jobs.json 에 "billing" 이 없다 — 보내지 않았다. 확인 카드에 보여 준 코드를 그대로 적을 것: "billing": "${billing}"`);
   if (!DRY && !spec.project && !spec.projectId) fail(`jobs.json 에 "project" 가 없다 — 보내지 않았다. 확인 카드에 보여 준 프로젝트를 그대로 적을 것: "project": "${project}"`);
   const allowedModels = anyProject ? target.allowedModels : s.allowedModels;
-  const fourK = anyProject ? target.fourK : s.fourK;
+  // 권한을 묻는 4K(설명서 fourKNeedsGrant — 26.11.1801~ 2.5)를 이 과금 코드로 쓸 수 있나. 못 읽으면 undefined → 막는다
+  const fourK = grant4k(anyProject ? target : s);
   log(`프로젝트 "${project}" · 과금 "${billing}" 로 ${jobs.length}건 ${DRY ? "보낼 예정 (dry-run — 아무것도 안 보냄)" : "보냄"} · 설명서 ${spec.manual}` +
     `${anyProject && project !== s.project ? ` — 열린 프로젝트("${s.project || "없음"}")는 그대로 둔다` : ""}`);
-  if (Array.isArray(allowedModels)) log(`  이 프로젝트 코드로 쓸 수 있는 모델: ${allowedModels.join(", ") || "(없음)"}${fourK ? " · 4K 가능" : ""}`);
+  if (Array.isArray(allowedModels)) log(`  이 프로젝트 코드로 쓸 수 있는 모델: ${allowedModels.join(", ") || "(없음)"}`);
   if (!anyProject && s.composer === false) log("  참고: 앱이 갤러리 화면이다 — 채팅 화면으로 돌아와야 받는다");
   if (s.billingReady === false) log("  참고: 앱이 프로젝트 코드 목록(시트)을 아직 못 받아 요청을 가져가지 못한다 — 앱의 인터넷 · 시트 연결을 확인할 것(10분 안에 못 받으면 취소된다)");
   if (s.pending) log(`  참고: 앱이 아직 받지 않은 요청이 ${s.pending}건 있다`);
@@ -1138,6 +1180,12 @@ async function main() {
   const modelsTable = Array.isArray(manual.manual?.models) ? manual.manual.models : [];
   const modelOf = (j) => modelsTable.find((m) => m.id === settingsOf(j).model);
   const modeInfo = (j) => modelOf(j)?.modes?.find((m) => m.id === settingsOf(j).mode);
+  const gated4k = modelsTable.filter((m) => m.fourKNeedsGrant).map((m) => m.name || m.id);
+  if (gated4k.length) log(`  ${gated4k.join(" · ")} 4K: ${fourK === true ? "이 과금 코드로 됨" : "이 과금 코드로 안 됨(크레딧 시트의 4K 허용 칸이 꺼짐 — 4K 는 보내지 않는다)"}`);
+  // 본편 해상도 — 초안을 고른 뒤 card.final 로 올릴 해상도(앱엔 안 보낸다). 안 적으면 1080p
+  const finalRes = (j) => { const v = j.final ?? defaults.final; return v === undefined || v === null || v === "" ? undefined : String(v).toLowerCase(); };
+  // 이 작업이 권한을 묻는 4K 를 쓰나 — 바로 4K 이거나, 초안 → 4K 본편
+  const wants4k = (j) => { const st = settingsOf(j); return Boolean(modelOf(j)?.fourKNeedsGrant) && String(st.draft === true ? finalRes(j) : st.resolution) === "4k"; };
   // 앱에 보내는 값 — 마지막 프레임은 고를 일이 드물어 안 적으면 끈 채로 적어 보낸다(프로젝트에 켜 둔 값이 남아 있으면 오디오까지 꺼진다)
   const finalOf = (j) => {
     const st = settingsOf(j);
@@ -1149,6 +1197,8 @@ async function main() {
     const st = settingsOf(j), mo = modeInfo(j), m = modelOf(j);
     const shown = { ...st };
     if (st.draft === true) shown.resolution = "480p(초안)";
+    // 본편 해상도를 고를 수 있는 앱(26.11.1801~)이면 어느 쪽으로 올릴지 카드 줄에 — 안 적으면 1080p
+    if (st.draft === true && (m?.draft?.finals?.length > 1 || finalRes(j))) shown["본편"] = finalRes(j) === "4k" ? "4K" : finalRes(j) || m?.draft?.final || "1080p";
     if (mo?.ratioLocked) shown.ratio = "adaptive(입력 기준)";
     if (mo?.durationLocked) shown.duration = "자동(입력 기준)";
     if (st.return_last_frame === true && st.generate_audio !== false) shown.generate_audio = "false(마지막 프레임을 켜면 무음)";
@@ -1162,7 +1212,7 @@ async function main() {
   const KINDS_OF = (j, kind) => j.refs.filter((r) => KINDS[kind].test(r.path)).length;
   // 앱 설정은 과금만 따른다(사용자 11/6) — 안 적은 칸은 프로젝트에 남아 있는 값으로 나가, 같은 카드 줄이 480p 5초가 되기도 1080p 30초가 되기도 한다.
   // 틀린 값도 여기서 멈춘다 — 앱은 작업을 받을 때 하나씩 거절해, 뒤쪽 작업이 걸리면 앞 작업은 이미 나간 뒤다. 이미 보낸 작업은 보지 않는다(값을 적게 하면 키가 바뀌어 또 나간다)
-  const OWN = new Set(["name", "prompt", "refs", "prompt_language", "user_format", "scene", "cut", "asset", "covers", "version", "key", "legacy", "nth", "same", "refSig"]);
+  const OWN = new Set(["name", "prompt", "refs", "prompt_language", "user_format", "scene", "cut", "asset", "covers", "version", "key", "legacy", "nth", "same", "refSig", "final"]);
   const settingProblems = (j) => {
     const st = settingsOf(j), out = [];
     const blank = (k) => keys.includes(k) && (st[k] === undefined || st[k] === "");
@@ -1183,7 +1233,15 @@ async function main() {
     if (m.draft) need("draft", "초안이면 true, 본편이면 false");
     else if (st.draft === true) out.push(`${st.model} 은 초안(draft)이 없다 — draft 를 빼고 resolution 을 적을 것`);
     if (st.draft !== true) { need("resolution"); allowed("resolution", m.resolutions); }
-    if (st.draft !== true && String(st.resolution) === "4k" && m.fourKNeedsGrant && fourK === false) out.push("이 프로젝트 코드에 4K 권한이 없다 — 앱이 거절한다. 해상도를 낮추거나 권한이 있는 코드를 사용자에게 물을 것");
+    const fin = finalRes(j);
+    if (fin !== undefined) {
+      const finals = m.draft?.finals || (m.draft?.final ? [m.draft.final] : []);
+      if (!m.draft) out.push(`${st.model} 은 초안 → 본편이 없다 — final 을 빼고 resolution 에 적을 것`);
+      else if (st.draft !== true) out.push(`final(본편 해상도)은 초안(draft: true)일 때만 — 바로 최종이면 final 을 빼고 resolution 에 적을 것`);
+      else if (!finals.map(String).includes(fin)) out.push(`본편 해상도 final 은 ${finals.join(" · ") || "(없음)"} 중 하나다(지금 ${fin})${fin === "4k" ? " — 이 앱엔 4K 본편이 없다(시댄스 26.11.1801~)" : ""}`);
+    }
+    // 권한을 묻는 4K — 바로 4K 든 초안 → 4K 본편이든 지금 과금 코드에 권한이 있어야 보낸다(초안부터 안 나간다 — 4K 로 못 올릴 초안에 돈을 쓰지 않게)
+    if (wants4k(j) && fourK !== true) out.push(NO_4K(billing));
     // Omni 편집은 비율 · 길이, 연장은 비율을 원본에서 가져온다(앱이 지워 보낸다)
     // 비워도 되는 칸이어도 적은 값은 본다 — 앱은 작업 · 모드와 상관없이 검사해 거절한다
     if (!mo?.ratioLocked && !["edit", "extend"].includes(omni ? st.omniTask : "")) need("ratio");
@@ -1430,7 +1488,7 @@ async function main() {
       `${await inFlight(spec.manual, project, [], target?.id || "")}개 (동시 ${MAX_IN_FLIGHT}개까지 — 2판 3덩이, 넘으면 앞의 것이 끝나는 대로 이어서)`);
   }
   const planJobs = jobs.map((j) => ({ name: j.name || "", model: settingsOf(j).model ?? "", mode: settingsOf(j).mode ?? "", prompt: String(j.prompt),
-    refs: j.refs, elements: mentions(j), settings: settingsOf(j), ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) }));
+    refs: j.refs, elements: mentions(j), settings: settingsOf(j), ...(finalRes(j) ? { final: finalRes(j) } : {}), ...(WORKDIR ? { place: placeOf(spec, j, WORKDIR).rel } : {}) }));
   if (DRY) {
     for (const [i, j] of toSend.entries()) {
       const st = settingsOf(j);
@@ -1471,6 +1529,12 @@ async function main() {
         // 잠금 안에서 기록을 다시 본다 — 분류한 뒤 같은 명령을 동시에 돌린 다른 실행이 이 작업을 넣었으면 건너뛴다
         const other = sentSince(j);
         if (other) return { skip: other };
+        // 권한을 묻는 4K 는 넣기 직전에 다시 묻는다 — 기다리는 사이 시트에서 꺼졌거나 과금 코드가 바뀌었으면 여기서 멈춘다(앱도 받을 때 한 번 더 막는다)
+        if (wants4k(j)) {
+          const now = await appStatus(spec.manual);
+          if (now.billing && now.billing !== billing) return { error: `과금 코드가 "${now.billing}" 로 바뀌었다(확인 카드 "${billing}") — ${j.name} 부터 보내지 않았다. 사용자에게 확인할 것` };
+          if (grant4k(now) !== true) return { error: `${j.name}: ${NO_4K(billing)}` };
+        }
         let rsv;
         try {
           rsv = await reserve(need, {
@@ -1637,7 +1701,7 @@ async function saveResults(sent, manual) {
 }
 
 // 작업 폴더 — 끝난 카드를 받아(card.download) 씬·컷 폴더에 이름 규칙대로 옮긴다: <코드>_S010_C0010_V001_480.mov
-// (꼬리는 해상도 — 초안 480 · 본편 1080). 어느 카드가 어느 파일인지는 05_prompts/review/목록.tsv 에.
+// (꼬리는 해상도 — 초안 480 · 본편 1080 · 4k). 어느 카드가 어느 파일인지는 05_prompts/review/목록.tsv 에.
 // 검수를 쓰는 작업은 받지 않는다 — 이름만 정해 목록에 "대기"로 적고, 검수 페이지가 앱 주소로 보여 준 뒤 OK·보류만 받는다
 // (앱이 그 영상을 못 내주거나 회사 보관소가 없는 앱이면 예전처럼 받는다).
 const resTail = (st) => (st?.draft ? "_480" : /^(\d+)p$/i.test(String(st?.resolution || "")) ? `_${String(st.resolution).replace(/p$/i, "")}` : st?.resolution ? `_${st.resolution}` : "");
@@ -1687,7 +1751,8 @@ async function placeResults(sent, spec, work) {
   if (!held && !rows.length) log("놓은 영상 없음 — 끝난 카드가 없거나 받지 못했다");
 }
 
-// 본편(card.final 1080p)을 받아 같은 번호로 — ABC_S010_C0010_V001_480.mov → ABC_S010_C0010_V001_1080.mov.
+// 본편(card.final)을 받아 같은 번호로 — ABC_S010_C0010_V001_480.mov → ABC_S010_C0010_V001_1080.mov (4K 본편이면 _4k — 한 초안에 둘 다 있을 수 있다, 26.11.1801~).
+// 꼬리는 본편 카드의 실제 해상도(card.get)를 따른다. 카드를 못 읽는 옛 앱이면 1080.
 // 새 틀은 04_video_final/<씬>/<컷>(초안은 03_video_draft/<씬>/<컷>), 예전 틀은 초안 옆(컷 폴더). 초안이 보류 폴더에 있었어도 본편은 OK 자리에
 async function saveFinal([draft, cardId]) {
   if (!draft || !cardId) fail("쓰는 법: --save-final <초안 파일> <본편 카드 id>");
@@ -1707,7 +1772,11 @@ async function saveFinal([draft, cardId]) {
     if (r[0] === KIND_DIR.draft) dir = path.join(work, KIND_DIR.final, ...r.slice(1));
   }
   const stem = path.basename(draftPath, path.extname(draftPath));
-  const finalStem = /_480$/.test(stem) ? stem.replace(/_480$/, "_1080") : `${stem}_1080`;
+  let card = null;
+  try { card = await sendCommand(manual, "card.get", { id: cardId }); } catch (e) { if (e instanceof Stop && e.quiet) throw e; }
+  if (card?.draft || card?.settings?.draft) fail(`${cardId} 는 초안 카드다 — 본편 카드 id(card.final 결과의 card)를 줄 것`);
+  const tail = resTail({ resolution: card?.settings?.resolution || "1080p" });   // _1080 · _4k
+  const finalStem = /_480$/.test(stem) ? stem.replace(/_480$/, tail) : `${stem}${tail}`;
   // 받기 전에 먼저 본다 — 받은 뒤 멈추면 다운로드 폴더에 파일이 남는다
   const before = path.join(dir, `${finalStem}${path.extname(draftPath)}`);
   if (fs.existsSync(before)) fail(`이미 있다: ${before} — 덮어쓰지 않는다`);
@@ -1722,7 +1791,7 @@ async function saveFinal([draft, cardId]) {
   // 작업 폴더를 찾았으면 목록에 남긴다
   if (work) {
     const prev = readWorkList(work).find((x) => x["파일"] === path.basename(draftPath)) || {};
-    appendWorkList(work, [{ ...prev, 폴더: path.relative(work, dir).split(path.sep).join("/"), 파일: path.basename(dest), 카드: cardId, task: "", 해상도: "1080",
+    appendWorkList(work, [{ ...prev, 폴더: path.relative(work, dir).split(path.sep).join("/"), 파일: path.basename(dest), 카드: cardId, task: card?.taskId || "", 해상도: tail.slice(1),
       "받은 시각": new Date().toISOString(), 받기: "" }]);
   }
   log(`본편을 받아 ${dest} 로 옮겼다`);

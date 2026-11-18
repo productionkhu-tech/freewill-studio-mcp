@@ -208,6 +208,8 @@ const unitOf = (f) => (L.old ? f : String(f).replace(/^04_video_final\//, "03_vi
 const viewOnly = (folder) => /^00_/.test(String(folder).split("/")[0]);
 // 테이크 이름 — 씬·컷 배치는 파일 번호(I003 · V001_480), 에셋은 파일 끝 글자(hero_C → C — 묶음마다 A 부터 다시 세는 테이크 대신), 예전 판은 A · B
 const takeLabel = (t) => (/_([IV]\d{3}(?:_[0-9A-Za-z]+)?)\.[^.]+$/.exec(t.file) || /_([A-Z](?:_\d+)?)\.[^.]+$/.exec(t.file) || [])[1] || t.take || t.file;
+// 본편 꼬리 — 초안(_480)에서 card.final 로 올린 영상(send-to-seedance --save-final 이 붙인다: 1080p → _1080 · 4K → _4k)
+const FINAL_TAIL = /_(1080|4k)\.[^.]+$/i;
 
 // 판 지문 — 프롬프트 글(공백 정리) · 주요 설정 · 레퍼런스 파일 이름. 보내기 스크립트가 목록의 '프롬프트' 칸에 같은 식으로 적는다(jobs.json 원문 기준, 11/2)
 const PRINT_KEYS = ["model", "mode", "ratio", "aspect", "duration", "resolution", "quality"];
@@ -698,8 +700,9 @@ function writeBook() {
         settings: p ? clean({ model: p.model, mode: p.mode, ratio: p.ratio, duration: p.duration }) : takes[0].model ? { model: takes[0].model } : undefined,
         refs: p ? [...p.elements, ...p.refs.map(refName)] : undefined,
         prompt: p?.prompt,
-        results: takes.filter((t) => !/_1080\.[^.]+$/.test(t.file)).map((t) => ({ file: t.abs, label: takeLabel(t), adopted: true })),
-        finals: takes.filter((t) => /_1080\.[^.]+$/.test(t.file)).map((t) => ({ file: t.abs, label: `${takeLabel(t)} 본편` })),
+        // 본편 = 초안에서 올린 것(꼬리 _1080 · _4k — 한 초안에 둘 다 있을 수 있다, 시댄스 26.11.1801~)
+        results: takes.filter((t) => !FINAL_TAIL.test(t.file)).map((t) => ({ file: t.abs, label: takeLabel(t), adopted: true })),
+        finals: takes.filter((t) => FINAL_TAIL.test(t.file)).map((t) => ({ file: t.abs, label: `${takeLabel(t)} 본편` })),
         memo: [...(note ? [note] : []), ...takes.flatMap(memos)] }));
     }
   }

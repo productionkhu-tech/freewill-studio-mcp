@@ -192,7 +192,8 @@ $m = Get-SD "/api/agent/manual"      # 앱이 낸 사용 설명서 — $m.text �
 1. 상태 확인 — 연결이 안 되면 앱이 꺼진 것. 응답이 JSON 이 아니거나 `ok` 가 없으면 **에이전트 연결 전 버전**(앱을 껐다 켜서
    업데이트하게 한다). `screenAlive` 가 false 면 앱 창이 닫혔거나 멈춘 것, `project` 가 비었으면 프로젝트를 열게,
    `billing` 이 비었으면 설정 패널 맨 위에서 과금 프로젝트를 고르게 하고 멈춘다. `composer` 가 false 면 갤러리 화면이다.
-   `allowedModels` 는 그 과금 프로젝트로 지금 쓸 수 있는 모델이다.
+   `allowedModels` 는 그 과금 프로젝트로 지금 쓸 수 있는 모델이다. `fourK25` 는 2.5 4K 권한(시댄스 26.11.1801~, 크레딧 시트 F열 '2.5 4K 허용') —
+   사용자가 4K 를 말했는데 `True` 가 아니면 보내지 않고 1080p 로 할지 묻는다(낮춰 보내지 않는다). 4K 를 보내기 직전마다 다시 읽는다(시트에서 끌 수 있다).
 2. **`$m.text` 가 설정의 정답이다**(모델·모드·값 범위·레퍼런스 상한·사용법). 보내기 직전에는 기억한 버전이 그대로인지 본다:
    `(Get-SD "/api/agent/status?manual=$([uri]::EscapeDataString($m.version))").manualStale` 이 `True` 면 앱이 업데이트된 것 — `$m` 을 다시 읽고 설정과
    확인 카드를 다시 맞춘다.
@@ -225,3 +226,5 @@ if ($r.status -eq "failed") { $r.error } else { $r.result | ConvertTo-Json -Dept
 ```
 
 `stale` 이면 앱이 업데이트된 것 — `$m` 을 다시 읽는다. 과금되는 명령(`card.final` · `card.regenerate`)은 확인 카드를 받은 뒤에만.
+4K 본편은 `card.final` 에 `resolution = "4k"`(기본 1080p) — 보내기 직전에 `billing.list` 에서 그 초안의 과금 코드(`card.get` 의 `billing.name`) 줄의
+`allow4k25` 가 `True` 인지 본다. 아니면 보내지 않는다.
