@@ -12,8 +12,8 @@
 | `seedance-2-0` | `official:sd2-pe` | BytePlus 공식 스킬 | 전체 | — | #301a03be · 2026-10-02 |
 | `gemini-omni` | `official:gemini-omni-flash-api` | Google 공식 스킬 | "Prompting Gemini Omni Flash" 이하 | SDK·스크립트·업로드·의존성 | #a2991071 · 2026-11-06 |
 | `gpt-image` | `official:gpt-image` | OpenAI 공식 문서(원문에서 바로) | 맨 앞 2.6 절 — 모델 고르기 · complexity · 프롬프트 기본 · 만들기·편집·여러 턴 예시. 뒤의 2.5 · 2 절은 그 모델일 때만 | 코드 예시(SDK) | #06f0a979 · 2026-11-13 |
-| `seedream` | `official:seedream` | BytePlus 공식 문서(원문에서 바로) | 전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~5.0 공통 프롬프트 가이드 — 5.5 는 official:seedream-5-5 도 함께) | — | #62bb2d0c · 2026-10-12 |
-| `seedream-5-5` | `official:seedream-5-5` | BytePlus 공식 문서(원문에서 바로) | 5.5 에서 달라진 것 — 여러 번 이어 고치기(바꿀 것 · 지킬 것을 분명히), 투명 배경(RGBA) 만들기 · 레퍼런스에서 오려 내기 예시 프롬프트, 크기 · 배경 설정. 일반 원칙은 official:seedream | 레이어 분해 · OCR(앱에 없음), 코드 예시(SDK) | #885e222f · 2026-11-17 |
+| `seedream` | `official:seedream` | BytePlus 공식 문서(원문에서 바로) | 전체 — 일반 원칙, 텍스트→이미지, 편집, 레퍼런스 생성, 여러 장 입력·출력 (4.0~5.0 공통 — 5.5 는 official:seedream-5-5 도) | — | #62bb2d0c · 2026-10-12 |
+| `seedream-5-5` | `official:seedream-5-5` | BytePlus 공식 문서(원문에서 바로) | 5.5 에서 달라진 것 — 이어 고치기(바꿀 것 · 지킬 것), 투명 배경(RGBA) · 오려 내기 예시. 일반 원칙은 official:seedream | 레이어 분해 · OCR(앱에 없음), SDK 예시 | #885e222f · 2026-11-17 |
 | `gemini-.*image` · `nano-banana` | `official:nano-banana` | Google 공식 문서 | 전체 — 만들기·편집 템플릿과 예시 프롬프트, Best practices, Limitations | — | #99b20e9a · 2026-10-12 |
 | `veo` | `official:veo` | Google 공식 문서 | 전체 | — | #71e99f0b · 2026-11-04 |
 

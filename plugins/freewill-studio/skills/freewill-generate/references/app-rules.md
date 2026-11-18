@@ -83,7 +83,7 @@ Nano Banana `gemini-3-pro-image`(빠른 것 `gemini-3.1-flash-image` · 가장 �
 <!-- AUTO:seedance-models — sync/sync.mjs 가 매일 시댄스 앱 코드(src/store.ts 의 MODELS, 고를 수 있는 모델만)에서 다시 쓴다. 손으로 고치지 말 것 -->
 | 모델 ID | 이름 | 길이 | 해상도 | 초안 | 레퍼런스 상한 (이미지/영상/오디오) | 공식 가이드 |
 |---|---|---|---|---|---|---|
-| `dreamina-seedance-2-5-260628` | Seedance 2.5 | 4~30초 | 480p / 720p / 1080p | 있음(480p → 본편) | 30 / 10 / 10 | `official:sd25-pe` |
+| `dreamina-seedance-2-5-260628` | Seedance 2.5 | 4~30초 | 480p / 720p / 1080p / 4k | 있음(480p → 본편) | 30 / 10 / 10 | `official:sd25-pe` |
 | `dreamina-seedance-2-5-flash-261115` | Seedance 2.5 Flash | 4~30초 | 480p / 720p | — | 10 / 5 / 5 | `official:sd25-pe` |
 | `dreamina-seedance-2-0-260128` | Seedance 2.0 | 4~15초 | 480p / 720p / 1080p / 4k | — | 9 / 3 / 3 | `official:sd2-pe` |
 | `dreamina-seedance-2-0-fast-260128` | Seedance 2.0 Fast | 4~15초 | 480p / 720p | — | 9 / 3 / 3 | `official:sd2-pe` |
@@ -92,9 +92,9 @@ Nano Banana `gemini-3-pro-image`(빠른 것 `gemini-3.1-flash-image` · 가장 �
 
 앱이 모델마다 적어 둔 사용법(앱 코드 `notes` 그대로):
 
-- `dreamina-seedance-2-5-260628` — 초안(draft)이 기본 — 480p 로 먼저 보고, 고른 것만 앱 카드의 '본편' 으로 1080p 를 만든다(같은 시드·구도를 키운 것). 바로 최종이면 draft:false 와 해상도를 정한다. 1080p 는 HEVC 10-bit — mov(기본)는 4:4:4 라 일부 편집기·플레이어가 못 열고, mp4 는 4:2:0 이라 더 잘 열린다.
+- `dreamina-seedance-2-5-260628` — 초안(draft)이 기본 — 480p 로 먼저 보고, 고른 것만 앱 카드의 '본편' 으로 1080p(또는 4K)를 만든다(같은 시드·구도를 키운 것). 바로 최종이면 draft:false 와 해상도를 정한다. 4K 는 과금 프로젝트에 2.5 4K 권한(크레딧 시트 F열 '2.5 4K 허용', 기본 꺼짐)이 있을 때만 — 없으면 낮추지 않고 거절한다. 4K 는 같은 길이 1080p 의 약 1.6배 값이다. 1080p · 4K 는 HEVC 10-bit — mov(기본)는 4:4:4 라 일부 편집기·플레이어가 못 열고, mp4 는 4:2:0 이라 더 잘 열린다.
 - `dreamina-seedance-2-5-flash-261115` — 2.5 와 같은 기능(30초 · 편집 · 연장 · 오디오만 레퍼런스)을 더 싸게 — 같은 해상도면 2.5 단가의 약 65%. 해상도는 480p · 720p 뿐(1080p 없음). 초안(draft)이 없다 — 바로 최종이다. 레퍼런스는 이미지 10 · 영상 5 · 오디오 5 까지(2.5 는 30 · 10 · 10). 2.5 보다 약 2배 빠르다(720p 5초 실측 68초 vs 142초). 카메라 연출 · 장면 짜임은 2.5 가 낫다 — 시안 · 많이 뽑기는 Flash, 1080p 최종은 2.5 초안 → 본편.
-- `dreamina-seedance-2-0-260128` — 4K 는 과금 프로젝트에 4K 권한이 있을 때만 — 없으면 낮추지 않고 거절한다. 4K 는 HEVC 10-bit 라 코덱이 없는 PC 에서는 미리보기가 안 될 수 있다.
+- `dreamina-seedance-2-0-260128` — 4K 는 누구나 쓸 수 있다(26.11.1801~ 권한 없음). 4K 는 HEVC 10-bit 라 코덱이 없는 PC 에서는 미리보기가 안 될 수 있다.
 - `dreamina-seedance-2-0-fast-260128` — 빠른 시안용 — 1080p·4K 가 없다.
 - `gemini-omni-1.2-flash` — 길이 3~15초. 첫·끝 프레임을 공식 지원한다(image_to_video 에 두 장) — 두 장이면 10초까지. 결과가 10초를 넘으면 참조 영상은 1개까지(10초 이하면 3개). 이미지는 10장까지. edit 원본은 15초까지. extend 는 한 번에 3~10초를 붙이고, 원본 + 붙일 길이가 30초까지. 360p 15초가 1분 안팎, 연장은 2분 안팎. 1080p · 4K 는 업스케일이라 더 걸린다.
 <!-- /AUTO:seedance-models -->
