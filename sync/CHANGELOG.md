@@ -2,6 +2,16 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-11-19
+
+- **higgsfield-seedance-2-5** (O-Side Media (커뮤니티 · MIT)) 1.6.0 → 1.6.0 · 파일 3개, +65 −698줄
+- **higgsfield-seedance** (O-Side Media (커뮤니티 · MIT)) 1.16.0 → 1.16.0 · 파일 4개, +52 −711줄
+- **higgsfield-scene-engine** (O-Side Media (커뮤니티 · MIT)) 1.1.0 → 1.1.0 · 파일 1개, +14 −12줄
+- **higgsfield-prompt** (O-Side Media (커뮤니티 · MIT)) 3.7.2 → 3.7.2 · 파일 1개, +2 −90줄
+- **higgsfield-shotlist-director** (O-Side Media (커뮤니티 · MIT)) 1.3.0 → 1.3.0 · 파일 1개, +8 −7줄
+- **higgsfield-character-design** (O-Side Media (커뮤니티 · MIT)) 1.3.0 → 1.3.0 · 파일 1개, +2 −34줄
+- **gpt-image** (OpenAI 공식 문서 · 커넥터가 원문에서 바로) #06f0a979 → #02e32156 · 80192자
+
 ## 2026-11-18
 
 - **앱 표** — `references/app-rules.md` 의 모델 표 · 계열 SOTA 를 앱 코드에서 다시 씀

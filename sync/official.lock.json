@@ -176,10 +176,10 @@
         "gpt-image"
       ],
       "version": null,
-      "hash": "06f0a9797f75813f9108be4e53ba58884189ad9bd71ea68d692573e3b87dcd62",
+      "hash": "02e3215669544de234703ab94e45efa82216b7dd4feca03e567a3f994a6867b8",
       "digest": null,
-      "appliedAt": "2026-11-13",
-      "chars": 76431,
+      "appliedAt": "2026-11-19",
+      "chars": 80192,
       "files": []
     },
     "higgsfield-seedance-2-5": {
@@ -190,9 +190,9 @@
       "models": [],
       "families": [],
       "version": "1.6.0",
-      "hash": "e8b69eb588504bf5af3e3de7361bfd2bc40b9efc9691c4de06d43f7ccade7eff",
+      "hash": "1131b97ad3f4c0d5802454537be093e5ce6f05579a8a23b6a403610dc7c6e1aa",
       "digest": null,
-      "appliedAt": "2026-10-24",
+      "appliedAt": "2026-11-19",
       "files": [
         "LICENSE.md",
         "MODE-PLAYBOOKS.md",
@@ -208,9 +208,9 @@
       "models": [],
       "families": [],
       "version": "1.16.0",
-      "hash": "909839825a598b48b94fc53eb691f24fbaae8aaf8a7ed379d8895e2514621250",
+      "hash": "a431843d4a5f400ed2b737f3f5ffd3233631c008b7296158d772cbb376f358b4",
       "digest": null,
-      "appliedAt": "2026-10-24",
+      "appliedAt": "2026-11-19",
       "files": [
         "ENGINE-RULES.md",
         "FAILURE-MODES.md",
@@ -349,9 +349,9 @@
       "models": [],
       "families": [],
       "version": "1.1.0",
-      "hash": "d017a46da68cf22923791eeb593038aca387cfa7203ce7dc7f0c0e753f9e0c9c",
+      "hash": "be683a554fe2381c43d6330e388f6094ddb78ba3f0c89d8471c72e12d52cb4ae",
       "digest": null,
-      "appliedAt": "2026-10-24",
+      "appliedAt": "2026-11-19",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -381,9 +381,9 @@
       "models": [],
       "families": [],
       "version": "3.7.2",
-      "hash": "d44c4117faae9a927f748c2d4e4099ce4b37987248d49194705b6ec7245e0b7f",
+      "hash": "7dbdeef9acddbaaa91b621bace5891c6b7dbab3a2d6cdef5695565bb35e6e5e1",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-11-19",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -413,9 +413,9 @@
       "models": [],
       "families": [],
       "version": "1.3.0",
-      "hash": "9cae73e571d724920a99900d8a5010f5249430a067d56fd0eff8b645dbe4d113",
+      "hash": "8fc4aee178a170c3928ea6e04750cc3feed8dfe63eb1ea6b8fd7488deaa43640",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-11-19",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -463,9 +463,9 @@
       "models": [],
       "families": [],
       "version": "1.3.0",
-      "hash": "bd26c28c4fb317c8363374d32117d29626f5dddaff0a5a59bf61aef72db2d689",
+      "hash": "ac51eff50f5a1be5dbd58d8414c8033056167bf5ad84fbaf54a62d1b6c762b0d",
       "digest": null,
-      "appliedAt": "2026-10-14",
+      "appliedAt": "2026-11-19",
       "files": [
         "LICENSE.md",
         "SKILL.md"
@@ -595,8 +595,10 @@
     }
   },
   "held": {
-    "higgsfield": "dc0377a481aff139ec8c0af12c985dd7140dc69dc82f37869cfbd27d9ef59f09",
-    "nano-banana": "a53e0a0ea77161e278f7da97206ba7579cfd2d403ec2025c65514c75877731cb"
+    "higgsfield": "b570902077e285535b30a7f436997dc946d3d8810f0910ee6b05789e9c21b6cf",
+    "nano-banana": "a53e0a0ea77161e278f7da97206ba7579cfd2d403ec2025c65514c75877731cb",
+    "higgsfield-acting": "dc53cc501df0d42a5b409f64fd27772d51d4dc8328fd657a11d600f9e64cbdc2",
+    "higgsfield-gpt-image-2": "f1082375f0b9ff36a254257b09a18385c861fda5468e37347b5b9f85a6bd36d1"
   },
   "known": {
     "https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/": [
