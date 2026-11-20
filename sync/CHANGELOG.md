@@ -2,6 +2,10 @@
 
 자동 생성 파일 — `sync/sync.mjs` 가 씀.
 
+## 2026-11-20
+
+- **seedream** (BytePlus 공식 문서 · 커넥터가 원문에서 바로) #62bb2d0c → #e5fdd843 · 12551자
+
 ## 2026-11-19
 
 - **higgsfield-seedance-2-5** (O-Side Media (커뮤니티 · MIT)) 1.6.0 → 1.6.0 · 파일 3개, +65 −698줄

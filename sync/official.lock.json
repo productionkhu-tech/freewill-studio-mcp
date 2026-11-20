@@ -159,10 +159,10 @@
         "seedream"
       ],
       "version": null,
-      "hash": "62bb2d0c1fca773ffcca4304e46c10fb7f48f9ab0757f80809e59a8331072517",
+      "hash": "e5fdd843fbe44d0b6c2f34bf41e52d9adf46ecac9d19058d51075237f37ff02b",
       "digest": null,
-      "appliedAt": "2026-10-12",
-      "chars": 13714,
+      "appliedAt": "2026-11-20",
+      "chars": 12551,
       "files": []
     },
     "gpt-image": {
