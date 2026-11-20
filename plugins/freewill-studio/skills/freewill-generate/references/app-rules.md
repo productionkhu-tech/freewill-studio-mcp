@@ -61,7 +61,7 @@ Nano Banana `gemini-3-pro-image`(빠른 것 `gemini-3.1-flash-image` · 가장 �
   `complexity` low / medium / high(요금 같음)는 2.6 전용 — 2.5 · gpt-image-2 에 적으면 스크립트가 멈춘다. 안 적으면 high.
   한 곳만 고치는 편집은 low 부터(high 는 시키지 않은 곳까지 바꿀 수 있다), 글자 · 복잡한 구도는 high(`image-prompting.md` 1절).
   GIF · SVG(`output_format`, 앱 `v2026-11-0502`~)도 2.6 전용 — 시켰을 때만, `image-prompting.md` 9절. SVG 는 레퍼런스 불가.
-- **Seedream**: 레퍼런스는 프롬프트에서 `image 1`, `image 2` 처럼 부른다.
+- **Seedream**: 레퍼런스는 프롬프트에서 `Image 1`, `Image 2` 처럼 넣은 순서대로 부르고 그림마다 역할을 적는다(5.5 공식 가이드 — `image-prompting.md` 10절).
 - **Seedream 5.5** (앱 `v2026-11-1702`~, BytePlus 얼리 액세스): 크기 · 레퍼런스는 5.0 Pro 와 같다. 소개 글의 4K 는 API 가 거절한다(앱 주석) — 2K 까지.
   투명 배경은 GPT 2.5 · 2.6 과 같은 설정 `openai_bg_transparent`(앱 이름 그대로) — 시켰을 때만. 글로만도, 레퍼런스 10장에서 오려 내기도 된다(5.0 은 알파 있는 PNG 1장만).
   공식대로 프롬프트에도 떨어진 대상 + 투명 배경을 적는다. 여러 번 이어 고칠 때는 투명을 끄고 넣는 그림도 알파 없는 것으로(공식 권장). 쓰는 법은 `official:seedream-5-5`.
